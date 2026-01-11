@@ -2,6 +2,7 @@ package election.ems_backend.entity;
 
 import election.ems_backend.enums.OrganizationType;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
