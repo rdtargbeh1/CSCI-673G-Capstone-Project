@@ -5,14 +5,13 @@ import election.ems_backend.enums.FileType;
 import election.ems_backend.enums.StorageProvider;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.Type;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
-import org.hibernate.annotations.UuidGenerator;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.UUID;
+
 
 @Getter
 @Setter

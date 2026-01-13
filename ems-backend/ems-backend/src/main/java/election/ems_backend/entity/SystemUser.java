@@ -5,7 +5,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import election.ems_backend.security.BaseAuditedEntity;
 import jakarta.persistence.*;
 import lombok.*;
-import org.apache.tomcat.util.http.fileupload.FileUpload;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
