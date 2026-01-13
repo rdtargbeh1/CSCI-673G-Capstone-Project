@@ -3,18 +3,17 @@ package election.ems_backend.service.implement;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import election.ems_backend.dto.*;
 import election.ems_backend.entity.*;
-import election.ems_backend.enums.DeliveryMethod;
-import election.ems_backend.enums.NotificationPriority;
-import election.ems_backend.enums.NotificationType;
-import election.ems_backend.enums.VoteStatus;
-import election.ems_backend.repository.ElectionRepository;
-import election.ems_backend.repository.OrganizationRepository;
-import election.ems_backend.repository.SystemUserRepository;
-import election.ems_backend.repository.VoteSubmissionRepository;
+import election.ems_backend.enums.*;
+import election.ems_backend.integration.SigningService;
+import election.ems_backend.mapper.VoteSubmissionMapper;
+import election.ems_backend.repository.*;
 import election.ems_backend.service.AuditLogService;
+import election.ems_backend.service.FileUploadService;
 import election.ems_backend.service.NotificationService;
 import election.ems_backend.service.VoteSubmissionService;
 import election.ems_backend.utility.RecomputeEvent;
+import election.ems_backend.utility.RequestUtils;
+import election.ems_backend.utility.VoteSubmissionSpecs;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -1374,7 +1373,7 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         } catch (Exception ex) {
             log.error("Failed to sign chain hash for submission {}: {}", submission.getSubmissionId(), ex.getMessage(), ex);
             try {
-                auditLogService.log(orgId, actorUserId, Backend.ElectionVote.enums.ActivityType.SYSTEM_ERROR, "vote_submission", "Signing failed for submission " + submission.getSubmissionId() + ": " + ex.getMessage());
+                auditLogService.log(orgId, actorUserId, election.ems_backend.enums.ActivityType.SYSTEM_ERROR, "vote_submission", "Signing failed for submission " + submission.getSubmissionId() + ": " + ex.getMessage());
             } catch (Exception auditEx) {
                 log.warn("Audit logging failed after signing error for submission {}: {}", submission.getSubmissionId(), auditEx.getMessage(), auditEx);
             }
