@@ -2,7 +2,9 @@ package election.ems_backend.mapper;
 
 import election.ems_backend.dto.AuditLedgerRetryDto;
 import election.ems_backend.entity.AuditLedgerRetry;
+import org.springframework.stereotype.Component;
 
+@Component
 public class AuditLedgerRetryMapper {
 
     public AuditLedgerRetryDto toDto(AuditLedgerRetry r) {
