@@ -1,4 +1,4 @@
-package election.ems_backend.repository;
+ package election.ems_backend.repository;
 
 import election.ems_backend.entity.AuditLedger;
 import org.springframework.data.jpa.repository.JpaRepository;
