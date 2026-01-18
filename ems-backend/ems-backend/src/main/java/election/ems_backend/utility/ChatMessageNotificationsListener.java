@@ -1,5 +1,7 @@
 package election.ems_backend.utility;
 
+import election.ems_backend.entity.Organization;
+import election.ems_backend.repository.OrganizationRepository;
 import election.ems_backend.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -11,16 +13,23 @@ import org.springframework.transaction.event.TransactionalEventListener;
 public class ChatMessageNotificationsListener {
 
     private final NotificationService notificationService;
+    private final OrganizationRepository organizationRepository;
+
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onMessageCreated(ChatMessageCreatedEvent evt) {
-        // Delegate to your existing method (already handles member fetching & sends)
+
+        Organization org = organizationRepository.findById(evt.organizationId())
+                .orElseThrow(() -> new IllegalStateException("Organization not found: " + evt.organizationId()));
+
         notificationService.notifyRoomMembersOnNewMessage(
                 evt.roomId(),
                 evt.senderUserId(),
-                evt.organization(),
+                org,
                 evt.roomDisplayName(),
                 evt.messageId()
         );
     }
+
+
 }
