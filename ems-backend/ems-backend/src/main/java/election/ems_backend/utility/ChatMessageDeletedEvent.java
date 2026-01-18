@@ -1,15 +1,13 @@
 package election.ems_backend.utility;
 
-import election.ems_backend.entity.Organization;
-
 import java.time.Instant;
 import java.util.UUID;
 
-public record ChatMessageCreatedEvent(
+public record ChatMessageDeletedEvent(
         UUID roomId,
         UUID messageId,
-        UUID senderUserId,
+        UUID deleterUserId,
         UUID organizationId,
-        String roomDisplayName, // may be null for DMs
+        String roomDisplayName,
         Instant occurredAt
 ) {}
