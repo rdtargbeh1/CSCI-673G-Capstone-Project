@@ -182,7 +182,7 @@ public interface VoteSubmissionRepository
         where vs.election.electionId = :electionId
           and vs.organization.orgId = :orgId
           and vs.dateDeleted is null
-          and vs.status = Backend.ElectionVote.enums.VoteStatus.VERIFIED
+          and vs.status = election.ems_backend.enums.VoteStatus.VERIFIED
           and vs.dateVerified is not null
           and vs.dateVerified >= :since
     """)

@@ -220,6 +220,11 @@
 			<version>3.8.4</version>
 		</dependency>
 
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-json</artifactId>
+		</dependency>
+
 		<!-- QR code -->
 		<dependency>
 			<groupId>com.google.zxing</groupId>

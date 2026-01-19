@@ -70,7 +70,7 @@ public interface ContestOptionRepository extends JpaRepository<ContestOption, UU
     from ContestOption co
     where co.contestId = :contestId
       and co.isActive = true
-      and co.optionType = Backend.ElectionVote.enums.ContestOptionType.CANDIDATE
+      and co.optionType = election.ems_backend.enums.ContestOptionType.CANDIDATE
       and co.electId is not null
 """)
     Set<UUID> findActiveCandidateElectIdsByContestId(@Param("contestId") UUID contestId);
