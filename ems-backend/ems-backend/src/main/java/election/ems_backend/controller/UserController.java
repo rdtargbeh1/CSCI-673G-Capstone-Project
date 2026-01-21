@@ -117,7 +117,6 @@ public class UserController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void setVerified(@PathVariable UUID id, @RequestBody @Valid SetBooleanRequest body) {
         authz.requireAnyInTenantOrPlatformAdmin();
-//        authz.requireAny("PARTY_ADMIN", "ADMIN", "SYSTEM_ADMIN");
         systemUserService.setVerifiedInTenant(id, body.value());
     }
 

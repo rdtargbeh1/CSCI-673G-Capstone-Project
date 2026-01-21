@@ -33,9 +33,13 @@ public class AuditLog {
     private UUID logId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "org_id", nullable = false,
-            foreignKey = @ForeignKey(name = "audit_log_org_id_fkey"))
+    @JoinColumn(
+            name = "org_id",
+            nullable = true,
+            foreignKey = @ForeignKey(name = "audit_log_org_id_fkey")
+    )
     private Organization organization;
+
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false,

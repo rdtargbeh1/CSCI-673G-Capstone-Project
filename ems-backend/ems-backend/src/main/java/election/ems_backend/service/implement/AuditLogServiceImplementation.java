@@ -16,13 +16,14 @@ import election.ems_backend.service.AuditLogService;
 import election.ems_backend.utility.AuditLogSpecs;
 import election.ems_backend.utility.HashUtil;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -31,82 +32,88 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class AuditLogServiceImplementation implements AuditLogService {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(AuditLogServiceImplementation.class);
 
     private final AuditLogRepository auditLogRepository;
     private final OrganizationRepository orgRepo;
     private final SystemUserRepository userRepo;
-    private final AuditLogMapper mapper = new AuditLogMapper();
 
     private final AuditLedgerService auditLedgerService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
     private final AuditLedgerRetryService auditLedgerRetryService;
 
+    private final AuditLogMapper mapper = new AuditLogMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
-    public AuditLogDto log(UUID orgId, UUID userId, ActivityType type, String entity, String description) {
-        Organization org = orgRepo.findById(orgId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Organization not found"));
-        SystemUser user = userRepo.findById(userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-
-        AuditLog a = new AuditLog();
-        a.setOrganization(org);
-        a.setUser(user);
-        a.setActivityType(type != null ? type : ActivityType.OTHER);
-        a.setEntityAffected(entity);
-        a.setActionDescription(description);
-        // timestamp set by @PrePersist
-
-        AuditLog saved = auditLogRepository.save(a);
-
-        // Build canonical payload for ledger append (compact and deterministic)
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("logId", saved.getLogId());
-        payload.put("orgId", saved.getOrganization() != null ? saved.getOrganization().getOrgId() : null);
-        payload.put("userId", saved.getUser() != null ? saved.getUser().getUserId() : null);
-        payload.put("activityType", saved.getActivityType() != null ? saved.getActivityType().name() : null);
-        payload.put("entityAffected", saved.getEntityAffected());
-        payload.put("actionDescription", saved.getActionDescription());
-        // compute small fingerprint of metadata for inclusion rather than embedding possibly large JSON
-        payload.put("metadataHash", HashUtil.sha256Hex(saved.getMetadata()));
-        payload.put("dateCreated", saved.getDateCreated() != null ? saved.getDateCreated().toString() : null);
-
-        String payloadJson;
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public AuditLogDto log(UUID orgId,
+                           UUID userId,
+                           ActivityType type,
+                           String entity,
+                           String description) {
         try {
-            payloadJson = objectMapper.writeValueAsString(payload);
-        } catch (Exception ex) {
-            payloadJson = String.format("logId=%s; entity=%s", saved.getLogId(), saved.getEntityAffected());
-        }
+            // Resolve references if possible; NEVER throw if missing
+            Organization org = (orgId == null) ? null : orgRepo.findById(orgId).orElse(null);
+            SystemUser user = (userId == null) ? null : userRepo.findById(userId).orElse(null);
 
-        // Attempt to append to audit ledger. If it fails, enqueue retry (best-effort) and return success.
-        try {
-            auditLedgerService.appendEntry("audit_log", saved.getLogId(), payloadJson,
-                    saved.getUser() != null ? saved.getUser().getUserId() : null, null);
-        } catch (Exception ex) {
-            // Best-effort: enqueue for retry rather than failing the main operation
+            AuditLog a = new AuditLog();
+            a.setOrganization(org); // can be null
+            a.setUser(user);        // can be null
+            a.setActivityType(type != null ? type : ActivityType.OTHER);
+            a.setEntityAffected(entity);
+            a.setActionDescription(description);
+
+            AuditLog saved = auditLogRepository.save(a);
+
+            // Build compact ledger payload (best-effort)
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("logId", saved.getLogId());
+            payload.put("orgId", orgId);
+            payload.put("userId", userId);
+            payload.put("activityType", saved.getActivityType() != null ? saved.getActivityType().name() : null);
+            payload.put("entityAffected", saved.getEntityAffected());
+            payload.put("actionDescription", saved.getActionDescription());
+            payload.put("metadataHash", HashUtil.sha256Hex(saved.getMetadata()));
+            payload.put("dateCreated", saved.getDateCreated() != null ? saved.getDateCreated().toString() : null);
+
+            String payloadJson;
             try {
-                auditLedgerRetryService.enqueueRetry("audit_log", saved.getLogId(), payloadJson,
-                        saved.getUser() != null ? saved.getUser().getUserId() : null, null, ex.getMessage());
-            } catch (Exception inner) {
-                // If enqueue fails, log both errors — but still do not fail the caller.
-                // Use server logs for operator troubleshooting.
-                // (We intentionally do not throw to preserve availability.)
-                // In environments that require stronger guarantee, change this behavior.
-                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "Audit ledger append failed and retry enqueue also failed: " + inner.getMessage());
+                payloadJson = objectMapper.writeValueAsString(payload);
+            } catch (Exception ex) {
+                payloadJson = "logId=" + saved.getLogId();
             }
+
+            // Ledger append MUST NOT break app
+            try {
+                auditLedgerService.appendEntry("audit_log", saved.getLogId(), payloadJson, userId, null);
+            } catch (Exception ex) {
+                LOGGER.warn("Audit ledger append failed (will enqueue retry): {}", ex.getMessage());
+                try {
+                    auditLedgerRetryService.enqueueRetry("audit_log", saved.getLogId(), payloadJson, userId, null, ex.getMessage());
+                } catch (Exception inner) {
+                    LOGGER.warn("Audit retry enqueue failed (ignored): {}", inner.getMessage());
+                }
+            }
+
+            return mapper.toDTO(saved);
+        } catch (Exception ex) {
+            // absolute guarantee: audit never breaks caller flows
+            LOGGER.warn("Audit log write failed (ignored): {}", ex.getMessage(), ex);
+            return null;
         }
-
-        return mapper.toDTO(saved);
     }
-
 
     @Override
     @Transactional(readOnly = true)
-    public Page<AuditLogDto> search(UUID orgId, UUID userId, ActivityType type,
-                                    LocalDateTime from, LocalDateTime to, String q, Pageable pageable) {
+    public Page<AuditLogDto> search(UUID orgId,
+                                    UUID userId,
+                                    ActivityType type,
+                                    LocalDateTime from,
+                                    LocalDateTime to,
+                                    String q,
+                                    Pageable pageable) {
         Specification<AuditLog> spec = Specification
                 .where(AuditLogSpecs.orgEquals(orgId))
                 .and(AuditLogSpecs.userEquals(userId))

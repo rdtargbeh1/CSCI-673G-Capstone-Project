@@ -1,5 +1,6 @@
 package election.ems_backend.entity;
 
+import election.ems_backend.security.BaseAuditedEntity;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Min;
 import lombok.*;
@@ -20,7 +21,7 @@ import java.util.UUID;
                 @UniqueConstraint(name = "uq_election_name_year",
                         columnNames = {"election_name", "year"})
         })
-public class Election extends election.ems_backend.security.BaseAuditedEntity {
+public class Election extends BaseAuditedEntity {
     @Id
     @GeneratedValue
     @UuidGenerator

@@ -21,7 +21,7 @@ public class RoleSeeder implements CommandLineRunner {
             roles.findByRoleName(rn).orElseGet(() -> {
                 // Mark common core roles builtin to prevent deletion
                 boolean builtin = switch (rn) {
-                    case SYSTEM_ADMIN, NEC_ADMIN, ADMIN, PARTY_ADMIN, AGENT, OBSERVER, SUPERVISOR, COORDINATOR, DATA_ENTRY, AUDITOR -> true;
+                    case SYSTEM_ADMIN, NEC_ADMIN, ADMIN, TENANT_ADMIN, AGENT, OBSERVER, SUPERVISOR, COORDINATOR, DATA_ENTRY, AUDITOR -> true;
                     default -> false;
                 };
                 return roles.save(UserRole.builder()

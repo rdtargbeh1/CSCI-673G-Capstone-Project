@@ -23,24 +23,6 @@ public class TenantUserController {
 
 
     /**
-     * Create a tenant member in the current org (from TenantContext).
-     *
-     * Allowed roles (enforced in service):
-     *   AGENT, SUPERVISOR, DATA_ENTRY, OBSERVER, COORDINATOR, AUDITOR
-     *
-     * Caller:
-     *   PARTY_ADMIN, ADMIN, or SYSTEM_ADMIN in this tenant.
-     */
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public UserDto createMember(@RequestBody @Valid UserCreateRequest req) {
-//        authz.requireAnyInTenantOrPlatformAdmin();
-        authz.requireAny("PARTY_ADMIN", "ADMIN", "SYSTEM_ADMIN");  // Caller must be a tenant PARTY_ADMIN, ADMIN, or platform SYSTEM_ADMIN
-        return systemUserService.createTenantMemberRestricted(req);
-    }
-
-
-    /**
      * Create a tenant admin for the current org (from TenantContext).
      *
      * Allowed roles (enforced in service):
@@ -60,6 +42,27 @@ public class TenantUserController {
         authz.requirePlatformAdmin();
         return systemUserService.createTenantAdmin(req);
     }
+
+
+
+    /**
+     * Create a tenant member in the current org (from TenantContext).
+     *
+     * Allowed roles (enforced in service):
+     *   AGENT, SUPERVISOR, DATA_ENTRY, OBSERVER, COORDINATOR, AUDITOR
+     *
+     * Caller:
+     *   PARTY_ADMIN, ADMIN, or SYSTEM_ADMIN in this tenant.
+     */
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public UserDto createMember(@RequestBody @Valid UserCreateRequest req) {
+//        authz.requireAnyInTenantOrPlatformAdmin();
+        authz.requireAny("TENANT_ADMIN", "ADMIN", "SYSTEM_ADMIN");  // Caller must be a tenant PARTY_ADMIN, ADMIN, or platform SYSTEM_ADMIN
+        return systemUserService.createTenantMemberRestricted(req);
+    }
+
+
 
 
 

@@ -6,7 +6,6 @@ import election.ems_backend.dto.OrganizationCreateRequest;
 import election.ems_backend.dto.OrganizationDto;
 import election.ems_backend.dto.OrganizationUpdateRequest;
 import election.ems_backend.entity.Organization;
-
 import election.ems_backend.entity.Party;
 import election.ems_backend.enums.OrganizationType;
 import election.ems_backend.mapper.OrganizationMapper;

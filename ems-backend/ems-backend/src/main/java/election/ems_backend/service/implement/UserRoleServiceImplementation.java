@@ -36,7 +36,7 @@ public class UserRoleServiceImplementation implements UserRoleService {
 
     /** core roles we don’t allow deleting for safety */
     private static final Set<RoleName> CORE_ROLES = Set.of(
-            RoleName.ADMIN, RoleName.PARTY_ADMIN, RoleName.AGENT,
+            RoleName.ADMIN, RoleName.TENANT_ADMIN, RoleName.AGENT,
             RoleName.OBSERVER, RoleName.SUPERVISOR, RoleName.COORDINATOR
     );
 

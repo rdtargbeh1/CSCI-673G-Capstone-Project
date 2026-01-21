@@ -5,12 +5,16 @@ import election.ems_backend.dto.AuditLogDto;
 import election.ems_backend.enums.ActivityType;
 import election.ems_backend.service.AuditLogService;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Primary;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.data.domain.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.sql.ResultSet;
@@ -39,6 +43,8 @@ import java.util.*;
 public class AuditLogServiceJdbc implements AuditLogService {
 
 
+    private static final Logger log = LoggerFactory.getLogger(AuditLogServiceJdbc.class);
+
     private final JdbcTemplate jdbc;
 
     private static final RowMapper<AuditLogDto> ROW_MAPPER = new RowMapper<>() {
@@ -56,48 +62,49 @@ public class AuditLogServiceJdbc implements AuditLogService {
         }
     };
 
+    /**
+     * ✅ CRITICAL: audit must never break caller flows.
+     * ✅ CRITICAL: isolate audit in its own transaction so failures never abort business tx.
+     * ✅ CRITICAL: do ONE insert only (no "fallback insert" after a SQL error in Postgres).
+     */
     @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public AuditLogDto log(UUID orgId, UUID userId, ActivityType type, String entity, String description) {
-        // Attempt to insert and return created row using RETURNING (Postgres)
         try {
-            String sql = "INSERT INTO audit_log (log_id, org_id, user_id, activity_type, entity_affected, action_description) " +
-                    "VALUES (gen_random_uuid(), ?, ?, ?, ?, ?) RETURNING log_id, org_id, user_id, activity_type, entity_affected, action_description, date_created";
-            return jdbc.queryForObject(sql,
-                    ROW_MAPPER,
-                    orgId, userId, type == null ? null : type.name(), entity, description);
+            UUID id = UUID.randomUUID();
+
+            String sql =
+                    "INSERT INTO audit_log " +
+                            "(log_id, org_id, user_id, activity_type, entity_affected, action_description, date_created) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, now())";
+
+            jdbc.update(sql,
+                    id,
+                    orgId,
+                    userId,
+                    type == null ? null : type.name(),
+                    entity,
+                    description
+            );
+
+            return AuditLogDto.builder()
+                    .logId(id)
+                    .orgId(orgId)
+                    .userId(userId)
+                    .activityType(type)
+                    .entityAffected(entity)
+                    .actionDescription(description)
+                    .dateCreated(LocalDateTime.now())
+                    .build();
+
         } catch (Exception ex) {
-            // Failsafe: if insert fails (pgcrypto missing etc.), try Java-side insert with generated UUID
-            try {
-                UUID id = UUID.randomUUID();
-                String sql = "INSERT INTO audit_log (log_id, org_id, user_id, activity_type, entity_affected, action_description, date_created) " +
-                        "VALUES (?, ?, ?, ?, ?, ?, now())";
-                jdbc.update(sql, id, orgId, userId, type == null ? null : type.name(), entity, description);
-                // Build DTO to return using the correct builder property names
-                AuditLogDto dto = AuditLogDto.builder()
-                        .logId(id)
-                        .orgId(orgId)
-                        .userId(userId)
-                        .activityType(type)
-                        .entityAffected(entity)
-                        .actionDescription(description)
-                        .dateCreated(LocalDateTime.now())
-                        .build();
-                return dto;
-            } catch (Exception ex2) {
-                // Last resort: do not throw to avoid breaking business flows. Log to stderr
-                System.err.println("Audit log failed: " + ex2.getMessage());
-                return AuditLogDto.builder()
-                        .logId(null)
-                        .orgId(orgId)
-                        .userId(userId)
-                        .activityType(type)
-                        .entityAffected(entity)
-                        .actionDescription(description)
-                        .dateCreated(LocalDateTime.now())
-                        .build();
-            }
+            // audit must never break business flow
+            log.warn("Audit log failed (ignored). orgId={}, userId={}, type={}, entity={}, err={}",
+                    orgId, userId, type, entity, ex.getMessage(), ex);
+            return null;
         }
     }
+
 
     @Override
     public Page<AuditLogDto> search(UUID orgId, UUID userId, ActivityType type, LocalDateTime from, LocalDateTime to, String q, Pageable pageable) {

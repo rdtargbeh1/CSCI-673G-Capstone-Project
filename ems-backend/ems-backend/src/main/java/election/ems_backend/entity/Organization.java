@@ -1,6 +1,7 @@
 package election.ems_backend.entity;
 
 import election.ems_backend.enums.OrganizationType;
+import election.ems_backend.security.BaseAuditedEntity;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -22,7 +23,7 @@ import java.util.UUID;
 @Table(name = "organization", uniqueConstraints = {
         @UniqueConstraint(name = "uq_org_subdomain", columnNames = "subdomain")
 })
-public class Organization {
+public class Organization extends BaseAuditedEntity  {
 
     @Id
     @GeneratedValue
@@ -36,7 +37,7 @@ public class Organization {
     private String orgName;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "org__type", nullable = false, length = 30)
+    @Column(name = "org_type", nullable = false, length = 30)
     private OrganizationType organizationType;
 
     /**

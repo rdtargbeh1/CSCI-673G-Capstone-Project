@@ -199,7 +199,7 @@ public class SystemUserServiceImplementation implements SystemUserService {
 
         RoleName target = req.getRoleName();
         if (target == null ||
-                (target != RoleName.ADMIN && target != RoleName.PARTY_ADMIN)) {
+                (target != RoleName.ADMIN && target != RoleName.TENANT_ADMIN)) {
             throw new IllegalArgumentException("Role must be ADMIN or PARTY_ADMIN for this endpoint");
         }
 
