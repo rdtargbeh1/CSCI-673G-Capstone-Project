@@ -97,7 +97,7 @@ public class VoteSubmissionMapper {
                 .candidateVotesJson(candidateVotesJson)
                 .candidateVotes(votesMap)
 
-                .ballotsCast(s.getBallotsCast())
+                .ballotsInBox(s.getBallotsInBox())
                 .invalidBallots(s.getInvalidBallots())
                 .unmarkedBallots(s.getUnmarkedBallots())
                 .rejectedBallots(s.getRejectedBallots())
@@ -146,7 +146,7 @@ public class VoteSubmissionMapper {
         s.setContestId(req.getContestId());
         s.setCandidateVotes(req.getCandidateVotes());
 
-        s.setBallotsCast(nz(req.getBallotsCast()));
+        s.setBallotsInBox(nz(req.getBallotsInBox()));
         s.setInvalidBallots(nz(req.getInvalidBallots()));
         s.setUnmarkedBallots(nz(req.getUnmarkedBallots()));
         s.setRejectedBallots(nz(req.getRejectedBallots()));
@@ -170,7 +170,7 @@ public class VoteSubmissionMapper {
 
     public void apply(VoteSubmissionUpdateRequest req, VoteSubmission s) {
         if (req.getCandidateVotes() != null) s.setCandidateVotes(req.getCandidateVotes());
-        if (req.getBallotsCast() != null) s.setBallotsCast(req.getBallotsCast());
+        if (req.getBallotsInBox() != null) s.setBallotsInBox(req.getBallotsInBox());
         if (req.getInvalidBallots() != null) s.setInvalidBallots(req.getInvalidBallots());
         if (req.getUnmarkedBallots() != null) s.setUnmarkedBallots(req.getUnmarkedBallots());
         if (req.getRejectedBallots() != null) s.setRejectedBallots(req.getRejectedBallots());

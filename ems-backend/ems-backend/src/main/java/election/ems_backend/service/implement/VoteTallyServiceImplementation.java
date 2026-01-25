@@ -161,8 +161,13 @@ public class VoteTallyServiceImplementation implements VoteTallyService {
              * - candidate_votes JSON key = elect_id
              * - contest_option validates candidate belongs to contest
              * - election_candidate maps elect_id -> candidate_id
-             * - candidate.party_id is the ONLY party source
+             * - candidate.party_id is the ONLY party source (NULL => Independent)
+             *
+             * RULE:
+             * - Party candidates must be in election_party and qualified
+             * - Independent candidates (party_id NULL) must still be counted
              */
+
             String sql = """
             SELECT
                 s.contest_id::uuid       AS contest_id,
@@ -186,10 +191,19 @@ public class VoteTallyServiceImplementation implements VoteTallyService {
             JOIN candidate c
               ON c.candidate_id = ec.candidate_id
 
+            -- ✅ Party validation for party candidates only (independents pass through)
+            LEFT JOIN election_party ep
+              ON ep.election_id = s.election_id
+             AND ep.party_id    = c.party_id
+
             WHERE s.org_id = ?
               AND s.election_id = ?
               AND s.status = ?
               AND e.value ~ '^[0-9]+$'
+              AND (
+                   c.party_id IS NULL
+                   OR (ep.party_id IS NOT NULL AND ep.is_qualified = true)
+              )
 
             GROUP BY s.contest_id, (e.key)::uuid, c.party_id
         """;
@@ -220,10 +234,23 @@ public class VoteTallyServiceImplementation implements VoteTallyService {
             List<VoteTally> toSave = new ArrayList<>(rows.size());
 
             for (Map<String, Object> r : rows) {
-                UUID contestId = UUID.fromString(r.get("contest_id").toString());
-                UUID electId   = UUID.fromString(r.get("elect_id").toString());
-                UUID partyId   = UUID.fromString(r.get("party_id").toString());
-                int votes      = ((Number) r.get("votes")).intValue();
+                Object contestObj = r.get("contest_id");
+                Object electObj   = r.get("elect_id");
+                Object partyObj   = r.get("party_id");
+                Object votesObj   = r.get("votes");
+
+                if (contestObj == null || electObj == null || votesObj == null) {
+                    log.warn("Skipping invalid tally row (missing required fields): {}", r);
+                    continue;
+                }
+
+                UUID contestId = UUID.fromString(contestObj.toString());
+                UUID electId   = UUID.fromString(electObj.toString());
+
+                // ✅ Independent candidate => party_id is NULL
+                UUID partyId = (partyObj == null) ? null : UUID.fromString(partyObj.toString());
+
+                int votes = ((Number) votesObj).intValue();
 
                 VoteTally v = new VoteTally();
                 v.setOrganization(org);
@@ -232,13 +259,18 @@ public class VoteTallyServiceImplementation implements VoteTallyService {
                 // ✅ WRITE-SAFE COLUMNS
                 v.setContestId(contestId);
                 v.setElectId(electId);
-                v.setPartyId(partyId);
+                v.setPartyId(partyId); // can be null for independents
 
                 v.setVoteCount(votes);
                 v.setLastRecomputedAt(now);
                 v.setRecomputedBy(recomputedBy);
 
                 toSave.add(v);
+            }
+
+            if (toSave.isEmpty()) {
+                log.warn("Recompute produced rows but none were writeable after validation.");
+                return List.of();
             }
 
             List<VoteTally> saved = voteTallyRepository.saveAll(toSave);
@@ -253,6 +285,155 @@ public class VoteTallyServiceImplementation implements VoteTallyService {
             RUN_LOCKS.remove(lockKey);
         }
     }
+
+
+
+//    @Override
+//    @Transactional
+//    public List<VoteTallyDto> recomputeForElection(UUID orgId,
+//                                                   UUID electionId,
+//                                                   UUID recomputedByUserId) {
+//
+//        Organization org = orgRepo.findById(orgId)
+//                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Organization not found"));
+//
+//        String lockKey = orgId + ":" + electionId;
+//        Object existing = RUN_LOCKS.putIfAbsent(lockKey, new Object());
+//        if (existing != null) {
+//            log.warn("Recompute for org={} election={} already in progress (in-JVM). Skipping.",
+//                    orgId, electionId);
+//            return List.of();
+//        }
+//
+//        boolean advisoryLockAcquired = false;
+//        long advisoryKey = computeAdvisoryKey(orgId, electionId);
+//
+//        try {
+//            try {
+//                Boolean got = jdbc.queryForObject("SELECT pg_try_advisory_lock(?)", Boolean.class, advisoryKey);
+//                advisoryLockAcquired = Boolean.TRUE.equals(got);
+//                if (!advisoryLockAcquired) {
+//                    throw new AdvisoryLockNotAcquiredException(
+//                            "Another node holds advisory lock for org=" + orgId + " election=" + electionId
+//                    );
+//                }
+//            } catch (AdvisoryLockNotAcquiredException ex) {
+//                throw ex;
+//            } catch (Exception e) {
+//                log.warn("pg_try_advisory_lock unavailable, using JVM guard only: {}", e.getMessage());
+//            }
+//
+//            long verifiedCount = voteSubmissionRepository
+//                    .findByOrganization_OrgIdAndElection_ElectionIdAndStatus(
+//                            orgId, electionId, VoteStatus.VERIFIED)
+//                    .size();
+//
+//            log.info("DEBUG: recomputeForElection org={} election={} -> {} VERIFIED submissions",
+//                    orgId, electionId, verifiedCount);
+//
+//            /*
+//             * FINAL TRUTH:
+//             * - candidate_votes JSON key = elect_id
+//             * - contest_option validates candidate belongs to contest
+//             * - election_candidate maps elect_id -> candidate_id
+//             * - candidate.party_id is the ONLY party source
+//             */
+//
+//            String sql = """
+//            SELECT
+//                s.contest_id::uuid       AS contest_id,
+//                (e.key)::uuid            AS elect_id,
+//                c.party_id::uuid         AS party_id,
+//                SUM((e.value)::int)      AS votes
+//            FROM vote_submission s
+//            CROSS JOIN LATERAL jsonb_each_text(s.candidate_votes) AS e(key, value)
+//
+//            JOIN contest_option co
+//              ON co.contest_id  = s.contest_id
+//             AND co.election_id = s.election_id
+//             AND co.is_active   = true
+//             AND co.option_type = 'CANDIDATE'
+//             AND co.elect_id    = (e.key)::uuid
+//
+//            JOIN election_candidate ec
+//              ON ec.elect_id    = (e.key)::uuid
+//             AND ec.election_id = s.election_id
+//
+//            JOIN candidate c
+//              ON c.candidate_id = ec.candidate_id
+//
+//            JOIN election_party ep
+//                ON ep.election_id = s.election_id
+//                         AND ep.party_id    = c.party_id
+//                         AND ep.is_qualified = true
+//
+//            WHERE s.org_id = ?
+//              AND s.election_id = ?
+//              AND s.status = ?
+//              AND e.value ~ '^[0-9]+$'
+//
+//            GROUP BY s.contest_id, (e.key)::uuid, c.party_id
+//        """;
+//
+//            List<Map<String, Object>> rows =
+//                    jdbc.queryForList(sql, orgId, electionId, VoteStatus.VERIFIED.name());
+//
+//            log.info("DEBUG: recomputeForElection produced {} tally rows", rows.size());
+//
+//            voteTallyRepository.deleteByOrgAndElection(orgId, electionId);
+//
+//            if (rows.isEmpty()) {
+//                log.warn("Recompute produced 0 rows despite VERIFIED submissions={}", verifiedCount);
+//                return List.of();
+//            }
+//
+//            Election election = electionRepo.findById(electionId).orElseGet(() -> {
+//                Election e = new Election();
+//                e.setElectionId(electionId);
+//                return e;
+//            });
+//
+//            SystemUser recomputedBy = (recomputedByUserId == null) ? null :
+//                    systemUserRepo.findById(recomputedByUserId)
+//                            .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Recomputed-by user not found"));
+//
+//            LocalDateTime now = LocalDateTime.now();
+//            List<VoteTally> toSave = new ArrayList<>(rows.size());
+//
+//            for (Map<String, Object> r : rows) {
+//                UUID contestId = UUID.fromString(r.get("contest_id").toString());
+//                UUID electId   = UUID.fromString(r.get("elect_id").toString());
+//                UUID partyId   = UUID.fromString(r.get("party_id").toString());
+//                int votes      = ((Number) r.get("votes")).intValue();
+//
+//                VoteTally v = new VoteTally();
+//                v.setOrganization(org);
+//                v.setElection(election);
+//
+//                // ✅ WRITE-SAFE COLUMNS
+//                v.setContestId(contestId);
+//                v.setElectId(electId);
+//                v.setPartyId(partyId);
+//
+//                v.setVoteCount(votes);
+//                v.setLastRecomputedAt(now);
+//                v.setRecomputedBy(recomputedBy);
+//
+//                toSave.add(v);
+//            }
+//
+//            List<VoteTally> saved = voteTallyRepository.saveAll(toSave);
+//            return saved.stream().map(mapper::toDTO).toList();
+//
+//        } finally {
+//            if (advisoryLockAcquired) {
+//                try {
+//                    jdbc.queryForObject("SELECT pg_advisory_unlock(?)", Boolean.class, advisoryKey);
+//                } catch (Exception ignored) {}
+//            }
+//            RUN_LOCKS.remove(lockKey);
+//        }
+//    }
 
 
     // ------------------------------------------------------------------------

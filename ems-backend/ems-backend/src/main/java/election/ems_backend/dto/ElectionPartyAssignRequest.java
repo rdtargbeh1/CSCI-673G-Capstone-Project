@@ -9,7 +9,6 @@ import java.util.UUID;
 @Data
 public class ElectionPartyAssignRequest {
 
-    @NotNull
     @JsonIgnore
     private UUID electionId;
 

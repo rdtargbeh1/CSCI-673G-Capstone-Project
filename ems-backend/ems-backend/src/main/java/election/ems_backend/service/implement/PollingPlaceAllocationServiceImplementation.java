@@ -3,9 +3,12 @@ package election.ems_backend.service.implement;
 import election.ems_backend.dto.PollingPlaceAllocationCreateRequest;
 import election.ems_backend.dto.PollingPlaceAllocationDto;
 import election.ems_backend.dto.PollingPlaceAllocationUpdateRequest;
+import election.ems_backend.entity.Election;
+import election.ems_backend.entity.PollingCenterAllocation;
 import election.ems_backend.entity.PollingPlaceAllocation;
 import election.ems_backend.mapper.PollingPlaceAllocationMapper;
 import election.ems_backend.repository.ElectionRepository;
+import election.ems_backend.repository.PollingCenterAllocationRepository;
 import election.ems_backend.repository.PollingPlaceAllocationRepository;
 import election.ems_backend.repository.PollingPlaceRepository;
 import election.ems_backend.service.PollingPlaceAllocationService;
@@ -23,14 +26,19 @@ import java.util.UUID;
 import static org.springframework.http.HttpStatus.*;
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 
+
 @Service
 @RequiredArgsConstructor
 public class PollingPlaceAllocationServiceImplementation implements PollingPlaceAllocationService {
 
+
     private final PollingPlaceAllocationRepository repo;
     private final ElectionRepository electionRepo;
     private final PollingPlaceRepository placeRepo;
+    private final PollingCenterAllocationRepository centerAllocRepo;
+
     private final PollingPlaceAllocationMapper mapper = new PollingPlaceAllocationMapper();
+
 
     @Override
     @Transactional
@@ -44,7 +52,17 @@ public class PollingPlaceAllocationServiceImplementation implements PollingPlace
             throw new ResponseStatusException(CONFLICT, "Allocation already exists for this election & polling place");
         }
 
-        validateNumbers(req.getRegisteredVoters(), req.getBallotsIssued());
+        // ✅ Existing: validate using election policy (NEC spare %)
+        validateNumbers(req.getRegisteredVoters(), req.getBallotsIssued(), election);
+
+        // ✅ NEW: enforce center caps
+        UUID centerId = place.getPollingCenter().getCenterId();
+        enforceCenterCapsOnCreate(
+                election.getElectionId(),
+                centerId,
+                req.getRegisteredVoters(),
+                req.getBallotsIssued()
+        );
 
         var saved = repo.save(mapper.toEntity(req, election, place));
         return mapper.toDTO(saved);
@@ -56,11 +74,23 @@ public class PollingPlaceAllocationServiceImplementation implements PollingPlace
         var entity = repo.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Allocation not found"));
 
-        if (req.getRegisteredVoters() != null || req.getBallotsIssued() != null) {
-            int rv = req.getRegisteredVoters() != null ? req.getRegisteredVoters() : entity.getRegisteredVoters();
-            Integer bi = req.getBallotsIssued() != null ? req.getBallotsIssued() : entity.getBallotsIssued();
-            validateNumbers(rv, bi);
-        }
+        int rv = (req.getRegisteredVoters() != null) ? req.getRegisteredVoters() : entity.getRegisteredVoters();
+        Integer bi = (req.getBallotsIssued() != null) ? req.getBallotsIssued() : entity.getBallotsIssued();
+
+        // ✅ Existing: validate using election policy (NEC spare %)
+        validateNumbers(rv, bi, entity.getElection());
+
+        // ✅ NEW: enforce center caps (exclude this allocation from sums)
+        UUID electionId = entity.getElection().getElectionId();
+        UUID centerId = entity.getPollingPlace().getPollingCenter().getCenterId();
+
+        enforceCenterCapsOnUpdate(
+                entity.getPlaceAllocationId(),
+                electionId,
+                centerId,
+                rv,
+                bi
+        );
 
         mapper.apply(req, entity);
         var saved = repo.save(entity);
@@ -93,36 +123,150 @@ public class PollingPlaceAllocationServiceImplementation implements PollingPlace
         return repo.findAll(spec, pageable).map(mapper::toDTO);
     }
 
-    /** Validate Ballots Issued **/
-    private void validateNumbers(int registeredVoters, Integer ballotsIssued) {
-        // 1) Basic sanity checks
+    /**
+     * ✅ Validate ballotsIssued using NEC election policy.
+     */
+    private void validateNumbers(int registeredVoters, Integer ballotsIssued, Election election) {
         if (registeredVoters < 0) {
             throw new ResponseStatusException(BAD_REQUEST, "registeredVoters cannot be negative");
         }
-        // Allow "no ballots assigned yet" if null
-        if (ballotsIssued == null) {
-            return;
-        }
+        if (ballotsIssued == null) return;
         if (ballotsIssued < 0) {
             throw new ResponseStatusException(BAD_REQUEST, "ballotsIssued cannot be negative");
         }
-        // 2) Real-world rule: ballotsIssued should normally be >= registeredVoters
-        if (ballotsIssued < registeredVoters) {
-            throw new ResponseStatusException(
-                    BAD_REQUEST,
-                    "ballotsIssued should be greater than or equal to registeredVoters to avoid ballot shortage"
-            );
+
+        boolean enforceGte = (election == null) || election.isEnforceBallotsGteRegistered();
+        if (enforceGte && ballotsIssued < registeredVoters) {
+            throw new ResponseStatusException(BAD_REQUEST, "ballotsIssued must be >= registeredVoters (NEC policy)");
         }
-        // 3) Anti-fraud / sanity upper bound: max 20% spare ballots
-        //    maxAllowed = registeredVoters + ceil(20% of registeredVoters)
-        int spare = (int) Math.ceil(registeredVoters * 0.20);
+
+        Integer sparePercent = (election == null) ? null : election.getBallotSparePercent();
+        if (sparePercent == null) return;
+
+        if (sparePercent < 0 || sparePercent > 100) {
+            throw new ResponseStatusException(BAD_REQUEST, "Invalid election ballotSparePercent: " + sparePercent);
+        }
+
+        int spare = (int) Math.ceil(registeredVoters * (sparePercent / 100.0));
         int maxAllowed = registeredVoters + spare;
 
         if (ballotsIssued > maxAllowed) {
             throw new ResponseStatusException(
                     BAD_REQUEST,
                     "ballotsIssued cannot exceed " + maxAllowed +
-                            " (20% spare ballot cap for registeredVoters=" + registeredVoters + ")"
+                            " (NEC spare cap " + sparePercent + "% for registeredVoters=" + registeredVoters + ")"
+            );
+        }
+    }
+
+    // ===================== Center cap enforcement =====================
+
+    private void enforceCenterCapsOnCreate(
+            UUID electionId,
+            UUID centerId,
+            int newRv,
+            Integer newBi
+    ) {
+        PollingCenterAllocation centerAlloc = centerAllocRepo.findForUpdate(electionId, centerId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        BAD_REQUEST,
+                        "Center allocation is required before allocating polling places " +
+                                "(election=" + electionId + ", center=" + centerId + ")"
+                ));
+
+        long usedRv = repo.sumRegisteredVotersByElectionAndCenter(electionId, centerId);
+        long usedBi = repo.sumBallotsIssuedByElectionAndCenter(electionId, centerId);
+
+        long capRv = centerAlloc.getRegisteredVoters();
+        long capBi = centerAlloc.getBallotsIssued() == null ? 0 : centerAlloc.getBallotsIssued();
+
+        long addBi = (newBi == null ? 0 : newBi);
+
+        long remainingRv = capRv - usedRv;   // ✅ expected remaining BEFORE this request
+        long remainingBi = capBi - usedBi;   // ✅ expected remaining BEFORE this request
+
+        long wouldBeRv = usedRv + newRv;
+        long wouldBeBi = usedBi + addBi;
+
+        if (newRv > remainingRv) {
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "Place registeredVoters exceed remaining center capacity. " +
+                            "cap=" + capRv +
+                            ", used=" + usedRv +
+                            ", remaining=" + remainingRv +
+                            ", you entered=" + newRv +
+                            ", wouldBe=" + wouldBeRv
+            );
+        }
+
+        if (addBi > remainingBi) {
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "Place ballotsIssued exceed remaining center capacity. " +
+                            "cap=" + capBi +
+                            ", used=" + usedBi +
+                            ", remaining=" + remainingBi +
+                            ", you entered=" + addBi +
+                            ", wouldBe=" + wouldBeBi
+            );
+        }
+    }
+
+
+
+    private void enforceCenterCapsOnUpdate(
+            UUID allocId,
+            UUID electionId,
+            UUID centerId,
+            int rv,
+            Integer bi
+    ) {
+        PollingCenterAllocation centerAlloc = centerAllocRepo.findForUpdate(electionId, centerId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        BAD_REQUEST,
+                        "Center allocation is required before allocating polling places " +
+                                "(election=" + electionId + ", center=" + centerId + ")"
+                ));
+
+        // ✅ "used" excluding THIS allocation (so remaining is correct for update)
+        long usedRv = repo.sumRegisteredVotersByElectionAndCenterExcluding(electionId, centerId, allocId);
+        long usedBi = repo.sumBallotsIssuedByElectionAndCenterExcluding(electionId, centerId, allocId);
+
+        long capRv = centerAlloc.getRegisteredVoters();
+        long capBi = centerAlloc.getBallotsIssued() == null ? 0 : centerAlloc.getBallotsIssued();
+
+        long addBi = (bi == null ? 0 : bi);
+
+        // ✅ expected remaining BEFORE applying this updated allocation
+        long remainingRv = capRv - usedRv;
+        long remainingBi = capBi - usedBi;
+
+        long wouldBeRv = usedRv + rv;
+        long wouldBeBi = usedBi + addBi;
+
+        // ✅ Compare request against remaining (best UX)
+        if (rv > remainingRv) {
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "Updated place registeredVoters exceed remaining center capacity. " +
+                            "cap=" + capRv +
+                            ", used(exclThis)=" + usedRv +
+                            ", remaining=" + remainingRv +
+                            ", you entered=" + rv +
+                            ", wouldBe=" + wouldBeRv
+            );
+        }
+
+        if (addBi > remainingBi) {
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "Updated place ballotsIssued exceed remaining center capacity. " +
+                            "cap=" + capBi +
+                            ", used(exclThis)=" + usedBi +
+                            ", remaining=" + remainingBi +
+                            ", you entered=" + addBi +
+                            ", wouldBe=" + wouldBeBi
             );
         }
     }

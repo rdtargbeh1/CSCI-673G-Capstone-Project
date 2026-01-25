@@ -1,3 +1,6 @@
+
+// src/pages/elections/workspace/tabs/setup/election/ElectionCandidatesTab.tsx
+
 import React, { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

@@ -89,7 +89,7 @@ public class VoteSubmission extends AuditBaseEntity {
     private Map<String, Integer> candidateVotes;
 
     @Column(name = "ballots_cast", nullable = false)
-    private Integer ballotsCast;
+    private Integer ballotsInBox;
     @Column(name = "invalid_ballots", nullable = false)
     private Integer invalidBallots = 0;
     @Column(name = "unmarked_ballots", nullable = false)

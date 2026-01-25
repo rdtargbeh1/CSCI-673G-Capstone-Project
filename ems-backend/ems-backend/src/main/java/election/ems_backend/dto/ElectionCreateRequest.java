@@ -11,10 +11,20 @@ public class ElectionCreateRequest {
     @NotBlank
     @Size(max = 100)
     private String electionName;
+
     @Min(1847)
     @Max(2100)
     private int year;
+
     @NotNull
     private ElectionType electionType;
+
     private boolean isActive;
+
+    @Min(0)
+    @Max(100)
+    private Integer ballotSparePercent;
+
+    private Boolean enforceBallotsGteRegistered;
+
 }

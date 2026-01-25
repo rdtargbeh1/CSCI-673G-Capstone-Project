@@ -1,7 +1,22 @@
-// SubmissionFormModal.tsx
+//// SubmissionFormModal.tsx
 // ✅ FULL FINAL UPDATED CODE
 //
-// ✅ FIXES INCLUDED
+// ✅ NEW RULE ALIGNMENT (BallotsInBox)
+// - ballotsInBox = validVotes + invalid + rejected + unmarked
+// - spoiledBallots is OUTSIDE the box (NOT part of ballotsInBox, NOT part of invalidTotal)
+// - invalidTotal = invalid + rejected + unmarked
+// - outsideBox = unused + spoiled
+// - UI labels updated (Cast -> In Box)
+// - Payload updated to send ballotsInBox (not ballotsCast)
+//
+// ✅ UI (NO SCROLL IMPROVEMENTS)
+// - Invalid Total (auto) + Outside Box (auto) are on SAME ROW (side-by-side)
+// - Ballots Issued (expected) + Registered Voters (expected) are on SAME ROW (side-by-side)
+//
+// ✅ FIX
+// - Fixed missing closing `}` after previews ternary (Vite/SWC Unterminated regexp literal)
+//
+// ✅ OTHER FIXES KEPT
 // - Flag UI in form (checkbox + reason textarea) for CREATE + EDIT
 // - Sends required backend fields: actorUserId + flagged + comments
 // - Shows Actor name (from /users/me when possible)
@@ -245,7 +260,7 @@ export default function SubmissionFormModal(props: {
   const [unmarkedBallots, setUnmarkedBallots] = useState<number | "">("");
   const [unusedBallots, setUnusedBallots] = useState<number | "">("");
 
-  // ✅ NEW: allocation read-only
+  // ✅ allocation read-only
   const [expectedRegisteredVoters, setExpectedRegisteredVoters] = useState<
     number | null
   >(null);
@@ -253,7 +268,7 @@ export default function SubmissionFormModal(props: {
     number | null
   >(null);
 
-  // ✅ NEW: flag UI
+  // ✅ flag UI
   const [flagChecked, setFlagChecked] = useState(false);
   const [flagReason, setFlagReason] = useState("");
 
@@ -329,25 +344,36 @@ export default function SubmissionFormModal(props: {
 
   const validVotes = useMemo(() => sumVotes(candidateVotes), [candidateVotes]);
 
-  // ✅ ballotsCast includes unmarkedBallots
-  const ballotsCastNumber = useMemo(() => {
+  // ✅ NEW RULE: ballotsInBox EXCLUDES spoiled (spoiled is outside the box)
+  const ballotsInBoxNumber = useMemo(() => {
     return (
       validVotes +
       (Number(invalidBallots) || 0) +
       (Number(rejectedBallots) || 0) +
-      (Number(spoiledBallots) || 0) +
       (Number(unmarkedBallots) || 0)
     );
-  }, [
-    validVotes,
-    invalidBallots,
-    rejectedBallots,
-    spoiledBallots,
-    unmarkedBallots,
-  ]);
+  }, [validVotes, invalidBallots, rejectedBallots, unmarkedBallots]);
+
+  // ✅ invalidTotal (in-box non-valid)
+  const invalidTotalNumber = useMemo(() => {
+    return (
+      (Number(invalidBallots) || 0) +
+      (Number(rejectedBallots) || 0) +
+      (Number(unmarkedBallots) || 0)
+    );
+  }, [invalidBallots, rejectedBallots, unmarkedBallots]);
+
+  // ✅ outside box = unused + spoiled
+  const outsideBoxNumber = useMemo(() => {
+    return (Number(unusedBallots) || 0) + (Number(spoiledBallots) || 0);
+  }, [unusedBallots, spoiledBallots]);
 
   const exceedsIssued =
-    expectedBallotsIssued != null && ballotsCastNumber > expectedBallotsIssued;
+    expectedBallotsIssued != null && ballotsInBoxNumber > expectedBallotsIssued;
+
+  const exceedsRegistered =
+    expectedRegisteredVoters != null &&
+    ballotsInBoxNumber > expectedRegisteredVoters;
 
   /** ---------------- Auto geolocation on create open */
   useEffect(() => {
@@ -564,17 +590,12 @@ export default function SubmissionFormModal(props: {
   });
 
   const flagM = useMutation({
-    mutationFn: async (p: {
-      id: string;
-      flagged: boolean;
-      comments?: string;
-    }) => {
-      return flagSubmission(p.id, {
+    mutationFn: async (p: { id: string; flagged: boolean; comments?: string }) =>
+      flagSubmission(p.id, {
         actorUserId,
         flagged: p.flagged, // ✅ FIXED
         comments: p.comments, // ✅ plural
-      });
-    },
+      }),
     onSuccess: async () => {
       await editQ.refetch();
       await props.onSaved();
@@ -596,7 +617,11 @@ export default function SubmissionFormModal(props: {
 
   const flagReasonOk = !flagChecked || Boolean(flagReason.trim());
 
-  const canActuallySubmit = baseReady && files.length > 0 && flagReasonOk;
+  // ✅ must never exceed issued/registered when known
+  const reconcileOk = !exceedsIssued && !exceedsRegistered;
+
+  const canActuallySubmit =
+    baseReady && files.length > 0 && flagReasonOk && reconcileOk;
   const canSaveDraft = baseReady && flagReasonOk;
 
   const canSubmitEditDraft =
@@ -604,7 +629,8 @@ export default function SubmissionFormModal(props: {
     Boolean(props.submissionId) &&
     isDraft &&
     files.length > 0 &&
-    !updateM.isPending;
+    !updateM.isPending &&
+    reconcileOk;
 
   if (!props.open) return null;
 
@@ -630,9 +656,11 @@ export default function SubmissionFormModal(props: {
       agentId: props.agentId,
       contestId: selectedContest,
       candidateVotes,
-      ballotsCast: ballotsCastNumber,
-      invalidBallots:
-        invalidBallots === "" ? undefined : Number(invalidBallots),
+
+      // ✅ NEW: send ballotsInBox (auto) — excludes spoiled
+      ballotsInBox: ballotsInBoxNumber,
+
+      invalidBallots: invalidBallots === "" ? undefined : Number(invalidBallots),
       rejectedBallots:
         rejectedBallots === "" ? undefined : Number(rejectedBallots),
       spoiledBallots:
@@ -640,19 +668,23 @@ export default function SubmissionFormModal(props: {
       unmarkedBallots:
         unmarkedBallots === "" ? undefined : Number(unmarkedBallots),
       unusedBallots: unusedBallots === "" ? undefined : Number(unusedBallots),
+
       comments: comments || undefined,
       latitude: latitude === "" ? undefined : Number(latitude),
       longitude: longitude === "" ? undefined : Number(longitude),
       idempotencyKey: `${props.agentId}-${Date.now()}`,
       draft: draft ? true : undefined,
-    };
+    } as any;
   };
 
   const buildUpdateReq = (): VoteSubmissionUpdateRequest => {
     return {
       candidateVotes,
-      invalidBallots:
-        invalidBallots === "" ? undefined : Number(invalidBallots),
+
+      // ✅ NEW: send ballotsInBox (auto) — excludes spoiled
+      ballotsInBox: ballotsInBoxNumber,
+
+      invalidBallots: invalidBallots === "" ? undefined : Number(invalidBallots),
       rejectedBallots:
         rejectedBallots === "" ? undefined : Number(rejectedBallots),
       spoiledBallots:
@@ -660,10 +692,11 @@ export default function SubmissionFormModal(props: {
       unmarkedBallots:
         unmarkedBallots === "" ? undefined : Number(unmarkedBallots),
       unusedBallots: unusedBallots === "" ? undefined : Number(unusedBallots),
+
       comments: comments || undefined,
       latitude: latitude === "" ? undefined : Number(latitude),
       longitude: longitude === "" ? undefined : Number(longitude),
-    };
+    } as any;
   };
 
   return (
@@ -734,10 +767,19 @@ export default function SubmissionFormModal(props: {
 
               <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1">
                 <span className="text-[11px] text-slate-500 font-extrabold">
-                  Cast
+                  In Box
                 </span>
                 <span className="text-sm font-extrabold">
-                  {ballotsCastNumber}
+                  {ballotsInBoxNumber}
+                </span>
+              </div>
+
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1">
+                <span className="text-[11px] text-slate-500 font-extrabold">
+                  Invalid Total
+                </span>
+                <span className="text-sm font-extrabold">
+                  {invalidTotalNumber}
                 </span>
               </div>
             </div>
@@ -990,12 +1032,27 @@ export default function SubmissionFormModal(props: {
                   <div className="grid grid-cols-2 gap-2.5">
                     <div className="col-span-2">
                       <ReadOnlyStat
-                        label="Ballots Cast (auto)"
-                        value={String(ballotsCastNumber)}
+                        label="Ballots In Box (auto)"
+                        value={String(ballotsInBoxNumber)}
                       />
                     </div>
 
-                    <div className="col-span-2">
+                    {/* ✅ SAME ROW */}
+                    <div className="col-span-1">
+                      <ReadOnlyStat
+                        label="Invalid Total (auto)"
+                        value={String(invalidTotalNumber)}
+                      />
+                    </div>
+                    <div className="col-span-1">
+                      <ReadOnlyStat
+                        label="Outside Box (auto)"
+                        value={String(outsideBoxNumber)}
+                      />
+                    </div>
+
+                    {/* ✅ SAME ROW */}
+                    <div className="col-span-1">
                       <ReadOnlyStat
                         label="Ballots Issued (expected)"
                         value={
@@ -1008,7 +1065,7 @@ export default function SubmissionFormModal(props: {
                       />
                     </div>
 
-                    <div className="col-span-2">
+                    <div className="col-span-1">
                       <ReadOnlyStat
                         label="Registered Voters (expected)"
                         value={
@@ -1023,34 +1080,40 @@ export default function SubmissionFormModal(props: {
 
                     {exceedsIssued ? (
                       <div className="col-span-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-extrabold text-red-700">
-                        Ballots Cast cannot exceed Ballots Issued.
+                        Ballots In Box cannot exceed Ballots Issued.
+                      </div>
+                    ) : null}
+
+                    {exceedsRegistered ? (
+                      <div className="col-span-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-extrabold text-red-700">
+                        Ballots In Box cannot exceed Registered Voters.
                       </div>
                     ) : null}
 
                     <NumberField
-                      label="Invalid"
+                      label="Invalid (In Box)"
                       value={invalidBallots}
                       onChange={setInvalidBallots}
                     />
                     <NumberField
-                      label="Rejected"
+                      label="Rejected (In Box)"
                       value={rejectedBallots}
                       onChange={setRejectedBallots}
                     />
                     <NumberField
-                      label="Spoiled"
+                      label="Spoiled (Outside Box)"
                       value={spoiledBallots}
                       onChange={setSpoiledBallots}
                     />
                     <NumberField
-                      label="Unmarked"
+                      label="Unmarked (In Box)"
                       value={unmarkedBallots}
                       onChange={setUnmarkedBallots}
                     />
 
                     <div className="col-span-2">
                       <NumberField
-                        label="Unused (Remaining)"
+                        label="Unused (Outside Box)"
                         value={unusedBallots}
                         onChange={setUnusedBallots}
                       />
@@ -1114,6 +1177,7 @@ export default function SubmissionFormModal(props: {
                       </div>
                     )}
 
+                    {/* ✅ FIXED: proper closing } for ternary */}
                     {previews.length ? (
                       <div className="mt-2 grid grid-cols-1 gap-1.5">
                         {previews.map((p, i) => (
@@ -1436,6 +1500,16 @@ export default function SubmissionFormModal(props: {
                         alert("Reason is required when flagging.");
                         return;
                       }
+                      if (exceedsIssued) {
+                        alert("Ballots In Box cannot exceed Ballots Issued.");
+                        return;
+                      }
+                      if (exceedsRegistered) {
+                        alert(
+                          "Ballots In Box cannot exceed Registered Voters."
+                        );
+                        return;
+                      }
                       const req = buildCreateReq(false);
                       createM.mutate(req, { onSuccess: () => props.onClose() });
                     }}
@@ -1486,6 +1560,16 @@ export default function SubmissionFormModal(props: {
                           alert("Upload tally sheet to submit this draft.");
                           return;
                         }
+                        if (exceedsIssued) {
+                          alert("Ballots In Box cannot exceed Ballots Issued.");
+                          return;
+                        }
+                        if (exceedsRegistered) {
+                          alert(
+                            "Ballots In Box cannot exceed Registered Voters."
+                          );
+                          return;
+                        }
                         const req = buildUpdateReq();
                         updateM.mutate(
                           {
@@ -1510,6 +1594,16 @@ export default function SubmissionFormModal(props: {
                       disabled={updateM.isPending || !props.submissionId}
                       onClick={() => {
                         if (!props.submissionId) return;
+                        if (exceedsIssued) {
+                          alert("Ballots In Box cannot exceed Ballots Issued.");
+                          return;
+                        }
+                        if (exceedsRegistered) {
+                          alert(
+                            "Ballots In Box cannot exceed Registered Voters."
+                          );
+                          return;
+                        }
                         const req = buildUpdateReq();
                         updateM.mutate(
                           {

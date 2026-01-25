@@ -1,28 +1,22 @@
+
+
 // ✅ FILE: src/pages/elections/workspace/tabs/submissions/SubmissionsTab.tsx
 //
-// ✅ Tenant-scoped VoteSubmissions table
-// ✅ SYSTEM can switch tenant via org dropdown  ✅ (FIXED endpoint to /orgs via organizationService)
-// ✅ Added allocation read-only fields on row: registeredVoters, ballotsIssued, allocationSource
-// ✅ Verify button opens modal: verifier name + comment + accept/reject
-// ✅ Verify active for ALL tenant dashboards (tenant-level entity)
-// ✅ Verify form shows verifier name reliably via /users/me (no more blank)
-// ✅ Table font size set to 11px (as requested)
-// ✅ Create/Edit handled by SubmissionFormModal (unchanged)
+// ✅ FIXES
+// 1) Adds "ALL" queue so users can see all submissions before filtering.
+// 2) Fixes frontend tally math to match backend:
 //
-// ✅ FIXES (filters):
-// - Added Contest dropdown filter (passes contestId to backend)
-// - County/District/Center filters remain the same (frontend was fine)
+//    ballotsInBox = validVotes + invalidBallots + unmarkedBallots + rejectedBallots
+//    invalid(In Box) = invalidBallots + unmarkedBallots + rejectedBallots
+//    spoiledBallots is OUTSIDE the box (do NOT add to invalid)
+//    ballotsIssued = ballotsInBox + unusedBallots + spoiledBallots (when ballotsIssued provided)
 //
-// ✅ UI ENHANCEMENT:
-// - Active queue/tab indicator (selected tab is blue + underline pointer)
+// ✅ UI
+// - Adds Spoiled column
+// - Cast column uses ballotsInBox
+// - Missing Evidence remains a UI-only filter
 //
-// ✅ CHANGE REQUEST (UPDATED):
-// - Include: PENDING, VERIFIED, REJECTED, FLAGGED, DRAFT, MISSING_EVIDENCE
-//
-// ✅ NEW FIX (FLAGGED):
-// - Flagged submissions are NOT editable (Edit stays disabled)
-// - ✅ Adds an UNFLAG button in Actions (only shown when status=FLAGGED)
-// - Uses backend flag endpoint with flagged=false (actorUserId included)
+// NOTE: No other business logic changed.
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -66,7 +60,7 @@ import {
   searchSubmissions,
   deleteSubmission,
   verifySubmission,
-  flagSubmission, // ✅ NEW: for unflag
+  flagSubmission,
   type VoteSubmissionDto,
   type VoteStatus,
 } from "../../../../../shared/services/voteSubmissionService";
@@ -76,7 +70,6 @@ import type { UserDto } from "../../../../../auth/userTypes";
 
 import SubmissionFormModal from "./SubmissionFormModal";
 
-// ✅ FIX: use your organizationService (BASE_URL="/orgs")
 import {
   fetchOrganizations,
   type Organization,
@@ -125,8 +118,43 @@ function fmtAllocSource(v: any) {
   return s;
 }
 
-// ✅ queues (UPDATED to include FLAGGED + DRAFT)
-type Queue = VoteStatus | "MISSING_EVIDENCE";
+function sumCandidateVotes(v?: Record<string, number>) {
+  if (!v) return 0;
+  return Object.values(v).reduce((a, b) => a + (Number(b) || 0), 0);
+}
+
+/** ✅ STRICT: invalid IN BOX (backend rule) */
+function computeInvalidInBox(s: any) {
+  return (
+    (Number(s?.invalidBallots) || 0) +
+    (Number(s?.unmarkedBallots) || 0) +
+    (Number(s?.rejectedBallots) || 0)
+  );
+}
+
+/** ✅ valid votes = backend validVotes OR sum(candidateVotes) */
+function computeValidVotes(s: any) {
+  const vv = Number(s?.validVotes);
+  if (isFinite(vv)) return vv;
+  return sumCandidateVotes(s?.candidateVotes ?? {});
+}
+
+/** ✅ ballots cast IN BOX = ballotsInBox (never add spoiled here) */
+function computeBallotsInBox(s: any) {
+  const bib = Number(s?.ballotsInBox);
+  if (isFinite(bib)) return bib;
+  return computeValidVotes(s) + computeInvalidInBox(s);
+}
+
+/** evidence check for MISSING_EVIDENCE tab */
+function hasEvidence(s: any) {
+  const cnt = Number(s?.tallySheetCount ?? 0);
+  const url = String(s?.tallySheetUrl ?? "").trim();
+  return cnt > 0 || Boolean(url);
+}
+
+// ✅ queues: add ALL
+type Queue = "ALL" | VoteStatus | "MISSING_EVIDENCE";
 
 /** SYSTEM tenant dropdown type */
 type OrgDto = { orgId: string; orgName: string };
@@ -152,14 +180,12 @@ export default function SubmissionsTab() {
 
   // ✅ Verify must be active for all tenant dashboards (tenant-level entity)
   const canVerify =
-    Boolean(currentOrgId) ||
-    dashboardMode === "SYSTEM" ||
-    dashboardMode === "NEC";
+    Boolean(currentOrgId) || dashboardMode === "SYSTEM" || dashboardMode === "NEC";
 
-  // ✅ Unflag should be allowed for verifier-capable users (review action)
   const canUnflag = canVerify;
 
-  const [queue, setQueue] = useState<Queue>("PENDING");
+  // ✅ Default to ALL so tenant sees everything first
+  const [queue, setQueue] = useState<Queue>("ALL");
 
   /** ---------------- Elections ---------------- */
   const electionsQ = useQuery<ElectionDto[]>({
@@ -173,14 +199,12 @@ export default function SubmissionsTab() {
 
   useEffect(() => {
     if (!electionId && elections.length) {
-      const sorted = [...elections].sort(
-        (a, b) => (b.year ?? 0) - (a.year ?? 0)
-      );
+      const sorted = [...elections].sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
       setElectionId(sorted[0].electionId);
     }
   }, [elections, electionId]);
 
-  /** ---------------- Contests (for modal select + filter) ---------------- */
+  /** ---------------- Contests ---------------- */
   const contestsQ = useQuery<ContestDto[]>({
     enabled: Boolean(electionId),
     queryKey: ["election-contests", electionId],
@@ -190,7 +214,7 @@ export default function SubmissionsTab() {
   });
   const contests = contestsQ.data ?? [];
 
-  /** ---------------- SYSTEM tenant selection (FIXED) ---------------- */
+  /** ---------------- SYSTEM tenant selection ---------------- */
   const [systemSelectedOrgId, setSystemSelectedOrgId] = useState<string>("");
 
   const orgsQ = useQuery<OrgDto[]>({
@@ -206,7 +230,6 @@ export default function SubmissionsTab() {
         search: undefined,
       });
 
-      // normalize to {orgId, orgName}
       return (res.items ?? []).map((o: Organization) => ({
         orgId: o.orgId,
         orgName: o.orgName,
@@ -234,13 +257,12 @@ export default function SubmissionsTab() {
   const actorUser = actorMeQ.data ?? user;
   const actorUserId = (actorUser as any)?.userId ?? (user as any)?.userId ?? "";
 
-  /** ---------------- Filters: Contest + County -> District -> Center ---------------- */
+  /** ---------------- Filters ---------------- */
   const [filterContest, setFilterContest] = useState<string>("");
 
   const countiesQ = useQuery<CountyDto[]>({
     queryKey: ["counties", "all"],
-    queryFn: async () =>
-      (await fetchCounties({ page: 0, size: 500 })).items as CountyDto[],
+    queryFn: async () => (await fetchCounties({ page: 0, size: 500 })).items as CountyDto[],
     staleTime: 60_000,
     retry: 1,
   });
@@ -285,21 +307,13 @@ export default function SubmissionsTab() {
     setFilterCenter("");
   }, [filterDistrict]);
 
-  /** ---------------- Submissions list ---------------- */
+  /** ---------------- List + Pagination ---------------- */
   const [page, setPage] = useState(0);
   const size = 20;
 
   useEffect(() => {
     setPage(0);
-  }, [
-    queue,
-    electionId,
-    filterContest,
-    filterCounty,
-    filterDistrict,
-    filterCenter,
-    effectiveOrgId,
-  ]);
+  }, [queue, electionId, filterContest, filterCounty, filterDistrict, filterCenter, effectiveOrgId]);
 
   // SYSTEM must pick tenant
   const submissionsEnabled = Boolean(electionId) && Boolean(effectiveOrgId);
@@ -324,12 +338,14 @@ export default function SubmissionsTab() {
         electionId,
         page,
         size,
-
-        // ✅ queue now includes DRAFT + FLAGGED directly
-        status: queue === "MISSING_EVIDENCE" ? undefined : (queue as any),
+        // ✅ ALL = no status filter
+        // ✅ MISSING_EVIDENCE = no status filter (UI-only)
+        status:
+          queue === "ALL" || queue === "MISSING_EVIDENCE"
+            ? undefined
+            : (queue as any),
 
         contestId: filterContest || undefined,
-
         countyId: filterCounty || undefined,
         districtId: filterDistrict || undefined,
         centerId: filterCenter || undefined,
@@ -339,14 +355,20 @@ export default function SubmissionsTab() {
     retry: 1,
   });
 
-  const items: VoteSubmissionDto[] = (submissionsQ.data?.items ?? []) as any;
+  const rawItems: VoteSubmissionDto[] = (submissionsQ.data?.items ?? []) as any;
+
+  // ✅ UI-only filter for Missing Evidence
+  const items: VoteSubmissionDto[] = useMemo(() => {
+    if (queue !== "MISSING_EVIDENCE") return rawItems as any;
+    return (rawItems as any[]).filter((s) => !hasEvidence(s)) as any;
+  }, [rawItems, queue]);
 
   const turnoutAvg = useMemo(
-    () => avgPct(items.map((x) => (x as any).turnoutPct)),
+    () => avgPct(items.map((x) => Number((x as any).turnoutPct))),
     [items]
   );
   const invalidAvg = useMemo(
-    () => avgPct(items.map((x) => (x as any).invalidPct)),
+    () => avgPct(items.map((x) => Number((x as any).invalidPct))),
     [items]
   );
 
@@ -358,22 +380,19 @@ export default function SubmissionsTab() {
     setPage(0);
   };
 
-  /** ---------------- Create/Edit modals ---------------- */
-  const [openNew, setOpenNew] = useState(false);
-
-  const [openEdit, setOpenEdit] = useState(false);
-  const [editId, setEditId] = useState<string>("");
-
   const refetchList = async () => {
     await qc.invalidateQueries({ queryKey: ["vote-submissions", electionId] });
   };
 
+  /** ---------------- Create/Edit modals ---------------- */
+  const [openNew, setOpenNew] = useState(false);
+  const [openEdit, setOpenEdit] = useState(false);
+  const [editId, setEditId] = useState<string>("");
+
   /** ---------------- Verify modal ---------------- */
   const [openVerify, setOpenVerify] = useState(false);
   const [verifyId, setVerifyId] = useState<string>("");
-  const [verifyDecision, setVerifyDecision] = useState<"ACCEPT" | "REJECT">(
-    "ACCEPT"
-  );
+  const [verifyDecision, setVerifyDecision] = useState<"ACCEPT" | "REJECT">("ACCEPT");
   const [verifyComment, setVerifyComment] = useState<string>("");
 
   const verifierMeQ = useQuery<UserDto>({
@@ -388,11 +407,7 @@ export default function SubmissionsTab() {
   const verifierName = fullName(verifierUser) || "—";
 
   const verifyM = useMutation({
-    mutationFn: async (p: {
-      id: string;
-      accept: boolean;
-      comment?: string;
-    }) => {
+    mutationFn: async (p: { id: string; accept: boolean; comment?: string }) => {
       return verifySubmission(p.id, {
         verifierUserId: (verifierUser as any)?.userId ?? (user as any)?.userId,
         accept: p.accept,
@@ -426,18 +441,14 @@ export default function SubmissionsTab() {
     },
   });
 
-  // ✅ allow editing DRAFT too (but NOT FLAGGED)
   const canEditRow = (s: VoteSubmissionDto) => {
     const st = String((s as any).status ?? "").toUpperCase();
-    return (
-      canCreate && (st === "PENDING" || st === "REJECTED" || st === "DRAFT")
-    );
+    return canCreate && (st === "PENDING" || st === "REJECTED" || st === "DRAFT");
   };
 
   const isFlaggedRow = (s: VoteSubmissionDto) =>
     String((s as any).status ?? "").toUpperCase() === "FLAGGED";
 
-  // ✅ UI only: underline indicator for active queue button
   const ActiveMark = ({ on }: { on: boolean }) =>
     on ? (
       <span
@@ -461,49 +472,33 @@ export default function SubmissionsTab() {
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {/* Queue */}
             <div className="flex gap-2 items-center flex-wrap">
-              <button
-                type="button"
-                onClick={() => setQueue("PENDING")}
-                style={btn(queue === "PENDING")}
-              >
+              {/* ✅ NEW: All */}
+              <button type="button" onClick={() => setQueue("ALL")} style={btn(queue === "ALL")}>
+                All
+                <ActiveMark on={queue === "ALL"} />
+              </button>
+
+              <button type="button" onClick={() => setQueue("PENDING")} style={btn(queue === "PENDING")}>
                 Pending
                 <ActiveMark on={queue === "PENDING"} />
               </button>
 
-              {/* ✅ NEW: Flagged */}
-              <button
-                type="button"
-                onClick={() => setQueue("FLAGGED")}
-                style={btn(queue === "FLAGGED")}
-              >
+              <button type="button" onClick={() => setQueue("FLAGGED")} style={btn(queue === "FLAGGED")}>
                 Flagged
                 <ActiveMark on={queue === "FLAGGED"} />
               </button>
 
-              {/* ✅ NEW: Draft */}
-              <button
-                type="button"
-                onClick={() => setQueue("DRAFT")}
-                style={btn(queue === "DRAFT")}
-              >
+              <button type="button" onClick={() => setQueue("DRAFT")} style={btn(queue === "DRAFT")}>
                 Draft
                 <ActiveMark on={queue === "DRAFT"} />
               </button>
 
-              <button
-                type="button"
-                onClick={() => setQueue("VERIFIED")}
-                style={btn(queue === "VERIFIED")}
-              >
+              <button type="button" onClick={() => setQueue("VERIFIED")} style={btn(queue === "VERIFIED")}>
                 Verified
                 <ActiveMark on={queue === "VERIFIED"} />
               </button>
 
-              <button
-                type="button"
-                onClick={() => setQueue("REJECTED")}
-                style={btn(queue === "REJECTED")}
-              >
+              <button type="button" onClick={() => setQueue("REJECTED")} style={btn(queue === "REJECTED")}>
                 Rejected
                 <ActiveMark on={queue === "REJECTED"} />
               </button>
@@ -533,7 +528,6 @@ export default function SubmissionsTab() {
 
             {/* Filters */}
             <div className="flex gap-2 items-center flex-wrap">
-              {/* ✅ SYSTEM tenant dropdown (now uses /orgs) */}
               {dashboardMode === "SYSTEM" ? (
                 <select
                   value={systemSelectedOrgId}
@@ -568,7 +562,6 @@ export default function SubmissionsTab() {
                 ))}
               </select>
 
-              {/* Contest filter */}
               <select
                 value={filterContest}
                 onChange={(e) => {
@@ -651,9 +644,7 @@ export default function SubmissionsTab() {
                 onClick={() => submissionsQ.refetch()}
                 disabled={submissionsQ.isFetching || !submissionsEnabled}
                 className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md border bg-white text-sm ${
-                  submissionsQ.isFetching || !submissionsEnabled
-                    ? "opacity-60"
-                    : ""
+                  submissionsQ.isFetching || !submissionsEnabled ? "opacity-60" : ""
                 }`}
               >
                 <RefreshCw size={14} />
@@ -663,8 +654,7 @@ export default function SubmissionsTab() {
 
             {dashboardMode === "SYSTEM" && !effectiveOrgId ? (
               <div className="text-xs font-bold text-red-700">
-                Select a tenant (organization) to view or submit vote
-                submissions.
+                Select a tenant (organization) to view or submit vote submissions.
               </div>
             ) : null}
           </div>
@@ -672,7 +662,7 @@ export default function SubmissionsTab() {
       >
         <div className="flex flex-wrap gap-2 mb-2">
           <Badge text={`Turnout (avg): ${fmtPct(turnoutAvg)}`} />
-          <Badge text={`Invalid (avg): ${fmtPct(invalidAvg)}`} />
+          <Badge text={`Invalid % (avg): ${fmtPct(invalidAvg)}`} />
           <Badge text={`Rows: ${items.length}`} />
         </div>
 
@@ -694,8 +684,9 @@ export default function SubmissionsTab() {
                 <Th>Alloc Src</Th>
 
                 <Th className="text-right">Valid</Th>
-                <Th className="text-right">Invalid Total</Th>
-                <Th className="text-right">Ballots Cast</Th>
+                <Th className="text-right">Invalid (In Box)</Th>
+                <Th className="text-right">Cast (In Box)</Th>
+                <Th className="text-right">Spoiled</Th>
                 <Th className="text-right">Unused</Th>
 
                 <Th>Agent</Th>
@@ -710,35 +701,23 @@ export default function SubmissionsTab() {
             <tbody>
               {submissionsQ.isLoading ? (
                 <tr>
-                  <td className="p-2 text-slate-500" colSpan={15}>
+                  <td className="p-2 text-slate-500" colSpan={16}>
                     Loading submissions…
                   </td>
                 </tr>
               ) : !items.length ? (
                 <tr>
-                  <td className="p-2 text-slate-500" colSpan={15}>
+                  <td className="p-2 text-slate-500" colSpan={16}>
                     No submissions found.
                   </td>
                 </tr>
               ) : (
                 items.map((s) => {
-                  const valid =
-                    (s as any).validVotes ??
-                    Object.values((s as any).candidateVotes ?? {}).reduce(
-                      (acc: number, v: any) => acc + (Number(v) || 0),
-                      0
-                    );
-
-                  const invTotal =
-                    (s as any).invalidTotal ??
-                    (Number((s as any).invalidBallots) || 0) +
-                      (Number((s as any).rejectedBallots) || 0) +
-                      (Number((s as any).spoiledBallots) || 0);
-
-                  const cast = (s as any).ballotsCast ?? valid + invTotal;
-
-                  const unused =
-                    (s as any).unusedBallots ?? (s as any).blankBallots ?? 0;
+                  const valid = computeValidVotes(s as any);
+                  const invalidInBox = computeInvalidInBox(s as any);
+                  const castInBox = computeBallotsInBox(s as any); // ✅ ballotsInBox
+                  const spoiled = Number((s as any).spoiledBallots) || 0; // ✅ separate
+                  const unused = Number((s as any).unusedBallots) || 0;
 
                   const place =
                     (s as any).placeLabel ??
@@ -750,10 +729,7 @@ export default function SubmissionsTab() {
 
                   return (
                     <tr key={(s as any).submissionId} className="border-t">
-                      <Td
-                        title={(s as any).centerName ?? ""}
-                        className="truncate"
-                      >
+                      <Td title={(s as any).centerName ?? ""} className="truncate">
                         {(s as any).centerName ?? "—"}
                       </Td>
                       <Td title={place} className="truncate">
@@ -766,24 +742,17 @@ export default function SubmissionsTab() {
                       <Td className="text-right font-semibold">
                         {fmtNum((s as any).ballotsIssued)}
                       </Td>
-                      <Td className="truncate">
-                        {fmtAllocSource((s as any).allocationSource)}
-                      </Td>
+                      <Td className="truncate">{fmtAllocSource((s as any).allocationSource)}</Td>
 
                       <Td className="text-right font-semibold">{valid}</Td>
-                      <Td className="text-right font-semibold">{invTotal}</Td>
-                      <Td className="text-right font-semibold">{cast}</Td>
-                      <Td className="text-right font-semibold">{unused}</Td>
+                      <Td className="text-right font-semibold">{invalidInBox}</Td>
+                      <Td className="text-right font-semibold">{castInBox}</Td>
+                      <Td className="text-right font-semibold">{fmtNum(spoiled)}</Td>
+                      <Td className="text-right font-semibold">{fmtNum(unused)}</Td>
 
-                      <Td className="truncate">
-                        {(s as any).agentName ?? "—"}
-                      </Td>
-                      <Td className="truncate">
-                        {(s as any).verifiedByName ?? "—"}
-                      </Td>
-                      <Td className="truncate">
-                        {(s as any).contestName ?? "—"}
-                      </Td>
+                      <Td className="truncate">{(s as any).agentName ?? "—"}</Td>
+                      <Td className="truncate">{(s as any).verifiedByName ?? "—"}</Td>
+                      <Td className="truncate">{(s as any).contestName ?? "—"}</Td>
                       <Td>{(s as any).status ?? "—"}</Td>
                       <Td>
                         {(s as any).submissionTime
@@ -793,7 +762,6 @@ export default function SubmissionsTab() {
 
                       <Td>
                         <div className="flex gap-1.5 items-center">
-                          {/* Edit (still disabled for FLAGGED by canEditRow) */}
                           <button
                             type="button"
                             className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border bg-white ${
@@ -813,14 +781,11 @@ export default function SubmissionsTab() {
                             <Pencil size={13} />
                           </button>
 
-                          {/* ✅ Unflag button (only when status=FLAGGED) */}
                           {flagged ? (
                             <button
                               type="button"
                               className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border bg-white text-slate-800 ${
-                                !canUnflag || unflagM.isPending
-                                  ? "opacity-50"
-                                  : ""
+                                !canUnflag || unflagM.isPending ? "opacity-50" : ""
                               }`}
                               disabled={!canUnflag || unflagM.isPending}
                               onClick={() => {
@@ -845,9 +810,7 @@ export default function SubmissionsTab() {
                           <button
                             type="button"
                             className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border bg-white ${
-                              !canVerify || verifyM.isPending
-                                ? "opacity-50"
-                                : ""
+                              !canVerify || verifyM.isPending ? "opacity-50" : ""
                             }`}
                             disabled={!canVerify || verifyM.isPending}
                             onClick={() => {
@@ -869,11 +832,7 @@ export default function SubmissionsTab() {
                             }`}
                             disabled={deleteM.isPending}
                             onClick={() => {
-                              if (
-                                !confirm(
-                                  "Delete this submission? This action cannot be undone."
-                                )
-                              )
+                              if (!confirm("Delete this submission? This action cannot be undone."))
                                 return;
                               deleteM.mutate((s as any).submissionId);
                             }}
@@ -902,35 +861,28 @@ export default function SubmissionsTab() {
           <button
             type="button"
             onClick={() => setPage((p) => Math.max(0, p - 1))}
-            disabled={
-              !submissionsQ.data || page <= 0 || submissionsQ.isFetching
-            }
+            disabled={!submissionsQ.data || page <= 0 || submissionsQ.isFetching}
             className="px-3 py-1.5 rounded-md border bg-white text-sm"
           >
             Prev
           </button>
 
           <div className="text-xs text-slate-600">
-            Page{" "}
-            {submissionsQ.data ? (submissionsQ.data as any).page + 1 : page + 1}{" "}
-            / {submissionsQ.data ? (submissionsQ.data as any).totalPages : "?"}
+            Page {submissionsQ.data ? (submissionsQ.data as any).page + 1 : page + 1} /{" "}
+            {submissionsQ.data ? (submissionsQ.data as any).totalPages : "?"}
           </div>
 
           <button
             type="button"
             onClick={() =>
               setPage((p) =>
-                submissionsQ.data &&
-                p + 1 < (submissionsQ.data as any).totalPages
-                  ? p + 1
-                  : p
+                submissionsQ.data && p + 1 < (submissionsQ.data as any).totalPages ? p + 1 : p
               )
             }
             disabled={
               !submissionsQ.data ||
               submissionsQ.isFetching ||
-              (submissionsQ.data as any).page + 1 >=
-                ((submissionsQ.data as any).totalPages ?? 0)
+              (submissionsQ.data as any).page + 1 >= ((submissionsQ.data as any).totalPages ?? 0)
             }
             className="px-3 py-1.5 rounded-md border bg-white text-sm"
           >
@@ -1021,9 +973,7 @@ export default function SubmissionsTab() {
                     {
                       id: verifyId,
                       accept: verifyDecision === "ACCEPT",
-                      comment: verifyComment?.trim()
-                        ? verifyComment.trim()
-                        : undefined,
+                      comment: verifyComment?.trim() ? verifyComment.trim() : undefined,
                     },
                     { onSuccess: () => setOpenVerify(false) }
                   );
@@ -1039,7 +989,7 @@ export default function SubmissionsTab() {
         </ModalShell>
       ) : null}
 
-      {/* ---------------- New Submission Modal ---------------- */}
+      {/* New Submission */}
       <SubmissionFormModal
         mode="create"
         open={openNew}
@@ -1058,7 +1008,7 @@ export default function SubmissionsTab() {
         }}
       />
 
-      {/* ---------------- Edit Submission Modal ---------------- */}
+      {/* Edit Submission */}
       <SubmissionFormModal
         mode="edit"
         open={openEdit}
@@ -1132,9 +1082,7 @@ function ModalShell(props: {
       onClick={() => props.onClose()}
     >
       <div
-        className={`w-full ${
-          props.maxWidth ?? "max-w-4xl"
-        } bg-white rounded-xl border border-slate-200 p-3 mx-auto shadow-xl`}
+        className={`w-full ${props.maxWidth ?? "max-w-4xl"} bg-white rounded-xl border border-slate-200 p-3 mx-auto shadow-xl`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-start gap-3">
@@ -1163,3 +1111,4 @@ function ModalShell(props: {
     </div>
   );
 }
+

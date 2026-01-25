@@ -1,3 +1,6 @@
+
+// src/shared/hooks/useElectionOverview.ts
+
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { useAuthStore } from "../store/authStore";
@@ -14,17 +17,20 @@ export function useElectionOverview() {
 
   const electionId = storeElectionId ?? routeElectionId ?? null;
 
-  const needsOrg = mode === "TENANT";
+  // ✅ NEC + TENANT require org context
+  const needsOrg = mode === "TENANT" || mode === "NEC";
 
   return useQuery({
     // ✅ include orgId so cache is correct per-tenant
     queryKey: ["election-overview", electionId, mode, orgId],
 
-    // ✅ tenant mode requires orgId
+    // ✅ tenant modes require orgId
     enabled: !!electionId && (!needsOrg || !!orgId),
 
-    queryFn: () => fetchElectionOverview(electionId!, mode),
+    // ✅ pass orgId for NEC/TENANT modes
+    queryFn: () => fetchElectionOverview(electionId!, mode, orgId ?? undefined),
 
     staleTime: 10_000,
   });
 }
+

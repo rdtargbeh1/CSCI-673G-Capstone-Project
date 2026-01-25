@@ -31,7 +31,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/system/users")
+//@RequestMapping("/api/system/users")
+@RequestMapping("/api/user")
 @RequiredArgsConstructor
 @Validated
 public class UserController {

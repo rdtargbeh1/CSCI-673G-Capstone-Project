@@ -1,5 +1,7 @@
+
+
 // src/pages/admin-security/security/UsersPage.tsx
-import React, { useMemo, useState } from "react";
+import  { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../../../shared/store/authStore";
 
@@ -23,6 +25,7 @@ import {
   setPlatformUserActive, // PATCH /api/platform/system-users/{id}/active
   setPlatformUserVerified, // PATCH /api/platform/system-users/{id}/verified
   updatePlatformUser, // PUT /api/platform/system-users/{id}
+  createTenantAdmin, // ✅ NEW: POST /api/tenants/users/admins (X-Org-Id required)
 } from "../../../shared/services/userService";
 
 import {
@@ -33,17 +36,14 @@ import {
 import { apiClient } from "../../../shared/lib/apiClient";
 
 import { AdminShell, Badge, Card, Note } from "../shared/admin-ui";
-import {
-  Pencil,
-  Trash2,
-  UserPlus,
-  Search,
-  RefreshCw,
-  Power,
-  PowerOff,
-  ShieldCheck,
-  ShieldX,
-} from "lucide-react";
+import { Pencil, Trash2, UserPlus, Search, RefreshCw } from "lucide-react";
+
+// ✅ ADD
+import UsersFormModal from "./UsersFormModal";
+import TenantAdminFormModal from "./TenantAdminFormModal";
+
+// ✅ ADD
+import { searchParties } from "../../../shared/services/partyService";
 
 /** ---------------- helpers ---------------- */
 function safeStr(v: any) {
@@ -85,10 +85,7 @@ function unwrapList<T = any>(data: any): T[] {
   return [];
 }
 
-/** ✅ Normalize BOTH backend shapes:
- *  - tenant fetchUsers -> { users: UserDto[], totalPages: number }
- *  - platform fetchPlatformUsers -> Spring Page { content: UserDto[], totalPages: number }
- */
+/** ✅ Normalize BOTH backend shapes */
 function normalizeUsersResponse(data: any): {
   rows: any[];
   totalPages: number;
@@ -128,14 +125,14 @@ const HIGH_LEVEL_ROLES: RoleName[] = [
   "SYSTEM_ADMIN",
   "NEC_ADMIN",
   "ADMIN",
-  "PARTY_ADMIN",
+  "TENANT_ADMIN",
 ];
 
 const ALL_ROLES: RoleName[] = [
   "SYSTEM_ADMIN",
   "NEC_ADMIN",
   "ADMIN",
-  "PARTY_ADMIN",
+  "TENANT_ADMIN",
   "AGENT",
   "OBSERVER",
   "SUPERVISOR",
@@ -143,196 +140,6 @@ const ALL_ROLES: RoleName[] = [
   "DATA_ENTRY",
   "AUDITOR",
 ];
-
-/** ---------------- UI bits ---------------- */
-function StatusCheck({
-  label,
-  checked,
-  disabled,
-  onToggle,
-}: {
-  label: string;
-  checked: boolean;
-  disabled?: boolean;
-  onToggle?: (next: boolean) => void;
-}) {
-  return (
-    <label className="inline-flex items-center gap-2 text-xs text-slate-700">
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onToggle?.(e.target.checked)}
-        className="h-4 w-4 accent-(--org-primary)"
-      />
-      <span className="font-semibold">{label}</span>
-    </label>
-  );
-}
-
-function Modal({
-  open,
-  title,
-  children,
-  onClose,
-}: {
-  open: boolean;
-  title: string;
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
-  if (!open) return null;
-  return (
-    <>
-      <div className="fixed inset-0 z-40 bg-black/35" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-start justify-center p-3 sm:p-6">
-        <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl">
-          <div className="flex items-start justify-between border-b border-slate-200 px-4 py-3">
-            <div>
-              <div className="text-base font-extrabold text-slate-900">
-                {title}
-              </div>
-              <div className="text-[11px] text-slate-500">
-                Required fields must be filled before saving.
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="h-9 w-9 rounded-xl border border-slate-200 hover:bg-slate-50"
-              aria-label="Close"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="max-h-[75vh] overflow-auto px-4 py-4">{children}</div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function TextField({
-  label,
-  value,
-  onChange,
-  type,
-  disabled,
-  placeholder,
-  required,
-  error,
-  onBlur,
-  onFocus,
-  inputMode,
-  name, // ✅ NEW
-  autoComplete, // ✅ NEW
-  selectAllOnFocus, // ✅ NEW
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: string;
-  disabled?: boolean;
-  placeholder?: string;
-  required?: boolean;
-  error?: string;
-  onBlur?: () => void;
-  onFocus?: () => void;
-  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
-  name?: string; // ✅ NEW
-  autoComplete?: string; // ✅ NEW
-  selectAllOnFocus?: boolean; // ✅ NEW
-}) {
-  return (
-    <label className="block">
-      <div className="mb-1 flex items-center justify-between">
-        <div className="text-[11px] font-semibold text-slate-600">
-          {label} {required ? <span className="text-red-600">*</span> : null}
-        </div>
-        {error ? (
-          <div className="text-[11px] font-semibold text-red-600">{error}</div>
-        ) : null}
-      </div>
-      <input
-        name={name}
-        autoComplete={autoComplete}
-        type={type ?? "text"}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={onBlur}
-        onFocus={(e) => {
-          if (selectAllOnFocus) {
-            // ✅ ensures user typing replaces existing dots/value (autofill or previous)
-            setTimeout(() => e.currentTarget.select(), 0);
-          }
-          onFocus?.();
-        }}
-        inputMode={inputMode}
-        disabled={disabled}
-        placeholder={placeholder}
-        className={[
-          "w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2",
-          error
-            ? "border-red-300 focus:ring-red-400"
-            : "border-slate-200 focus:ring-(--org-primary)",
-          disabled ? "bg-slate-50" : "",
-        ].join(" ")}
-      />
-    </label>
-  );
-}
-
-function SelectField({
-  label,
-  value,
-  onChange,
-  options,
-  required,
-  error,
-  disabled,
-  emptyLabel = "Select…",
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: { value: string; label: string }[];
-  required?: boolean;
-  error?: string;
-  disabled?: boolean;
-  emptyLabel?: string;
-}) {
-  return (
-    <label className="block">
-      <div className="mb-1 flex items-center justify-between">
-        <div className="text-[11px] font-semibold text-slate-600">
-          {label} {required ? <span className="text-red-600">*</span> : null}
-        </div>
-        {error ? (
-          <div className="text-[11px] font-semibold text-red-600">{error}</div>
-        ) : null}
-      </div>
-      <select
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.value)}
-        className={[
-          "w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2",
-          error
-            ? "border-red-300 focus:ring-red-400"
-            : "border-slate-200 focus:ring-(--org-primary)",
-          disabled ? "bg-slate-50" : "",
-        ].join(" ")}
-      >
-        <option value="">{emptyLabel}</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
 
 export default function UsersPage() {
   const qc = useQueryClient();
@@ -365,9 +172,12 @@ export default function UsersPage() {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
 
-  // Modal state
+  // Modal state (regular users)
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<UserDto | null>(null);
+
+  // ✅ Tenant Admin modal state
+  const [tenantAdminOpen, setTenantAdminOpen] = useState(false);
 
   // ✅ IMPORTANT: detect “protected role” while editing IN TENANT VIEW
   const editingRoleName = safeStr((editing as any)?.roleName);
@@ -377,7 +187,7 @@ export default function UsersPage() {
     !isSystemMode && // ✅ only protect in non-system dashboards
     HIGH_LEVEL_ROLES.includes(editingRoleName as RoleName);
 
-  // Form state
+  // Form state (regular users)
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -392,6 +202,25 @@ export default function UsersPage() {
 
   const [touched, setTouched] = useState<{ [k: string]: boolean }>({});
   const [phoneHasIllegalChar, setPhoneHasIllegalChar] = useState(false);
+
+  // ✅ Tenant Admin form state
+  const [tenantAdminForm, setTenantAdminForm] = useState({
+    orgId: "",
+    partyId: "",
+    firstName: "",
+    lastName: "",
+    userName: "",
+    email: "",
+    position: "",
+    phoneNumber: "",
+    password: "",
+    roleName: "" as RoleName | "",
+  });
+  const [tenantAdminTouched, setTenantAdminTouched] = useState<{
+    [k: string]: boolean;
+  }>({});
+  const [tenantAdminPhoneHasIllegalChar, setTenantAdminPhoneHasIllegalChar] =
+    useState(false);
 
   function openCreate() {
     if (!canManageUsers) return;
@@ -429,12 +258,30 @@ export default function UsersPage() {
       position: safeStr((u as any).position ?? ""),
       phoneNumber: safeStr((u as any).phoneNumber ?? ""),
       password: "",
-      // ✅ keep role populated (prevents “empty role” bug)
       roleName: (role as any) || "",
       assignedCountyId: safeStr((u as any).assignedCountyId ?? ""),
     });
 
     setModalOpen(true);
+  }
+
+  function openTenantAdminCreate() {
+    if (!isSystemMode) return;
+    setTenantAdminTouched({});
+    setTenantAdminPhoneHasIllegalChar(false);
+    setTenantAdminForm({
+      orgId: "",
+      partyId: "",
+      firstName: "",
+      lastName: "",
+      userName: "",
+      email: "",
+      position: "",
+      phoneNumber: "",
+      password: "",
+      roleName: "",
+    });
+    setTenantAdminOpen(true);
   }
 
   /** ✅ SYSTEM org dropdown options */
@@ -463,9 +310,29 @@ export default function UsersPage() {
     }));
   }, [orgsQ.data]);
 
-  /** ✅ Counties lookup
-   * load counties when org selected (so table can display county immediately)
-   */
+  /** ✅ Parties lookup (for TenantAdmin modal) */
+  const partiesQ = useQuery({
+    queryKey: ["lookups", "parties", "system", "tenantAdmin"],
+    queryFn: async () => {
+      // load first page; enough for most cases
+      const res = await searchParties({ page: 0, size: 200, q: undefined });
+      return res.items;
+    },
+    enabled: isSystemMode, // only show/use on SYSTEM dashboard
+    staleTime: 1000 * 60 * 10,
+    retry: 1,
+  });
+
+  const partyOptions = useMemo(() => {
+    return (partiesQ.data ?? []).map((p) => ({
+      value: p.partyId,
+      label: p.abbreviation
+        ? `${p.partyName} (${p.abbreviation})`
+        : p.partyName,
+    }));
+  }, [partiesQ.data]);
+
+  /** ✅ Counties lookup */
   const countiesQ = useQuery({
     queryKey: ["lookups", "counties", effectiveOrgId],
     queryFn: fetchCounties,
@@ -487,12 +354,7 @@ export default function UsersPage() {
     return map;
   }, [countiesQ.data]);
 
-  /** ✅ Role options:
-   * - SYSTEM dashboard: all roles editable
-   * - NEC/TENANT dashboards:
-   *    - Create: ONLY tenant roles
-   *    - Edit: if user already has a system-level role, show it but keep field read-only
-   */
+  /** ✅ Role options */
   const roleOptions = useMemo(() => {
     if (isSystemMode) return ALL_ROLES.map((r) => ({ value: r, label: r }));
 
@@ -506,7 +368,7 @@ export default function UsersPage() {
     return TENANT_ALLOWED_ROLES.map((r) => ({ value: r, label: r }));
   }, [isSystemMode, editing, isProtectedTenantRoleEdit, editingRoleName]);
 
-  /** ✅ Validation */
+  /** ✅ Validation (regular users) */
   const errors = useMemo(() => {
     const e: Record<string, string> = {};
     const fn = form.firstName.trim();
@@ -531,12 +393,10 @@ export default function UsersPage() {
       if (!rl) e.roleName = "Required";
     }
 
-    // ✅ System dashboard: enforce only known roles
     if (rl && isSystemMode && !ALL_ROLES.includes(rl as RoleName)) {
       e.roleName = "Role not allowed";
     }
 
-    // ✅ Non-system dashboards (NEC/TENANT): cannot assign system-level roles
     if (
       rl &&
       !isSystemMode &&
@@ -556,6 +416,34 @@ export default function UsersPage() {
   ]);
 
   const isValid = Object.keys(errors).length === 0;
+
+  /** ✅ Validation (tenant admin) */
+  const tenantAdminErrors = useMemo(() => {
+    const e: Record<string, string> = {};
+    const orgId = tenantAdminForm.orgId.trim();
+    const fn = tenantAdminForm.firstName.trim();
+    const ln = tenantAdminForm.lastName.trim();
+    const un = tenantAdminForm.userName.trim();
+    const em = tenantAdminForm.email.trim();
+    const rl = String(tenantAdminForm.roleName || "").trim();
+
+    if (!orgId) e.orgId = "Required";
+    if (!fn) e.firstName = "Required";
+    if (!ln) e.lastName = "Required";
+    if (!un) e.userName = "Required";
+
+    if (!em) e.email = "Required";
+    else if (!isValidEmail(em)) e.email = "Invalid email";
+
+    if (tenantAdminPhoneHasIllegalChar) e.phoneNumber = "Digits only.";
+
+    if (!tenantAdminForm.password.trim()) e.password = "Required";
+    if (!rl) e.roleName = "Required";
+
+    return e;
+  }, [tenantAdminForm, tenantAdminPhoneHasIllegalChar]);
+
+  const tenantAdminIsValid = Object.keys(tenantAdminErrors).length === 0;
 
   /** ✅ Users query */
   const usersQ = useQuery({
@@ -586,16 +474,13 @@ export default function UsersPage() {
     await usersQ.refetch();
   };
 
-  /** ✅ Save */
+  /** ✅ Save (regular users) */
   const saveM = useMutation({
     mutationFn: async () => {
       if (!canManageUsers) throw new Error("No permission.");
       if (!isValid) throw new Error("Please fix validation errors.");
 
-      if (
-        form.phoneNumber.trim() &&
-        !isValidPhoneDigitsOnly(form.phoneNumber)
-      ) {
+      if (form.phoneNumber.trim() && !isValidPhoneDigitsOnly(form.phoneNumber)) {
         throw new Error("Phone must contain digits only.");
       }
 
@@ -636,14 +521,8 @@ export default function UsersPage() {
       // ✅ TENANT (requires org)
       if (!hasOrgContext) throw new Error("Select an organization.");
 
-      // ✅ extra guard (non-system dashboards cannot assign high-level roles)
-      if (
-        !isSystemMode &&
-        HIGH_LEVEL_ROLES.includes(form.roleName as RoleName)
-      ) {
-        throw new Error(
-          "System-level role can only be assigned by SYSTEM admin."
-        );
+      if (!isSystemMode && HIGH_LEVEL_ROLES.includes(form.roleName as RoleName)) {
+        throw new Error("System-level role can only be assigned by SYSTEM admin.");
       }
 
       if (!editing) {
@@ -668,8 +547,6 @@ export default function UsersPage() {
         return created;
       }
 
-      // ✅ TENANT UPDATE:
-      // If user is high-level role, DO NOT send roleName.
       let payload: UserUpdateRequest;
 
       if (isProtectedTenantRoleEdit) {
@@ -680,7 +557,7 @@ export default function UsersPage() {
           email: form.email.trim(),
           position: form.position.trim() || undefined,
           phoneNumber: form.phoneNumber.trim() || undefined,
-        } as UserUpdateRequest; // ✅ roleName intentionally omitted for protected edit
+        } as UserUpdateRequest;
       } else {
         payload = {
           firstName: form.firstName.trim(),
@@ -711,6 +588,40 @@ export default function UsersPage() {
       await refreshNow();
       setModalOpen(false);
       setEditing(null);
+    },
+  });
+
+  /** ✅ Create Tenant Admin (SYSTEM only) */
+  const createTenantAdminM = useMutation({
+    mutationFn: async () => {
+      if (!isSystemMode) throw new Error("SYSTEM only.");
+      if (!tenantAdminIsValid) throw new Error("Please fix validation errors.");
+
+      if (
+        tenantAdminForm.phoneNumber.trim() &&
+        !isValidPhoneDigitsOnly(tenantAdminForm.phoneNumber)
+      ) {
+        throw new Error("Phone must contain digits only.");
+      }
+
+      const payload: UserCreateRequest = {
+        firstName: tenantAdminForm.firstName.trim(),
+        lastName: tenantAdminForm.lastName.trim(),
+        userName: tenantAdminForm.userName.trim(),
+        email: tenantAdminForm.email.trim(),
+        position: tenantAdminForm.position.trim() || undefined,
+        phoneNumber: tenantAdminForm.phoneNumber.trim() || undefined,
+        password: tenantAdminForm.password.trim(),
+        roleName: tenantAdminForm.roleName as RoleName,
+        // service uses X-Org-Id; partyId is in payload (if your backend expects it)
+        partyId: tenantAdminForm.partyId.trim() || null,
+      } as any;
+
+      return await createTenantAdmin(tenantAdminForm.orgId, payload);
+    },
+    onSuccess: async () => {
+      await refreshNow();
+      setTenantAdminOpen(false);
     },
   });
 
@@ -790,9 +701,7 @@ export default function UsersPage() {
             <button
               type="button"
               onClick={refreshNow}
-              disabled={
-                usersQ.isFetching || (!isPlatformView && !hasOrgContext)
-              }
+              disabled={usersQ.isFetching || (!isPlatformView && !hasOrgContext)}
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
             >
               <RefreshCw size={16} />
@@ -809,29 +718,61 @@ export default function UsersPage() {
               <UserPlus size={16} />
               Add User
             </button>
+
+            {/* ✅ SYSTEM ONLY: Create first Tenant Admin */}
+            {isSystemMode ? (
+              <button
+                type="button"
+                onClick={openTenantAdminCreate}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-50 disabled:opacity-50"
+                disabled={createTenantAdminM.isPending}
+                title="SYSTEM: Create first tenant admin for a target org"
+              >
+                <UserPlus size={16} />
+                Add Tenant Admin
+              </button>
+            ) : null}
           </div>
         }
       >
         {/* ✅ SYSTEM: Organization selector ALWAYS visible */}
         {isSystemMode ? (
           <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <SelectField
-              label="Organization (optional)"
-              value={selectedOrgId}
-              onChange={(v) => {
-                setSelectedOrgId(v);
-                setPage(0);
-                setQ("");
-              }}
-              options={orgOptions}
-              disabled={orgsQ.isLoading || orgsQ.isError}
-              error={orgsQ.isError ? "Failed to load organizations" : ""}
-              emptyLabel={
-                orgsQ.isLoading
-                  ? "Loading organizations…"
-                  : "— Platform Users (no org) —"
-              }
-            />
+            {/* kept inline select UI exactly like before */}
+            <label className="block">
+              <div className="mb-1 flex items-center justify-between">
+                <div className="text-[11px] font-semibold text-slate-600">
+                  Organization (optional)
+                </div>
+              </div>
+              <select
+                value={selectedOrgId}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setSelectedOrgId(v);
+                  setPage(0);
+                  setQ("");
+                }}
+                disabled={orgsQ.isLoading || orgsQ.isError}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary)"
+              >
+                <option value="">
+                  {orgsQ.isLoading
+                    ? "Loading organizations…"
+                    : "— Platform Users (no org) —"}
+                </option>
+                {orgOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              {orgsQ.isError ? (
+                <div className="mt-1 text-[11px] font-semibold text-red-600">
+                  Failed to load organizations
+                </div>
+              ) : null}
+            </label>
           </div>
         ) : null}
 
@@ -963,28 +904,39 @@ export default function UsersPage() {
                         </td>
                         <td className="border-b border-slate-100 px-3 py-2">
                           <div className="flex items-center gap-4">
-                            <StatusCheck
-                              label="Active"
-                              checked={active}
-                              disabled={!canManageUsers || activeM.isPending}
-                              onToggle={(next) =>
-                                activeM.mutate({
-                                  userId: u.userId,
-                                  value: next,
-                                })
-                              }
-                            />
-                            <StatusCheck
-                              label="Verified"
-                              checked={verified}
-                              disabled={!canManageUsers || verifiedM.isPending}
-                              onToggle={(next) =>
-                                verifiedM.mutate({
-                                  userId: u.userId,
-                                  value: next,
-                                })
-                              }
-                            />
+                            <label className="inline-flex items-center gap-2 text-xs text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={active}
+                                disabled={!canManageUsers || activeM.isPending}
+                                onChange={(e) =>
+                                  activeM.mutate({
+                                    userId: u.userId,
+                                    value: e.target.checked,
+                                  })
+                                }
+                                className="h-4 w-4 accent-(--org-primary)"
+                              />
+                              <span className="font-semibold">Active</span>
+                            </label>
+
+                            <label className="inline-flex items-center gap-2 text-xs text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={verified}
+                                disabled={
+                                  !canManageUsers || verifiedM.isPending
+                                }
+                                onChange={(e) =>
+                                  verifiedM.mutate({
+                                    userId: u.userId,
+                                    value: e.target.checked,
+                                  })
+                                }
+                                className="h-4 w-4 accent-(--org-primary)"
+                              />
+                              <span className="font-semibold">Verified</span>
+                            </label>
                           </div>
                         </td>
 
@@ -1001,56 +953,6 @@ export default function UsersPage() {
                                 size={16}
                                 className="mx-auto text-slate-700"
                               />
-                            </button>
-
-                            <button
-                              type="button"
-                              className="h-9 w-9 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
-                              title={active ? "Deactivate" : "Activate"}
-                              disabled={!canManageUsers || activeM.isPending}
-                              onClick={() =>
-                                activeM.mutate({
-                                  userId: u.userId,
-                                  value: !active,
-                                })
-                              }
-                            >
-                              {active ? (
-                                <PowerOff
-                                  size={16}
-                                  className="mx-auto text-amber-600"
-                                />
-                              ) : (
-                                <Power
-                                  size={16}
-                                  className="mx-auto text-emerald-600"
-                                />
-                              )}
-                            </button>
-
-                            <button
-                              type="button"
-                              className="h-9 w-9 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
-                              title={verified ? "Unverify" : "Verify"}
-                              disabled={!canManageUsers || verifiedM.isPending}
-                              onClick={() =>
-                                verifiedM.mutate({
-                                  userId: u.userId,
-                                  value: !verified,
-                                })
-                              }
-                            >
-                              {verified ? (
-                                <ShieldX
-                                  size={16}
-                                  className="mx-auto text-amber-600"
-                                />
-                              ) : (
-                                <ShieldCheck
-                                  size={16}
-                                  className="mx-auto text-emerald-600"
-                                />
-                              )}
                             </button>
 
                             <button
@@ -1136,172 +1038,53 @@ export default function UsersPage() {
         </div>
       </Card>
 
-      {/* Modal */}
-      <Modal
+      {/* ✅ Regular Users Modal */}
+      <UsersFormModal
         open={modalOpen}
-        title={editing ? "Edit User" : "Add User"}
+        editing={editing}
         onClose={() => {
           if (saveM.isPending) return;
           setModalOpen(false);
           setEditing(null);
         }}
-      >
-        {saveM.isError ? (
-          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {(saveM.error as any)?.message ?? "Save failed."}
-          </div>
-        ) : null}
+        saveM={saveM}
+        canManageUsers={canManageUsers}
+        isValid={isValid}
+        errors={errors}
+        touched={touched}
+        setTouched={setTouched}
+        form={form}
+        setForm={setForm}
+        phoneHasIllegalChar={phoneHasIllegalChar}
+        setPhoneHasIllegalChar={setPhoneHasIllegalChar}
+        roleOptions={roleOptions}
+        isProtectedTenantRoleEdit={isProtectedTenantRoleEdit}
+        countyOptions={countyOptions}
+        countiesQ={countiesQ}
+        isPlatformView={isPlatformView}
+      />
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <TextField
-            label="First Name"
-            required
-            value={form.firstName}
-            onChange={(v) => setForm((p) => ({ ...p, firstName: v }))}
-            error={touched.firstName ? errors.firstName : ""}
-            onBlur={() => setTouched((t) => ({ ...t, firstName: true }))}
-          />
-          <TextField
-            label="Last Name"
-            required
-            value={form.lastName}
-            onChange={(v) => setForm((p) => ({ ...p, lastName: v }))}
-            error={touched.lastName ? errors.lastName : ""}
-            onBlur={() => setTouched((t) => ({ ...t, lastName: true }))}
-          />
-          <TextField
-            label="Username"
-            required
-            value={form.userName}
-            onChange={(v) => setForm((p) => ({ ...p, userName: v }))}
-            error={touched.userName ? errors.userName : ""}
-            onBlur={() => setTouched((t) => ({ ...t, userName: true }))}
-          />
-          <TextField
-            label="Email"
-            type="email"
-            required
-            value={form.email}
-            onChange={(v) => setForm((p) => ({ ...p, email: v }))}
-            error={touched.email ? errors.email : ""}
-            onBlur={() => setTouched((t) => ({ ...t, email: true }))}
-          />
-          <TextField
-            label="Position"
-            value={form.position}
-            onChange={(v) => setForm((p) => ({ ...p, position: v }))}
-          />
-          <TextField
-            label="Phone"
-            value={form.phoneNumber}
-            onChange={(v) => {
-              setForm((p) => ({ ...p, phoneNumber: v }));
-              if (!v.trim()) setPhoneHasIllegalChar(false);
-              else setPhoneHasIllegalChar(!/^[0-9]+$/.test(v.trim()));
-            }}
-            error={phoneHasIllegalChar ? "Digits only." : ""}
-            placeholder="Digits only"
-            inputMode="numeric"
-          />
-
-          {/* ✅ Role:
-              - SYSTEM dashboard: fully editable
-              - NEC/TENANT: only tenant roles selectable;
-                if editing a system-level role user, field is read-only and shows current role
-          */}
-          <SelectField
-            label="Role"
-            required
-            value={form.roleName}
-            onChange={(v) => setForm((p) => ({ ...p, roleName: v as any }))}
-            options={roleOptions}
-            disabled={isProtectedTenantRoleEdit}
-            error={touched.roleName ? errors.roleName : ""}
-          />
-
-          <SelectField
-            label="Assigned County"
-            value={form.assignedCountyId}
-            onChange={(v) => setForm((p) => ({ ...p, assignedCountyId: v }))}
-            options={countyOptions}
-            disabled={
-              isPlatformView || countiesQ.isLoading || countiesQ.isError
-            }
-            error={
-              isPlatformView
-                ? ""
-                : countiesQ.isError
-                ? "Failed to load counties"
-                : ""
-            }
-            emptyLabel={isPlatformView ? "—" : "None"}
-          />
-
-          {!editing ? (
-            <div className="block">
-              <TextField
-                label="Password"
-                type="password"
-                required
-                value={form.password}
-                onChange={(v) => setForm((p) => ({ ...p, password: v }))}
-                error={touched.password ? errors.password : ""}
-                onBlur={() => setTouched((t) => ({ ...t, password: true }))}
-                placeholder="" // ✅ no placeholder
-                name="new-password" // ✅ stops autofill guessing
-                autoComplete="new-password" // ✅ blocks saved passwords
-                selectAllOnFocus // ✅ typing replaces dots (no delete)
-              />
-              <div className="mt-1 text-[11px] text-slate-500">
-                Set initial password
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <div className="text-[11px] font-semibold text-slate-600">
-                Password
-              </div>
-              <div className="mt-1 text-xs text-slate-600">
-                Password reset will be added later.
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="mt-4 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              if (saveM.isPending) return;
-              setModalOpen(false);
-              setEditing(null);
-            }}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setTouched({
-                firstName: true,
-                lastName: true,
-                userName: true,
-                email: true,
-                password: true,
-                roleName: true,
-              });
-              if (!isValid) return;
-              saveM.mutate();
-            }}
-            disabled={saveM.isPending || !canManageUsers || !isValid}
-            className="rounded-xl bg-(--org-primary) px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            {saveM.isPending ? "Saving…" : "Save"}
-          </button>
-        </div>
-      </Modal>
+      {/* ✅ Tenant Admin Modal (SYSTEM only) */}
+      <TenantAdminFormModal
+        open={tenantAdminOpen}
+        onClose={() => {
+          if (createTenantAdminM.isPending) return;
+          setTenantAdminOpen(false);
+        }}
+        createM={createTenantAdminM}
+        isValid={tenantAdminIsValid}
+        errors={tenantAdminErrors}
+        touched={tenantAdminTouched}
+        setTouched={setTenantAdminTouched}
+        form={tenantAdminForm}
+        setForm={setTenantAdminForm}
+        phoneHasIllegalChar={tenantAdminPhoneHasIllegalChar}
+        setPhoneHasIllegalChar={setTenantAdminPhoneHasIllegalChar}
+        orgOptions={orgOptions}
+        partyOptions={partyOptions} // ✅ NEW
+        partiesQ={partiesQ} // ✅ NEW (for disable/error label)
+      />
     </AdminShell>
   );
 }
+

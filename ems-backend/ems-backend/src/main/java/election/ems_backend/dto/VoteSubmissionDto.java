@@ -49,7 +49,7 @@ public class VoteSubmissionDto {
     private String candidateVotesJson; // JSON string (candidateId -> votes)
     private Map<String, Integer> candidateVotes;
 
-    private Integer ballotsCast;
+    private Integer ballotsInBox;
     private Integer invalidBallots;
     private Integer unmarkedBallots;
     private Integer rejectedBallots;
@@ -85,10 +85,10 @@ public class VoteSubmissionDto {
 
     // NEW: derived helpers for UI (can be set by service or mapper)
     private Integer validVotes;    // sum of candidateVotes
-    private Integer invalidTotal;  // invalid + blank + rejected + spoiled
+    private Integer invalidTotal;  // invalid + blank + rejected
 
-    private Double turnoutPct;     // ballotsCast / registeredVoters * 100
-    private Double invalidPct;     // invalidTotal / ballotsCast * 100
+    private Double turnoutPct;     // ballotsInBox / registeredVoters * 100
+    private Double invalidPct;     // invalidTotal / ballotsInBox * 100
 
     private UUID submissionSignerKeyId;
     private String submissionSignature;

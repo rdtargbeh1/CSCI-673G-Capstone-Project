@@ -3,12 +3,10 @@ package election.ems_backend.service.implement;
 import election.ems_backend.dto.PollingCenterAllocationCreateRequest;
 import election.ems_backend.dto.PollingCenterAllocationDto;
 import election.ems_backend.dto.PollingCenterAllocationUpdateRequest;
+import election.ems_backend.entity.Election;
 import election.ems_backend.entity.PollingCenterAllocation;
 import election.ems_backend.mapper.PollingCenterAllocationMapper;
-import election.ems_backend.repository.ElectionRepository;
-import election.ems_backend.repository.NECResultRepository;
-import election.ems_backend.repository.PollingCenterAllocationRepository;
-import election.ems_backend.repository.PollingCenterRepository;
+import election.ems_backend.repository.*;
 import election.ems_backend.service.PollingCenterAllocationService;
 import election.ems_backend.utility.PollingCenterAllocationSpecs;
 import election.ems_backend.views.repo.NecResultGeoRepository;
@@ -33,6 +31,8 @@ public class PollingCenterAllocationServiceImplementation implements PollingCent
     private final ElectionRepository electionRepo;
     private final PollingCenterRepository centerRepo;
     private final NECResultRepository resultRepo;
+    private final PollingPlaceAllocationRepository placeAllocRepo; // ✅ add
+
     private final NecResultGeoRepository geoRepo; // to keep projection in sync
     private final PollingCenterAllocationMapper mapper = new PollingCenterAllocationMapper();
 
@@ -47,11 +47,14 @@ public class PollingCenterAllocationServiceImplementation implements PollingCent
         if (repository.existsByElection_ElectionIdAndPollingCenter_CenterId(election.getElectionId(), center.getCenterId())) {
             throw new ResponseStatusException(CONFLICT, "Allocation already exists for this election & center");
         }
-        validateNumbers(req.getRegisteredVoters(), req.getBallotsIssued());
+
+        // ✅ UPDATED: validate using election policy (NEC spare %)
+        validateNumbers(req.getRegisteredVoters(), req.getBallotsIssued(), election);
 
         var saved = repository.save(mapper.toEntity(req, election, center));
         return mapper.toDTO(saved);
     }
+
 
     @Override
     @Transactional
@@ -59,22 +62,50 @@ public class PollingCenterAllocationServiceImplementation implements PollingCent
         var entity = repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Allocation not found"));
 
-        if (req.getRegisteredVoters() != null || req.getBallotsIssued() != null) {
-            validateNumbers(
-                    req.getRegisteredVoters() != null ? req.getRegisteredVoters() : entity.getRegisteredVoters(),
-                    req.getBallotsIssued()           != null ? req.getBallotsIssued() : entity.getBallotsIssued()
-            );
+        int rv = (req.getRegisteredVoters() != null)
+                ? req.getRegisteredVoters()
+                : entity.getRegisteredVoters();
+
+        Integer bi = (req.getBallotsIssued() != null)
+                ? req.getBallotsIssued()
+                : entity.getBallotsIssued();
+
+        // 1️⃣ Election policy (spare %, >= registered)
+        validateNumbers(rv, bi, entity.getElection());
+
+        // 2️⃣ ❗ Center cannot be reduced below existing place totals
+        UUID electionId = entity.getElection().getElectionId();
+        UUID centerId   = entity.getPollingCenter().getCenterId();
+
+        long usedRv = placeAllocRepo.sumRegisteredVotersByElectionAndCenter(electionId, centerId);
+        long usedBi = placeAllocRepo.sumBallotsIssuedByElectionAndCenter(electionId, centerId);
+
+        if (usedRv > rv) {
+            throw new ResponseStatusException(BAD_REQUEST,
+                    "Center registeredVoters cannot be less than total allocated to places. " +
+                            "placesTotal=" + usedRv + ", requestedCenter=" + rv);
         }
 
-        // apply & save
+        if (bi == null) {
+            throw new ResponseStatusException(BAD_REQUEST,
+                    "Center ballotsIssued is required when polling place allocations already exist");
+        }
+
+        if (usedBi > bi) {
+            throw new ResponseStatusException(BAD_REQUEST,
+                    "Center ballotsIssued cannot be less than total allocated to places. " +
+                            "placesTotal=" + usedBi + ", requestedCenter=" + bi);
+        }
+
+        // 3️⃣ Apply + save
         mapper.apply(req, entity);
         var saved = repository.save(entity);
 
-        // 🔄 Sync any existing NEC results for this (election, center)
         syncNecResultsForAllocation(saved);
-
         return mapper.toDTO(saved);
     }
+
+
 
     @Override
     @Transactional
@@ -112,40 +143,57 @@ public class PollingCenterAllocationServiceImplementation implements PollingCent
         return repository.findAll(spec, pageable).map(mapper::toDTO);
     }
 
-    /** Validate Ballots Issued **/
-    private void validateNumbers(int registeredVoters, Integer ballotsIssued) {
-        // 1) Basic sanity checks
+    /**
+     * ✅ Validate ballotsIssued using NEC election policy.
+     *
+     * Rules:
+     * 1) registeredVoters >= 0
+     * 2) ballotsIssued null => allowed (treated as "not set yet")
+     * 3) ballotsIssued >= 0
+     * 4) If election.enforceBallotsGteRegistered = true => ballotsIssued >= registeredVoters
+     * 5) If election.ballotSparePercent != null => ballotsIssued <= registeredVoters + ceil(rv * sparePercent/100)
+     */
+    private void validateNumbers(int registeredVoters, Integer ballotsIssued, Election election) {
         if (registeredVoters < 0) {
             throw new ResponseStatusException(BAD_REQUEST, "registeredVoters cannot be negative");
         }
-        // Allow "no ballots assigned yet" if null
-        if (ballotsIssued == null) {
-            return;
-        }
+
+        // Allow "not assigned yet"
+        if (ballotsIssued == null) return;
+
         if (ballotsIssued < 0) {
             throw new ResponseStatusException(BAD_REQUEST, "ballotsIssued cannot be negative");
         }
-        // 2) Real-world rule: ballotsIssued should normally be >= registeredVoters
-        if (ballotsIssued < registeredVoters) {
+
+        boolean enforceGte = (election == null) || election.isEnforceBallotsGteRegistered();
+        if (enforceGte && ballotsIssued < registeredVoters) {
             throw new ResponseStatusException(
                     BAD_REQUEST,
-                    "ballotsIssued should be greater than or equal to registeredVoters to avoid ballot shortage"
+                    "ballotsIssued must be >= registeredVoters (NEC policy)"
             );
         }
-        // 3) Anti-fraud / sanity upper bound: max 20% spare ballots
-        //    maxAllowed = registeredVoters + ceil(20% of registeredVoters)
-        int spare = (int) Math.ceil(registeredVoters * 0.20);
+
+        Integer sparePercent = (election == null) ? null : election.getBallotSparePercent();
+        if (sparePercent == null) {
+            // NEC hasn't configured spare cap yet => don't enforce upper limit here
+            return;
+        }
+
+        if (sparePercent < 0 || sparePercent > 100) {
+            throw new ResponseStatusException(BAD_REQUEST, "Invalid election ballotSparePercent: " + sparePercent);
+        }
+
+        int spare = (int) Math.ceil(registeredVoters * (sparePercent / 100.0));
         int maxAllowed = registeredVoters + spare;
 
         if (ballotsIssued > maxAllowed) {
             throw new ResponseStatusException(
                     BAD_REQUEST,
                     "ballotsIssued cannot exceed " + maxAllowed +
-                            " (20% spare ballot cap for registeredVoters=" + registeredVoters + ")"
+                            " (NEC spare cap " + sparePercent + "% for registeredVoters=" + registeredVoters + ")"
             );
         }
     }
-
 
 
     /** When allocation changes, reflect into existing NECResult + nec_result_geo snapshot. */

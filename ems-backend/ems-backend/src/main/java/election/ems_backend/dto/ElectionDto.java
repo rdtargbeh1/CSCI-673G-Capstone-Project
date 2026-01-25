@@ -22,6 +22,9 @@ public class ElectionDto {
     private LocalDateTime dateCreated;
     private LocalDateTime dateUpdated;
 
+    private Integer ballotSparePercent;
+    private boolean enforceBallotsGteRegistered;
+
     @JsonProperty("isActive")
     public boolean getIsActive() {
         return isActive;

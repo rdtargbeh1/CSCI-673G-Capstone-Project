@@ -144,7 +144,7 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
 
         // ✅ Draft can be partial: only enforce ballotsCast when NOT draft
         boolean hasVotes = req.getCandidateVotes() != null && !req.getCandidateVotes().isEmpty();
-        if (!isDraft && hasVotes && req.getBallotsCast() == null) {
+        if (!isDraft && hasVotes && req.getBallotsInBox() == null) {
             throw new ResponseStatusException(BAD_REQUEST, "ballotsCast is required when submitting candidateVotes");
         }
 
@@ -213,7 +213,7 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                     e.getElectionId(),
                     req.getContestId(),
                     req.getCandidateVotes(),
-                    req.getBallotsCast()
+                    req.getBallotsInBox()
             );
 
             validateTally(
@@ -223,7 +223,7 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                     nz(req.getRejectedBallots()),
                     nz(req.getSpoiledBallots()),
                     nz(req.getUnusedBallots()),
-                    nz(req.getBallotsCast()),
+                    nz(req.getBallotsInBox()),
                     alloc.getRegisteredVoters(),
                     alloc.getBallotsIssued()
             );
@@ -237,7 +237,7 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
 
         // ✅ Ensure DB-required fields always set (draft-safe)
         if (s.getCandidateVotes() == null) s.setCandidateVotes(new HashMap<>());
-        if (s.getBallotsCast() == null) s.setBallotsCast(0);
+        if (s.getBallotsInBox() == null) s.setBallotsInBox(0);
 
         // ✅ Status set by intent
         s.setStatus(isDraft ? VoteStatus.DRAFT : VoteStatus.PENDING);
@@ -272,7 +272,7 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                     p.getPlaceId(),
                     agent.getUserId(),
                     s.getCandidateVotes(),
-                    s.getBallotsCast(),
+                    s.getBallotsInBox(),
                     s.getInvalidBallots(),
                     s.getUnmarkedBallots(),
                     s.getRejectedBallots(),
@@ -417,18 +417,18 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                 }
 
                 boolean candidateVotesProvided = req.getCandidateVotes() != null;
-                Integer castFromReq = req.getBallotsCast();
+                Integer castFromReq = req.getBallotsInBox();
 
                 // ✅ Only enforce ballotsCast when NOT draft
                 if (!isDraft && candidateVotesProvided && castFromReq == null) {
                     throw new ResponseStatusException(
                             BAD_REQUEST,
-                            "ballotsCast is required when updating candidateVotes"
+                            "ballotsInBox is required when updating candidateVotes"
                     );
                 }
 
                 // For draft: allow cast to remain 0 / existing
-                int cast = (castFromReq != null) ? castFromReq : nzInt(s.getBallotsCast());
+                int cast = (castFromReq != null) ? castFromReq : nzInt(s.getBallotsInBox());
                 int invalid = (req.getInvalidBallots() != null) ? req.getInvalidBallots() : nzInt(s.getInvalidBallots());
                 int blank = (req.getUnmarkedBallots() != null) ? req.getUnmarkedBallots() : nzInt(s.getUnmarkedBallots());
                 int rej = (req.getRejectedBallots() != null) ? req.getRejectedBallots() : nzInt(s.getRejectedBallots());
@@ -461,12 +461,12 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
 
                 // Optional: enforce ballotsCast if mapper doesn't set it correctly
                 if (castFromReq != null) {
-                    s.setBallotsCast(castFromReq);
+                    s.setBallotsInBox(castFromReq);
                 }
 
                 // ✅ Ensure DB-required fields always set (draft-safe)
                 if (s.getCandidateVotes() == null) s.setCandidateVotes(new HashMap<>());
-                if (s.getBallotsCast() == null) s.setBallotsCast(0);
+                if (s.getBallotsInBox() == null) s.setBallotsInBox(0);
 
                 // ✅ Draft updates do NOT produce hashes/signatures
                 if (isDraft) {
@@ -484,7 +484,7 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                             s.getPollingPlace().getPlaceId(),
                             s.getAgent().getUserId(),
                             s.getCandidateVotes(),
-                            s.getBallotsCast(),
+                            s.getBallotsInBox(),
                             s.getInvalidBallots(),
                             s.getUnmarkedBallots(),
                             s.getRejectedBallots(),
@@ -590,9 +590,6 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
             throw new ResponseStatusException(BAD_REQUEST, "Submission already processed");
         }
 
-//        if (s.getStatus() != VoteStatus.PENDING) {
-//            throw new ResponseStatusException(BAD_REQUEST, "Submission already processed");
-//        }
 
         // ✅ contest-aware validation before verifying
         validateCandidateVotes(
@@ -600,7 +597,7 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                 s.getElection().getElectionId(),
                 s.getContestId(),
                 s.getCandidateVotes(),
-                s.getBallotsCast()
+                s.getBallotsInBox()
         );
 
         SystemUser verifier = userRepo.findById(req.getVerifierUserId())
@@ -715,8 +712,8 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                 .orElseThrow(() -> new ResponseStatusException(BAD_REQUEST, "Polling place not allocated for this election"));
 
         // Require minimum “final submission” requirements
-        if (s.getBallotsCast() == null || s.getBallotsCast() <= 0) {
-            throw new ResponseStatusException(BAD_REQUEST, "ballotsCast is required to submit draft");
+        if (s.getBallotsInBox() == null || s.getBallotsInBox() <= 0) {
+            throw new ResponseStatusException(BAD_REQUEST, "ballotsInBox is required to submit draft");
         }
         if (s.getCandidateVotes() == null) s.setCandidateVotes(new HashMap<>());
 
@@ -726,7 +723,7 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                 s.getElection().getElectionId(),
                 s.getContestId(),
                 s.getCandidateVotes(),
-                s.getBallotsCast()
+                s.getBallotsInBox()
         );
 
         validateTally(
@@ -736,7 +733,7 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                 nz(s.getRejectedBallots()),
                 nz(s.getSpoiledBallots()),
                 nz(s.getUnusedBallots()),
-                nz(s.getBallotsCast()),
+                nz(s.getBallotsInBox()),
                 alloc.getRegisteredVoters(),
                 alloc.getBallotsIssued()
         );
@@ -1035,54 +1032,86 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     // Helpers
     // ------------------------------------------------------------------------
 
-    private static void validateTally(Map<String, Integer> votes,
-                                      int invalid,
-                                      int unmarked,
-                                      int rejected,
-                                      int spoiled,
-                                      int unused,
-                                      int cast,
-                                      int registered,
-                                      Integer ballotsIssued) {
-        long sumVotes = votes == null ? 0L : votes.values().stream().mapToLong(Integer::longValue).sum();
-        validateTallyInternal(sumVotes, invalid, unmarked, rejected, spoiled, unused, cast, registered, ballotsIssued);
+    private static void validateTally(
+            Map<String, Integer> votes,
+            int invalid,
+            int unmarked,
+            int rejected,
+            int spoiled,     // ✅ OUTSIDE the box
+            int unused,      // ✅ OUTSIDE the box
+            int ballotsInBox,
+            int registered,
+            Integer ballotsIssued
+    ) {
+        long sumVotes = (votes == null)
+                ? 0L
+                : votes.values().stream().mapToLong(v -> v == null ? 0L : v.longValue()).sum();
+
+        validateTallyInternal(sumVotes, invalid, unmarked, rejected, spoiled, unused, ballotsInBox, registered, ballotsIssued);
     }
 
 
-    private static void validateTallyInternal(long sumVotes,
-                                              int invalid,
-                                              int unmarked,
-                                              int rejected,
-                                              int spoiled,
-                                              int unused,
-                                              int cast,
-                                              int registered,
-                                              Integer ballotsIssued) {
+    private static void validateTallyInternal(
+            long sumVotes,
+            int invalid,
+            int unmarked,
+            int rejected,
+            int spoiled,      // ✅ OUTSIDE the box
+            int unused,       // ✅ OUTSIDE the box
+            int ballotsInBox,
+            int registered,
+            Integer ballotsIssued
+    ) {
 
-        if (cast < 0 || registered < 0) throw new ResponseStatusException(BAD_REQUEST, "Negative counts not allowed");
+        // ✅ Basic non-negative checks
+        if (ballotsInBox < 0 || registered < 0)
+            throw new ResponseStatusException(BAD_REQUEST, "Negative counts not allowed");
+
         if (invalid < 0 || unmarked < 0 || rejected < 0 || spoiled < 0 || unused < 0)
             throw new ResponseStatusException(BAD_REQUEST, "Negative category counts not allowed");
 
-        // ✅ Cast-side accountability (all of these are ballots in the box / part of cast)
-        long castAccounted = sumVotes + invalid + unmarked + rejected + spoiled;
-        if (castAccounted > cast)
-            throw new ResponseStatusException(BAD_REQUEST, "Cast breakdown exceeds ballotsCast");
+        // ✅ Candidate vote sanity (optional but strongly recommended)
+        if (sumVotes < 0)
+            throw new ResponseStatusException(BAD_REQUEST, "Candidate vote totals cannot be negative");
 
-        // ✅ Issued-side accountability (inventory)
-        if (ballotsIssued != null) {
-            long issuedAccounted = (long) cast + unused;
-            if (issuedAccounted > ballotsIssued)
-                throw new ResponseStatusException(BAD_REQUEST, "ballotsCast + unusedBallots exceeds ballotsIssued");
+        // ✅ INSIDE-BOX reconciliation (STRICT)
+        // ballotsInBox = validVotes(sumVotes) + invalid + unmarked + rejected
+        long inBoxAccounted = sumVotes + (long) invalid + unmarked + rejected;
 
-            // Optional strict rule (enable if your ops require exact reconciliation)
-            if (issuedAccounted != ballotsIssued)
-                throw new ResponseStatusException(BAD_REQUEST, "ballotsCast + unusedBallots must equal ballotsIssued");
-
+        if (inBoxAccounted != ballotsInBox) {
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "ballotsInBox must equal sum(candidateVotes) + invalidBallots + unmarkedBallots + rejectedBallots"
+            );
         }
 
-        if (cast > registered)
-            throw new ResponseStatusException(BAD_REQUEST, "ballotsCast exceeds totalRegisteredVoters");
+        // ✅ Additional inside-box sanity (redundant given equality, but clearer errors)
+        if (sumVotes > ballotsInBox) {
+            throw new ResponseStatusException(BAD_REQUEST, "sum(candidateVotes) exceeds ballotsInBox");
+        }
+
+        // ✅ ISSUED (inventory) reconciliation (STRICT when ballotsIssued is provided)
+        // ballotsIssued = ballotsInBox + unused + spoiled
+        if (ballotsIssued != null) {
+            if (ballotsIssued < 0)
+                throw new ResponseStatusException(BAD_REQUEST, "ballotsIssued cannot be negative");
+
+            long issuedAccounted = (long) ballotsInBox + unused + spoiled;
+
+            if (issuedAccounted != ballotsIssued) {
+                throw new ResponseStatusException(
+                        BAD_REQUEST,
+                        "ballotsIssued must equal ballotsInBox + unusedBallots + spoiledBallots"
+                );
+            }
+        }
+
+        // ✅ Strict turnout rule (must NEVER happen)
+        if (ballotsInBox > registered) {
+            throw new ResponseStatusException(BAD_REQUEST, "ballotsInBox exceeds totalRegisteredVoters");
+        }
     }
+
 
 
     private static String buildSubmissionHash(UUID orgId,
@@ -1140,7 +1169,7 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                 s.getPollingPlace().getPlaceId(),
                 s.getAgent().getUserId(),
                 s.getCandidateVotes(),
-                s.getBallotsCast(),
+                s.getBallotsInBox(),
                 s.getInvalidBallots(),
                 s.getUnmarkedBallots(),
                 s.getRejectedBallots(),
@@ -1192,7 +1221,7 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
      * ✅ Contest-aware validation:
      * - Candidate votes must belong to this contest via contest_option.
      * - Values must be non-negative.
-     * - Sum(votes) <= ballotsCast
+     * - Sum(votes) <= ballotsInBox
      */
     private void validateCandidateVotes(UUID orgId,
                                         UUID electionId,
@@ -1274,7 +1303,6 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     /* ADD this helper record near top (optional but clean) */
     private record AllocationView(Integer registeredVoters, Integer ballotsIssued, String source) {}
 
-    /* ADD this helper method inside service class */
     private void enrichWithAllocation(VoteSubmissionDto dto, PollingPlaceAllocation alloc) {
         if (dto == null || alloc == null) return;
 
@@ -1283,15 +1311,15 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         dto.setAllocationSource("PLACE");
 
         // turnoutPct = cast / registered * 100
-        if (dto.getBallotsCast() != null && alloc.getRegisteredVoters() > 0) {
-            dto.setTurnoutPct((dto.getBallotsCast() * 100.0) / alloc.getRegisteredVoters());
+        if (dto.getBallotsInBox() != null && alloc.getRegisteredVoters() > 0) {
+            dto.setTurnoutPct((dto.getBallotsInBox() * 100.0) / alloc.getRegisteredVoters());
         } else {
             dto.setTurnoutPct(null);
         }
 
         // invalidPct = invalidTotal / cast * 100
-        if (dto.getBallotsCast() != null && dto.getBallotsCast() > 0 && dto.getInvalidTotal() != null) {
-            dto.setInvalidPct((dto.getInvalidTotal() * 100.0) / dto.getBallotsCast());
+        if (dto.getBallotsInBox() != null && dto.getBallotsInBox() > 0 && dto.getInvalidTotal() != null) {
+            dto.setInvalidPct((dto.getInvalidTotal() * 100.0) / dto.getBallotsInBox());
         } else {
             dto.setInvalidPct(null);
         }

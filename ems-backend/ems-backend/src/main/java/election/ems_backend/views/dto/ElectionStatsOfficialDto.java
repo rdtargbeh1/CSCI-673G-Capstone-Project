@@ -10,6 +10,7 @@ import java.util.UUID;
  */
 @Data
 public class ElectionStatsOfficialDto {
+
     private UUID electionId;
 
     private Integer registeredVoters;
@@ -19,4 +20,9 @@ public class ElectionStatsOfficialDto {
 
     private BigDecimal turnoutPct;
     private BigDecimal invalidPct;
+
+    // ✅ NEW: reporting coverage
+    private Integer centersReported;
+    private Integer centersTotal;
+    private BigDecimal reportingPct;
 }

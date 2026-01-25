@@ -24,20 +24,30 @@ public class ElectionStatsParty {
     private ElectionStatsPartyId id;
 
     @Column(name = "registered_voters")
-    private Integer registeredVoters;
+    private Long registeredVoters; // ✅ FULL election basis
 
     @Column(name = "ballots_cast")
-    private Integer ballotsCast;
+    private Long ballotsCast; // ✅ reported so far (VERIFIED)
 
     @Column(name = "valid_votes")
-    private Integer validVotes;
+    private Long validVotes;
 
     @Column(name = "invalid_total")
-    private Integer invalidTotal;
+    private Long invalidTotal;
 
     @Column(name = "turnout_pct", precision = 10, scale = 6)
-    private BigDecimal turnoutPct;
+    private BigDecimal turnoutPct; // ✅ ballots_cast / full registered_voters
 
     @Column(name = "invalid_pct", precision = 10, scale = 6)
-    private BigDecimal invalidPct;
+    private BigDecimal invalidPct; // ✅ invalid_total / ballots_cast (reported)
+
+    // ✅ reporting coverage
+    @Column(name = "centers_reported")
+    private Long centersReported;
+
+    @Column(name = "centers_total")
+    private Long centersTotal;
+
+    @Column(name = "reporting_pct", precision = 10, scale = 6)
+    private BigDecimal reportingPct;
 }

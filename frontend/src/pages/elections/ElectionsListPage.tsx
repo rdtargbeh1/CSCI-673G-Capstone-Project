@@ -1,3 +1,5 @@
+
+
 // src/pages/elections/ElectionsListPage.tsx
 
 import { useMemo, useState } from "react";
@@ -112,6 +114,11 @@ export default function ElectionsListPage() {
   );
   const [formActive, setFormActive] = useState(true);
 
+  // ✅ NEW: NEC ballot policy fields (Election-level)
+  const [ballotSparePercent, setBallotSparePercent] = useState<number | "">("");
+  const [enforceBallotsGteRegistered, setEnforceBallotsGteRegistered] =
+    useState<boolean>(true);
+
   /** List query */
   const electionsQ = useQuery({
     queryKey: ["elections", page, q, year, type, statusFilter],
@@ -122,7 +129,7 @@ export default function ElectionsListPage() {
         q: q.trim() || undefined,
         year: toIntOrUndef(year),
         type: type || undefined,
-        active: activeBool, // ✅ drives default active-only view
+        active: activeBool,
       }),
     staleTime: 10_000,
     retry: 1,
@@ -146,12 +153,24 @@ export default function ElectionsListPage() {
       const y = toIntOrUndef(formYear);
       if (!name) throw new Error("Election name is required.");
       if (!y) throw new Error("Year is required.");
+
+      const spare =
+        ballotSparePercent === "" ? null : Number(ballotSparePercent);
+      if (spare != null) {
+        if (!Number.isFinite(spare)) throw new Error("Spare percent is invalid.");
+        if (spare < 0 || spare > 100)
+          throw new Error("Spare percent must be between 0 and 100.");
+      }
+
       return createElection({
         electionName: name,
         year: y,
         electionType: formType,
         isActive: !!formActive,
-      });
+
+        ballotSparePercent: spare,
+        enforceBallotsGteRegistered,
+      } as any);
     },
     onSuccess: async () => {
       setOpen(false);
@@ -160,6 +179,10 @@ export default function ElectionsListPage() {
       setFormYear("");
       setFormType("PRESIDENTIAL_GENERAL");
       setFormActive(true);
+
+      setBallotSparePercent("");
+      setEnforceBallotsGteRegistered(true);
+
       setTouched(false);
       await refreshNow();
     },
@@ -172,12 +195,24 @@ export default function ElectionsListPage() {
       const y = toIntOrUndef(formYear);
       if (!name) throw new Error("Election name is required.");
       if (!y) throw new Error("Year is required.");
+
+      const spare =
+        ballotSparePercent === "" ? null : Number(ballotSparePercent);
+      if (spare != null) {
+        if (!Number.isFinite(spare)) throw new Error("Spare percent is invalid.");
+        if (spare < 0 || spare > 100)
+          throw new Error("Spare percent must be between 0 and 100.");
+      }
+
       return updateElection(editing.electionId, {
         electionName: name,
         year: y,
         electionType: formType,
         isActive: !!formActive,
-      });
+
+        ballotSparePercent: spare,
+        enforceBallotsGteRegistered,
+      } as any);
     },
     onSuccess: async () => {
       setOpen(false);
@@ -186,6 +221,10 @@ export default function ElectionsListPage() {
       setFormYear("");
       setFormType("PRESIDENTIAL_GENERAL");
       setFormActive(true);
+
+      setBallotSparePercent("");
+      setEnforceBallotsGteRegistered(true);
+
       setTouched(false);
       await refreshNow();
     },
@@ -211,6 +250,10 @@ export default function ElectionsListPage() {
     setFormYear("");
     setFormType("PRESIDENTIAL_GENERAL");
     setFormActive(true);
+
+    setBallotSparePercent("");
+    setEnforceBallotsGteRegistered(true);
+
     setTouched(false);
     setOpen(true);
   };
@@ -221,6 +264,17 @@ export default function ElectionsListPage() {
     setFormYear(String(e.year ?? ""));
     setFormType(e.electionType || "PRESIDENTIAL_GENERAL");
     setFormActive(!!e.isActive);
+
+    // prefill
+    setBallotSparePercent(
+      (e as any).ballotSparePercent == null
+        ? ""
+        : Number((e as any).ballotSparePercent)
+    );
+    setEnforceBallotsGteRegistered(
+      (e as any).enforceBallotsGteRegistered ?? true
+    );
+
     setTouched(false);
     setOpen(true);
   };
@@ -245,7 +299,28 @@ export default function ElectionsListPage() {
         (e as any).createdOn ??
         (e as any).date_created;
 
-      // ✅ checkbox status indicator (checked=active)
+      const spare = (e as any).ballotSparePercent;
+      const enforce = (e as any).enforceBallotsGteRegistered;
+
+      const spareNode =
+        spare == null || spare === ""
+          ? <span className="text-slate-400">—</span>
+          : <span className="font-bold">{Number(spare)}%</span>;
+
+      const ruleNode = (
+        <span
+          className={`text-[11px] font-extrabold px-2 py-1 rounded-lg border ${
+            enforce === false
+              ? "border-slate-200 text-slate-500 bg-white"
+              : "border-emerald-200 text-emerald-700 bg-emerald-50"
+          }`}
+          title="Election-level rule: ballotsIssued must be >= registeredVoters"
+        >
+          {enforce === false ? "OFF" : "ENFORCE"}
+        </span>
+      );
+
+      // status indicator
       const statusNode = (
         <label className="inline-flex items-center gap-2 select-none">
           <input
@@ -303,9 +378,7 @@ export default function ElectionsListPage() {
             className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white ${
               !canEdit ? "opacity-60" : ""
             }`}
-            title={
-              canEdit ? "Edit election (SYSTEM/NEC)" : "Read-only (Tenant)"
-            }
+            title={canEdit ? "Edit election (SYSTEM/NEC)" : "Read-only (Tenant)"}
             onClick={() => openEdit(e)}
           >
             <Pencil size={16} />
@@ -338,6 +411,11 @@ export default function ElectionsListPage() {
         e.electionName,
         e.year,
         typeLabel,
+
+        // ✅ NEW columns
+        spareNode,
+        ruleNode,
+
         statusNode,
         fmtDate(created),
         actions,
@@ -486,7 +564,7 @@ export default function ElectionsListPage() {
               setQ("");
               setYear("");
               setType("");
-              setStatusFilter("active"); // back to default
+              setStatusFilter("active");
               setPage(0);
             }}
             className="px-3 py-2 rounded-lg border border-slate-200 bg-white"
@@ -505,12 +583,14 @@ export default function ElectionsListPage() {
           </div>
         ) : null}
 
-        {/* ✅ compact table spacing via updated SimpleTable (tailwind) */}
+        {/* ✅ TABLE (added 2 new columns) */}
         <SimpleTable
           columns={[
             "Election",
             "Year",
             "Type",
+            "Spare %",
+            "Rule",
             "Status",
             "Date Created",
             "Actions",
@@ -523,6 +603,8 @@ export default function ElectionsListPage() {
                     <span key="empty" className="text-slate-500">
                       No elections found.
                     </span>,
+                    "",
+                    "",
                     "",
                     "",
                     "",
@@ -571,6 +653,7 @@ export default function ElectionsListPage() {
               "Default view shows Active elections only (use Status radio to switch).",
               "Tenants can view elections read-only.",
               "NEC/SYSTEM can Create, Edit, Activate/Deactivate, and Delete.",
+              "Spare % and Rule are election-level NEC ballot policies (used during allocations).",
               "Click Open to enter election workspace (/elections/:id/overview).",
             ]}
           />
@@ -689,6 +772,83 @@ export default function ElectionsListPage() {
                 <span className="text-sm text-slate-900">Active</span>
               </label>
 
+              {/* ✅ NEC Ballot Policy */}
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="text-sm font-extrabold text-slate-900">
+                  Ballot Policy (NEC)
+                </div>
+                <div className="text-xs text-slate-500 mt-0.5">
+                  Configure spare ballot percent and enforcement rule for allocations.
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                  <div className="grid gap-1.5">
+                    <div className="text-[11px] font-extrabold text-slate-600">
+                      Spare Ballots Percent
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={ballotSparePercent}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setTouched(true);
+                        if (v === "") return setBallotSparePercent("");
+                        const n = Number(v);
+                        if (!Number.isFinite(n)) return;
+                        setBallotSparePercent(n);
+                      }}
+                      placeholder="e.g., 20"
+                      className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
+                    />
+                    <div className="text-[11px] text-slate-500">
+                      Optional. Leave empty if NEC has not set a spare cap yet.
+                    </div>
+                  </div>
+
+                  <div className="grid gap-1.5">
+                    <div className="text-[11px] font-extrabold text-slate-600">
+                      Enforce ballotsIssued ≥ registeredVoters
+                    </div>
+
+                    <div className="flex items-center gap-6 text-sm text-slate-700">
+                      <label className="inline-flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="enforceBallotsGteRegistered"
+                          checked={enforceBallotsGteRegistered === true}
+                          onChange={() => {
+                            setTouched(true);
+                            setEnforceBallotsGteRegistered(true);
+                          }}
+                          className="h-4 w-4 accent-emerald-600"
+                        />
+                        Yes
+                      </label>
+
+                      <label className="inline-flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="enforceBallotsGteRegistered"
+                          checked={enforceBallotsGteRegistered === false}
+                          onChange={() => {
+                            setTouched(true);
+                            setEnforceBallotsGteRegistered(false);
+                          }}
+                          className="h-4 w-4 accent-emerald-600"
+                        />
+                        No
+                      </label>
+                    </div>
+
+                    <div className="text-[11px] text-slate-500">
+                      Recommended: <b>Yes</b> (to prevent ballot shortage).
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Errors */}
               {createM.isError || updateM.isError ? (
                 <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm font-bold">
@@ -731,3 +891,4 @@ export default function ElectionsListPage() {
     </div>
   );
 }
+

@@ -1,3 +1,7 @@
+
+
+
+
 // src/shared/services/userService.ts
 import type { AxiosResponse } from "axios";
 import { apiClient } from "../lib/apiClient";
@@ -77,7 +81,7 @@ export async function fetchUsers(
 ): Promise<FetchUsersResponse> {
   const tenantId = requireOrgId(orgId, "fetch users");
 
-  const res: AxiosResponse<any> = await apiClient.get("/users", {
+  const res: AxiosResponse<any> = await apiClient.get("/user", {
     ...tenantHeaders(tenantId),
     params: {
       page: params.page,
@@ -103,7 +107,7 @@ export async function fetchUsers(
 /** DELETE /api/users/{userId} (tenant-scoped) */
 export async function deleteUser(orgId: string, userId: string): Promise<void> {
   const tenantId = requireOrgId(orgId, "delete user");
-  await apiClient.delete(`/users/${userId}`, tenantHeaders(tenantId));
+  await apiClient.delete(`/user/${userId}`, tenantHeaders(tenantId));
 }
 
 /**
@@ -116,7 +120,7 @@ export async function fetchUserById(
   userId: string
 ): Promise<UserDto> {
   const { data }: AxiosResponse<UserDto> = await apiClient.get(
-    `/users/${userId}`,
+    `/user/${userId}`,
     tenantHeaders(orgId)
   );
   return data;
@@ -130,7 +134,7 @@ export async function updateUser(
 ): Promise<UserDto> {
   const tenantId = requireOrgId(orgId, "update user");
   const { data }: AxiosResponse<UserDto> = await apiClient.put(
-    `/users/${userId}`,
+    `/user/${userId}`,
     payload,
     tenantHeaders(tenantId)
   );
@@ -169,7 +173,7 @@ export async function createUser(
 ): Promise<UserDto> {
   const tenantId = requireOrgId(orgId, "create user");
   const { data } = await apiClient.post<UserDto>(
-    "/users",
+    "/user",
     payload,
     tenantHeaders(tenantId)
   );
@@ -208,7 +212,7 @@ export async function setUserActive(
 ): Promise<void> {
   const tenantId = requireOrgId(orgId, "set user active");
   await apiClient.patch(
-    `/users/${userId}/active`,
+    `/user/${userId}/active`,
     { value },
     tenantHeaders(tenantId)
   );
@@ -222,7 +226,7 @@ export async function setUserVerified(
 ): Promise<void> {
   const tenantId = requireOrgId(orgId, "set user verified");
   await apiClient.patch(
-    `/users/${userId}/verified`,
+    `/user/${userId}/verified`,
     { value },
     tenantHeaders(tenantId)
   );
@@ -240,7 +244,7 @@ export async function assignUserRole(
 ): Promise<void> {
   const tenantId = requireOrgId(orgId, "assign role");
   await apiClient.patch(
-    `/users/${userId}/role`,
+    `/user/${userId}/role`,
     { roleName },
     tenantHeaders(tenantId)
   );
@@ -252,7 +256,7 @@ export async function assignUserParty(
   userId: string,
   partyId: string | null
 ): Promise<void> {
-  await patchAssignId(orgId, `/users/${userId}/party`, partyId);
+  await patchAssignId(orgId, `/user/${userId}/party`, partyId);
 }
 
 /** PATCH /api/users/{userId}/county body: {"id":uuid} or null to clear */
@@ -261,7 +265,7 @@ export async function assignUserCounty(
   userId: string,
   countyId: string | null
 ): Promise<void> {
-  await patchAssignId(orgId, `/users/${userId}/county`, countyId);
+  await patchAssignId(orgId, `/user/${userId}/county`, countyId);
 }
 
 /** PATCH /api/users/{userId}/default-org body: {"id":uuid} or null to clear */
@@ -270,7 +274,7 @@ export async function setUserDefaultOrg(
   userId: string,
   defaultOrgId: string | null
 ): Promise<void> {
-  await patchAssignId(orgId, `/users/${userId}/default-org`, defaultOrgId);
+  await patchAssignId(orgId, `/user/${userId}/default-org`, defaultOrgId);
 }
 
 /**
@@ -285,7 +289,7 @@ export async function assignUserToCountyAndRole(
 ): Promise<UserDto> {
   const tenantId = requireOrgId(orgId, "assign county + role");
   const { data }: AxiosResponse<UserDto> = await apiClient.patch(
-    `/users/${userId}/assign-county-role`,
+    `/user/${userId}/assign-county-role`,
     { countyId, roleName },
     tenantHeaders(tenantId)
   );
@@ -303,7 +307,7 @@ export async function changePassword(
 ): Promise<void> {
   const tenantId = requireOrgId(orgId, "change password");
   await apiClient.post(
-    `/users/${userId}/password`,
+    `/user/${userId}/password`,
     payload,
     tenantHeaders(tenantId)
   );
@@ -316,7 +320,7 @@ export async function adminResetPassword(
 ): Promise<void> {
   const tenantId = requireOrgId(orgId, "admin reset password");
   await apiClient.post(
-    `/users/${userId}/password/reset`,
+    `/user/${userId}/password/reset`,
     { newPassword },
     tenantHeaders(tenantId)
   );
@@ -330,7 +334,7 @@ export async function setUserLock(
 ): Promise<void> {
   const tenantId = requireOrgId(orgId, "set lock");
   await apiClient.patch(
-    `/users/${userId}/lock`,
+    `/user/${userId}/lock`,
     { lock, until: until ?? null },
     tenantHeaders(tenantId)
   );
@@ -342,7 +346,7 @@ export async function recordLoginFailure(
 ): Promise<void> {
   const tenantId = requireOrgId(orgId, "record login failure");
   await apiClient.post(
-    `/users/${userId}/login-failure`,
+    `/user/${userId}/login-failure`,
     null,
     tenantHeaders(tenantId)
   );
@@ -354,7 +358,7 @@ export async function recordLoginSuccess(
 ): Promise<void> {
   const tenantId = requireOrgId(orgId, "record login success");
   await apiClient.post(
-    `/users/${userId}/login-success`,
+    `/user/${userId}/login-success`,
     null,
     tenantHeaders(tenantId)
   );
@@ -366,9 +370,9 @@ export async function recordLoginSuccess(
 
 /** GET /api/users/me (requires X-Org-Id per your controller) */
 export async function fetchMe(orgId: string): Promise<UserDto> {
-  const tenantId = requireOrgId(orgId, "fetch current user (/users/me)");
+  const tenantId = requireOrgId(orgId, "fetch current user (/user/me)");
   const { data }: AxiosResponse<UserDto> = await apiClient.get(
-    "/users/me",
+    "/user/me",
     tenantHeaders(tenantId)
   );
   return data;
@@ -389,7 +393,7 @@ export async function uploadProfilePhoto(
   formData.append("file", file);
 
   const { data }: AxiosResponse<string> = await apiClient.post(
-    `/users/${userId}/profile-photo`,
+    `/user/${userId}/profile-photo`,
     formData,
     tenantHeaders(tenantId)
   );

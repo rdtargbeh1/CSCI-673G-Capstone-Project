@@ -17,6 +17,9 @@ export type ElectionDto = {
   year: number;
   electionType: ElectionType;
   isActive: boolean;
+  ballotSparePercent?: number | null; // 0..100 or null (not configured)
+  enforceBallotsGteRegistered?: boolean; // default true
+
   dateCreated?: string | null;
   dateUpdated?: string | null;
 };
@@ -26,6 +29,8 @@ export type ElectionCreateRequest = {
   year: number;
   electionType: ElectionType;
   isActive: boolean;
+  ballotSparePercent?: number | null;
+  enforceBallotsGteRegistered?: boolean;
 };
 
 export type ElectionUpdateRequest = {
@@ -33,6 +38,8 @@ export type ElectionUpdateRequest = {
   year: number;
   electionType: ElectionType;
   isActive: boolean;
+  ballotSparePercent?: number | null;
+  enforceBallotsGteRegistered?: boolean;
 };
 
 type PageResp<T> = {

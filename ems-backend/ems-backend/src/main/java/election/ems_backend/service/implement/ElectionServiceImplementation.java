@@ -33,8 +33,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
-import static org.springframework.http.HttpStatus.CONFLICT;
-import static org.springframework.http.HttpStatus.NOT_FOUND;
+import static org.springframework.http.HttpStatus.*;
 
 @Service
 @RequiredArgsConstructor
@@ -67,10 +66,32 @@ public class ElectionServiceImplementation implements ElectionService {
     public ElectionDto create(ElectionCreateRequest req) {
         if (electionRepository.existsByElectionNameIgnoreCaseAndYear(
                 req.getElectionName(), req.getYear())) {
-            throw new ResponseStatusException(CONFLICT, "Election '" + req.getElectionName() + "' (" + req.getYear() + ") already exists"
+            throw new ResponseStatusException(
+                    CONFLICT,
+                    "Election '" + req.getElectionName() + "' (" + req.getYear() + ") already exists"
             );
         }
-        Election saved = electionRepository.save(electionMapper.toEntity(req));
+
+        // Build entity from mapper
+        Election entity = electionMapper.toEntity(req);
+
+        // ✅ NEC spare policy (optional, election-level)
+        if (req.getBallotSparePercent() != null) {
+            int p = req.getBallotSparePercent();
+            if (p < 0 || p > 100) {
+                throw new ResponseStatusException(BAD_REQUEST, "ballotSparePercent must be between 0 and 100");
+            }
+            entity.setBallotSparePercent(p);
+        }
+
+        // ✅ Liberia default: enforce ballotsIssued >= registeredVoters unless explicitly disabled
+        if (req.getEnforceBallotsGteRegistered() == null) {
+            entity.setEnforceBallotsGteRegistered(true);
+        } else {
+            entity.setEnforceBallotsGteRegistered(req.getEnforceBallotsGteRegistered());
+        }
+
+        Election saved = electionRepository.save(entity);
 
         // Audit log (best-effort)
         try {
@@ -88,11 +109,44 @@ public class ElectionServiceImplementation implements ElectionService {
                 } catch (Exception ignored) {}
             }
             String desc = "Created election: " + saved.getElectionName();
+            // (Your audit persistence call would go here if/when you add it)
         } catch (Exception ignored) {}
-
 
         return electionMapper.toDTO(saved);
     }
+
+//    @Override
+//    @Transactional
+//    public ElectionDto create(ElectionCreateRequest req) {
+//        if (electionRepository.existsByElectionNameIgnoreCaseAndYear(
+//                req.getElectionName(), req.getYear())) {
+//            throw new ResponseStatusException(CONFLICT, "Election '" + req.getElectionName() + "' (" + req.getYear() + ") already exists"
+//            );
+//        }
+//
+//        Election saved = electionRepository.save(electionMapper.toEntity(req));
+//
+//        // Audit log (best-effort)
+//        try {
+//            // Resolve actor user id in a type-safe way
+//            UUID actor = null;
+//            // 1) prefer currentUserProvider if available
+//            try {
+//                actor = (currentUserProvider != null ? currentUserProvider.currentUserId() : null);
+//            } catch (Exception ignored) {}
+//            // 2) fallback to TenantContext if still null
+//            if (actor == null) {
+//                try {
+//                    var ctx = TenantContext.get();
+//                    if (ctx != null) actor = ctx.userId().orElse(null);
+//                } catch (Exception ignored) {}
+//            }
+//            String desc = "Created election: " + saved.getElectionName();
+//        } catch (Exception ignored) {}
+//
+//
+//        return electionMapper.toDTO(saved);
+//    }
 
 
     // ElectionServiceImplementation.java (update)
@@ -109,7 +163,7 @@ public class ElectionServiceImplementation implements ElectionService {
         if (req.getYear() != null) {
             Integer year = req.getYear();
             if (year < 1900) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Year must be >= 1900");
+                throw new ResponseStatusException(BAD_REQUEST, "Year must be >= 1900");
             }
             election.setYear(year); // entity is int; auto-unbox is safe because year != null
         }
@@ -120,6 +174,20 @@ public class ElectionServiceImplementation implements ElectionService {
 
         if (req.getIsActive() != null) {
             election.setActive(req.getIsActive());
+        }
+
+        //  ballot spare percent (NEC policy)
+        if (req.getBallotSparePercent() != null) {
+            int p = req.getBallotSparePercent();
+            if (p < 0 || p > 100) {
+                throw new ResponseStatusException(BAD_REQUEST, "ballotSparePercent must be between 0 and 100");
+            }
+            election.setBallotSparePercent(p);
+        }
+
+        //  enforce ballots >= registered voters (NEC policy)
+        if (req.getEnforceBallotsGteRegistered() != null) {
+            election.setEnforceBallotsGteRegistered(req.getEnforceBallotsGteRegistered());
         }
 
         Election saved = electionRepository.save(election);

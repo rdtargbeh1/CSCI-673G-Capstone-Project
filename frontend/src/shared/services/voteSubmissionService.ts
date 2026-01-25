@@ -1,5 +1,17 @@
+
+
 // ✅ FILE: src/shared/services/voteSubmissionService.ts
-import { apiClient } from "../lib/apiClient";
+// ✅ FIX (multi-tenant header + SYSTEM mode client):
+// - Uses sysClient automatically when dashboardMode === "SYSTEM"
+// - Forces X-Org-Id header from params.orgId / req.orgId when provided (tenant/NEC)
+// - Prevents SYSTEM requests from accidentally carrying tenant header
+//
+// ✅ Existing DTO changes kept:
+// - ballotsCast  -> ballotsInBox
+// - invalidTotal excludes spoiled (spoiled is OUTSIDE box)
+
+import { apiClient, sysClient } from "../lib/apiClient";
+import { useAuthStore } from "../store/authStore";
 
 export type VoteStatus =
   | "PENDING"
@@ -50,7 +62,7 @@ export type VoteSubmissionDto = {
   candidateVotes?: Record<string, number>;
 
   // --- ballots ---
-  ballotsCast?: number;
+  ballotsInBox?: number;
 
   invalidBallots?: number;
   unmarkedBallots?: number;
@@ -64,7 +76,7 @@ export type VoteSubmissionDto = {
   turnoutPct?: number;
   invalidPct?: number;
 
-  // --- allocation read-only (derived from place allocation) ---
+  // --- allocation read-only ---
   registeredVoters?: number;
   ballotsIssued?: number;
   allocationSource?: "PLACE" | "CENTER" | "NONE" | string;
@@ -91,7 +103,7 @@ export type VoteSubmissionCreateRequest = {
 
   candidateVotes: Record<string, number>;
 
-  ballotsCast?: number;
+  ballotsInBox?: number;
 
   invalidBallots?: number;
   unmarkedBallots?: number;
@@ -106,14 +118,13 @@ export type VoteSubmissionCreateRequest = {
 
   idempotencyKey?: string;
 
-  // ✅ draft support (true => DRAFT, false/undefined => PENDING)
   draft?: boolean;
 };
 
 export type VoteSubmissionUpdateRequest = {
   candidateVotes?: Record<string, number>;
 
-  ballotsCast?: number;
+  ballotsInBox?: number;
   invalidBallots?: number;
   unmarkedBallots?: number;
   rejectedBallots?: number;
@@ -126,18 +137,16 @@ export type VoteSubmissionUpdateRequest = {
   longitude?: number;
 };
 
-// ✅ UPDATED to match backend (keep as-is if your backend expects these names)
 export type VoteSubmissionVerifyRequest = {
   verifierUserId: string;
-  accept: boolean; // true=VERIFY, false=REJECT
+  accept: boolean;
   comment?: string;
 };
 
-// ✅ MUST MATCH BACKEND DTO EXACTLY
 export type VoteSubmissionFlagRequest = {
-  actorUserId: string; // required
-  flagged: boolean; // required
-  comments?: string; // required when flagged=true (frontend enforces)
+  actorUserId: string;
+  flagged: boolean;
+  comments?: string;
 };
 
 export type PageResult<T> = {
@@ -158,6 +167,41 @@ function mapSpringPage<T>(p: any): PageResult<T> {
     totalPages: Math.max(1, Number(p?.totalPages ?? 1)),
   };
 }
+
+/* -----------------------------------------------------
+   ✅ Multi-tenant helpers
+----------------------------------------------------- */
+
+function getCtx() {
+  try {
+    const s = useAuthStore.getState();
+    return {
+      mode: s.dashboardMode,
+      storeOrgId: s.currentOrgId ?? null,
+    };
+  } catch {
+    return { mode: "TENANT" as const, storeOrgId: null as string | null };
+  }
+}
+
+function pickClient() {
+  const { mode } = getCtx();
+  return mode === "SYSTEM" ? sysClient : apiClient;
+}
+
+function tenantHeaders(preferredOrgId?: string | null) {
+  const { mode, storeOrgId } = getCtx();
+
+  // SYSTEM must never send tenant header
+  if (mode === "SYSTEM") return undefined;
+
+  const orgId = preferredOrgId ?? storeOrgId;
+  return orgId ? { "X-Org-Id": orgId } : undefined;
+}
+
+/* -----------------------------------------------------
+   API
+----------------------------------------------------- */
 
 export async function searchSubmissions(params: {
   page?: number;
@@ -182,12 +226,19 @@ export async function searchSubmissions(params: {
   category?: string;
   scopeType?: string;
 }): Promise<PageResult<VoteSubmissionDto>> {
-  const res = await apiClient.get("/vote-submissions", {
+  const client = pickClient();
+  const { mode } = getCtx();
+
+  const res = await client.get("/vote-submissions", {
+    headers: tenantHeaders(params.orgId ?? null),
     params: {
       page: params.page ?? 0,
       size: params.size ?? 20,
 
-      orgId: params.orgId,
+      // ✅ SYSTEM needs orgId as query param (no header)
+      // ✅ TENANT/NEC may also accept it; harmless if backend ignores
+      orgId: mode === "SYSTEM" ? params.orgId : params.orgId,
+
       electionId: params.electionId,
 
       countyId: params.countyId,
@@ -215,7 +266,10 @@ export async function searchSubmissions(params: {
 export async function createSubmissionJson(
   req: VoteSubmissionCreateRequest
 ): Promise<VoteSubmissionDto> {
-  const res = await apiClient.post("/vote-submissions", req);
+  const client = pickClient();
+  const res = await client.post("/vote-submissions", req, {
+    headers: tenantHeaders(req.orgId),
+  });
   return res.data as VoteSubmissionDto;
 }
 
@@ -224,6 +278,8 @@ export async function createSubmissionMultipart(params: {
   payload: VoteSubmissionCreateRequest;
   files: File[];
 }): Promise<VoteSubmissionDto> {
+  const client = pickClient();
+
   const fd = new FormData();
   fd.append(
     "payload",
@@ -231,14 +287,21 @@ export async function createSubmissionMultipart(params: {
   );
   params.files.forEach((f) => fd.append("files", f));
 
-  const res = await apiClient.post("/vote-submissions", fd, {
-    headers: { "Content-Type": "multipart/form-data" },
+  const res = await client.post("/vote-submissions", fd, {
+    headers: {
+      ...(tenantHeaders(params.payload.orgId) ?? {}),
+      "Content-Type": "multipart/form-data",
+    },
   });
+
   return res.data as VoteSubmissionDto;
 }
 
 export async function getSubmission(id: string): Promise<VoteSubmissionDto> {
-  const res = await apiClient.get(`/vote-submissions/${id}`);
+  const client = pickClient();
+  const res = await client.get(`/vote-submissions/${id}`, {
+    headers: tenantHeaders(null),
+  });
   return res.data as VoteSubmissionDto;
 }
 
@@ -247,8 +310,13 @@ export async function updateSubmissionJson(
   id: string,
   req: VoteSubmissionUpdateRequest
 ): Promise<VoteSubmissionDto> {
+  const client = pickClient();
   const payload = normalizeUpdatePayload(req);
-  const res = await apiClient.put(`/vote-submissions/${id}`, payload);
+
+  const res = await client.put(`/vote-submissions/${id}`, payload, {
+    headers: tenantHeaders(null),
+  });
+
   return res.data as VoteSubmissionDto;
 }
 
@@ -258,6 +326,7 @@ export async function updateSubmissionMultipart(params: {
   payload: VoteSubmissionUpdateRequest;
   files?: File[];
 }): Promise<VoteSubmissionDto> {
+  const client = pickClient();
   const payload = normalizeUpdatePayload(params.payload);
 
   const fd = new FormData();
@@ -267,14 +336,21 @@ export async function updateSubmissionMultipart(params: {
   );
   (params.files ?? []).forEach((f) => fd.append("files", f));
 
-  const res = await apiClient.put(`/vote-submissions/${params.id}`, fd, {
-    headers: { "Content-Type": "multipart/form-data" },
+  const res = await client.put(`/vote-submissions/${params.id}`, fd, {
+    headers: {
+      ...(tenantHeaders(null) ?? {}),
+      "Content-Type": "multipart/form-data",
+    },
   });
+
   return res.data as VoteSubmissionDto;
 }
 
 export async function deleteSubmission(id: string): Promise<void> {
-  await apiClient.delete(`/vote-submissions/${id}`);
+  const client = pickClient();
+  await client.delete(`/vote-submissions/${id}`, {
+    headers: tenantHeaders(null),
+  });
 }
 
 /** verify */
@@ -282,39 +358,39 @@ export async function verifySubmission(
   id: string,
   req: VoteSubmissionVerifyRequest
 ): Promise<VoteSubmissionDto> {
-  const res = await apiClient.post(`/vote-submissions/${id}/verify`, req);
-  return res.data as VoteSubmissionDto;
-}
-
-/**
- * ✅ flag/unflag
- * IMPORTANT: backend expects { actorUserId, flagged, comments }
- * If you send { flag } or { reason } you will get 400 VALIDATION_ERROR.
- */
-export async function flagSubmission(
-  id: string,
-  req: VoteSubmissionFlagRequest
-): Promise<VoteSubmissionDto> {
-  // Optional: frontend safety guard (keeps backend validation happy)
-  if (!req?.actorUserId) {
-    throw new Error("actorUserId is required");
-  }
-  if (typeof req.flagged !== "boolean") {
-    throw new Error("flagged is required");
-  }
-  if (req.flagged && !(req.comments ?? "").trim()) {
-    throw new Error("comments is required when flagged=true");
-  }
-
-  const res = await apiClient.post(`/vote-submissions/${id}/flag`, {
-    actorUserId: req.actorUserId,
-    flagged: req.flagged,
-    comments: req.comments,
+  const client = pickClient();
+  const res = await client.post(`/vote-submissions/${id}/verify`, req, {
+    headers: tenantHeaders(null),
   });
   return res.data as VoteSubmissionDto;
 }
 
-/** ---------------- helpers ---------------- */
+/** flag/unflag */
+export async function flagSubmission(
+  id: string,
+  req: VoteSubmissionFlagRequest
+): Promise<VoteSubmissionDto> {
+  if (!req?.actorUserId) throw new Error("actorUserId is required");
+  if (typeof req.flagged !== "boolean") throw new Error("flagged is required");
+  if (req.flagged && !(req.comments ?? "").trim()) {
+    throw new Error("comments is required when flagged=true");
+  }
+
+  const client = pickClient();
+  const res = await client.post(
+    `/vote-submissions/${id}/flag`,
+    {
+      actorUserId: req.actorUserId,
+      flagged: req.flagged,
+      comments: req.comments,
+    },
+    { headers: tenantHeaders(null) }
+  );
+
+  return res.data as VoteSubmissionDto;
+}
+
+/* ---------------- helpers ---------------- */
 
 function sumCandidateVotes(v?: Record<string, number>) {
   if (!v) return 0;
@@ -322,9 +398,11 @@ function sumCandidateVotes(v?: Record<string, number>) {
 }
 
 /**
- * Ensures ballotsCast is present whenever candidateVotes is present.
- * - If ballotsCast already provided -> keep it
- * - Else compute ballotsCast = sum(candidateVotes) + invalidTotal
+ * Ensures ballotsInBox is present whenever candidateVotes is present.
+ * - If ballotsInBox already provided -> keep it
+ * - Else compute ballotsInBox = sum(candidateVotes)
+ *   + invalidBallots + rejectedBallots + unmarkedBallots
+ *   (❗spoiled is OUTSIDE box, do NOT include)
  */
 function normalizeUpdatePayload(
   p: VoteSubmissionUpdateRequest
@@ -334,20 +412,20 @@ function normalizeUpdatePayload(
 
   if (!hasVotes) return p;
 
-  if (p.ballotsCast == null) {
-    const invalidTotal =
+  if (p.ballotsInBox == null) {
+    const invalidTotalInBox =
       (Number(p.invalidBallots) || 0) +
       (Number(p.unmarkedBallots) || 0) +
-      (Number(p.rejectedBallots) || 0) +
-      (Number(p.spoiledBallots) || 0);
+      (Number(p.rejectedBallots) || 0);
 
-    const computedCast = sumCandidateVotes(p.candidateVotes) + invalidTotal;
+    const computedInBox = sumCandidateVotes(p.candidateVotes) + invalidTotalInBox;
 
     return {
       ...p,
-      ballotsCast: computedCast,
+      ballotsInBox: computedInBox,
     };
   }
 
   return p;
 }
+

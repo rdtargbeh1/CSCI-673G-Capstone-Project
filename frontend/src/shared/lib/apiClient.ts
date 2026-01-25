@@ -172,13 +172,16 @@ function attachInterceptors(
       const headers: Record<string, string> = { ...(config.headers as any) };
 
       try {
-        const { token, currentOrgId } = useAuthStore.getState();
+        const { token, currentOrgId, dashboardMode  } = useAuthStore.getState();
 
         if (token) headers.Authorization = `Bearer ${token}`;
 
         // ✅ only tenant client may attach org header
-        if (opts.tenantAware && currentOrgId) {
-          headers["X-Org-Id"] = currentOrgId;
+        if (opts.tenantAware && dashboardMode !== "SYSTEM" && currentOrgId) {
+          headers["x-org-id"] = currentOrgId;
+
+        // if (opts.tenantAware &&  currentOrgId) {
+        //   headers["X-Org-Id"] = currentOrgId;
         }
       } catch {
         // noop

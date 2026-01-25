@@ -1,5 +1,6 @@
 package election.ems_backend.views.entity;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -12,7 +13,7 @@ import java.util.UUID;
 
 /**
  * Read-only mapping of v_election_stats_official.
- * The view contains one row per election (published NEC results aggregated).
+ * One row per election (FULL election basis + reporting coverage).
  */
 @Entity
 @Table(name = "v_election_stats_official")
@@ -22,13 +23,34 @@ import java.util.UUID;
 public class ElectionStatsOfficial {
 
     @Id
+    @Column(name = "election_id")
     private UUID electionId;
 
-    private Integer registeredVoters;
-    private Integer ballotsCast;
+    @Column(name = "registered_voters")
+    private Integer registeredVoters; // ✅ FULL election basis
+
+    @Column(name = "ballots_cast")
+    private Integer ballotsCast; // ✅ reported so far (published)
+
+    @Column(name = "valid_votes")
     private Integer validVotes;
+
+    @Column(name = "invalid_total")
     private Integer invalidTotal;
 
+    @Column(name = "turnout_pct", precision = 10, scale = 6)
     private BigDecimal turnoutPct;
+
+    @Column(name = "invalid_pct", precision = 10, scale = 6)
     private BigDecimal invalidPct;
+
+    // ✅ NEW: reporting coverage
+    @Column(name = "centers_reported")
+    private Integer centersReported;
+
+    @Column(name = "centers_total")
+    private Integer centersTotal;
+
+    @Column(name = "reporting_pct", precision = 10, scale = 6)
+    private BigDecimal reportingPct;
 }
