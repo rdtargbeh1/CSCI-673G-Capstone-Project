@@ -42,12 +42,23 @@ public class CenterStatsOfficialService {
 
 
     @Transactional(readOnly = true)
-    @Cacheable(value = "centerStatsOfficial", key = "T(java.lang.String).valueOf(#electionId) + ':' + (#countyId==null?'':#countyId) + ':' + (#districtId==null?'':#districtId) + ':' + (#centerId==null?'':#centerId) + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort")
-    public Page<CenterStatsOfficialDto> listOfficialCenters(UUID electionId, UUID countyId, UUID districtId, UUID centerId, Pageable pageable) {
-        log.debug("listOfficialCenters called electionId={} countyId={} districtId={} centerId={} page={} size={}",
-                electionId, countyId, districtId, centerId, pageable.getPageNumber(), pageable.getPageSize());
+    @Cacheable(
+            value="centerStatsOfficial",
+            key="T(java.lang.String).valueOf(#electionId)"
+                    + " + ':' + (#contestId==null?'':#contestId)"
+                    + " + ':' + (#countyId==null?'':#countyId)"
+                    + " + ':' + (#districtId==null?'':#districtId)"
+                    + " + ':' + (#centerId==null?'':#centerId)"
+                    + " + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort"
+    )
+    public Page<CenterStatsOfficialDto> listOfficialCenters(UUID electionId,  UUID contestId,
+                                                            UUID countyId, UUID districtId,
+                                                            UUID centerId, Pageable pageable) {
+        log.debug("listOfficialCenters called electionId={} contestId={} countyId={} districtId={} centerId={} page={} size={}",
+                electionId, contestId, countyId, districtId, centerId, pageable.getPageNumber(), pageable.getPageSize());
 
         if (electionId == null) throw new IllegalArgumentException("electionId is required");
+        if (contestId == null) throw new IllegalArgumentException("contestId is required");
 
         // Derive orgId from security context (if present) and apply tenant GUCs for the transaction.
         UUID derivedOrgId = SecurityUtils.getOrgIdFromContext();
@@ -62,6 +73,7 @@ public class CenterStatsOfficialService {
 
         Specification<CenterStatsOfficial> spec = Specification
                 .where(CenterStatsOfficialSpecs.electionEquals(electionId))
+                .and(CenterStatsOfficialSpecs.contestEquals(contestId))
                 .and(CenterStatsOfficialSpecs.countyEquals(countyId))
                 .and(CenterStatsOfficialSpecs.districtEquals(districtId))
                 .and(CenterStatsOfficialSpecs.centerEquals(centerId));

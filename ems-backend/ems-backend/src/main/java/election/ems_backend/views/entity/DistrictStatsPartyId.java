@@ -18,6 +18,7 @@ import java.util.UUID;
 public class DistrictStatsPartyId implements Serializable {
     private UUID orgId;
     private UUID electionId;
+    private UUID contestId;
     private UUID districtId;
 
     public UUID getOrgId() { return orgId; }
@@ -25,6 +26,9 @@ public class DistrictStatsPartyId implements Serializable {
 
     public UUID getElectionId() { return electionId; }
     public void setElectionId(UUID electionId) { this.electionId = electionId; }
+
+    public UUID getContestId() { return contestId; }
+    public void setContestId(UUID contestId) { this.contestId = contestId; }
 
     public UUID getDistrictId() { return districtId; }
     public void setDistrictId(UUID districtId) { this.districtId = districtId; }

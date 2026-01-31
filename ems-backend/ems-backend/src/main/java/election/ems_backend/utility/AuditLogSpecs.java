@@ -9,9 +9,17 @@ import election.ems_backend.enums.ActivityType;
 import org.springframework.data.jpa.domain.Specification;
 
 public class AuditLogSpecs {
+
+
+
+
     public static Specification<AuditLog> orgEquals(UUID orgId) {
         return (root, q, cb) -> orgId == null ? cb.conjunction()
                 : cb.equal(root.get("organization").get("orgId"), orgId);
+    }
+
+    public static Specification<AuditLog> systemOnly() {
+        return (root, q, cb) -> cb.isNull(root.get("organization"));
     }
 
     public static Specification<AuditLog> userEquals(UUID userId) {
@@ -40,4 +48,6 @@ public class AuditLogSpecs {
             return cb.like(cb.lower(root.get("actionDescription")), like);
         };
     }
+
+
 }

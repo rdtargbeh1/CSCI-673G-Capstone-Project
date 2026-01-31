@@ -3,10 +3,7 @@ package election.ems_backend.service.implement;
 import election.ems_backend.dto.*;
 import election.ems_backend.entity.NECResult;
 import election.ems_backend.mapper.NECResultMapper;
-import election.ems_backend.repository.ElectionRepository;
-import election.ems_backend.repository.NECResultRepository;
-import election.ems_backend.repository.PollingCenterAllocationRepository;
-import election.ems_backend.repository.PollingCenterRepository;
+import election.ems_backend.repository.*;
 import election.ems_backend.service.NECResultService;
 import election.ems_backend.utility.NECResultSpecs;
 import election.ems_backend.views.repo.NecResultGeoRepository;
@@ -34,6 +31,8 @@ public class NECResultServiceImplementation implements NECResultService {
     @Autowired
     private ElectionRepository electionRepo;
     @Autowired
+    private ContestRepository contestRepository;
+    @Autowired
     private PollingCenterRepository centerRepo;
     @Autowired
     private NecResultGeoRepository necResultGeoRepository;
@@ -43,10 +42,16 @@ public class NECResultServiceImplementation implements NECResultService {
 
 
     // ----------------- CREATE -----------------
+
     @Override
     public NECResultDto create(NECResultCreateRequest req) {
         var election = electionRepo.findById(req.getElectionId())
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Election not found"));
+
+        // ✅ NEW: contest required
+        var contest = contestRepository.findById(req.getContestId())
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Contest not found"));
+
         var center = centerRepo.findById(req.getCenterId())
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Polling center not found"));
 
@@ -54,26 +59,38 @@ public class NECResultServiceImplementation implements NECResultService {
                 .findByElection_ElectionIdAndPollingCenter_CenterId(election.getElectionId(), center.getCenterId())
                 .orElseThrow(() -> new ResponseStatusException(BAD_REQUEST, "Center is not allocated for this election"));
 
-        if (resultRepo.existsByElection_ElectionIdAndPollingCenter_CenterId(election.getElectionId(), center.getCenterId())) {
-            throw new ResponseStatusException(CONFLICT, "Result already exists for this election & center");
+        // ✅ NEW: contest-aware uniqueness
+        if (resultRepo.existsByElection_ElectionIdAndContest_ContestIdAndPollingCenter_CenterId(
+                election.getElectionId(), contest.getContestId(), center.getCenterId())) {
+            throw new ResponseStatusException(CONFLICT, "Result already exists for this election, contest & center");
         }
 
-        // Validate against allocation (registered + ballotsIssued)
-        validateTally(req.getCandidateVotes(),
-                nz(req.getInvalidBallots()), nz(req.getUnmarkedBallots()),
-                nz(req.getRejectedBallots()), nz(req.getSpoiledBallots()),
-                nz(req.getUnusedBallots()),
-                nz(req.getBallotsCast()),
+        // ✅ UPDATED: request uses ballotsInBox, DB uses ballots_cast
+        // ✅ UPDATED: include unusedBallots (not part of invalids)
+        validateTally(
+                req.getCandidateVotes(),
+                nz(req.getInvalidBallots()),
+                nz(req.getUnmarkedBallots()),
+                nz(req.getRejectedBallots()),
+                nz(req.getSpoiledBallots()),
+                nz(req.getUnusedBallots()),        // ✅ NEW
+                nz(req.getBallotsInBox()),         // ✅ NEW (was ballotsCast)
                 allocation.getRegisteredVoters(),
-                allocation.getBallotsIssued());
+                allocation.getBallotsIssued()
+        );
 
         // Persist NECResult (force authoritative registered number)
         var entity = mapper.toEntity(req, election, center);
         entity.setTotalRegisteredVoters(allocation.getRegisteredVoters());
+
+        // ✅ NEW: set contest on entity (no mapper change required)
+        entity.setContest(contest);
+
         var saved = resultRepo.save(entity);
 
         return mapper.toDTO(saved);
     }
+
 
 
     // ----------------- UPDATE -----------------
@@ -96,13 +113,25 @@ public class NECResultServiceImplementation implements NECResultService {
 
         int newInvalid   = coalesce(req.getInvalidBallots(), entity.getInvalidBallots());
         int newBlank     = coalesce(req.getUnmarkedBallots(), entity.getUnmarkedBallots());
-        int newUnused     = coalesce(req.getUnusedBallots(), entity.getUnusedBallots());
+        int newUnused    = coalesce(req.getUnusedBallots(), entity.getUnusedBallots()); // ✅ NEW
         int newRejected  = coalesce(req.getRejectedBallots(), entity.getRejectedBallots());
         int newSpoiled   = coalesce(req.getSpoiledBallots(), entity.getSpoiledBallots());
-        int newCast      = coalesce(req.getBallotsCast(), entity.getBallotsCast());
 
-        validateTally(null, newInvalid, newBlank, newRejected, newSpoiled,
-                newCast, allocation.getRegisteredVoters(), allocation.getBallotsIssued(), sumVotes);
+        // ✅ UPDATED: request uses ballotsInBox; DB field is ballots_cast
+        int newCast      = coalesce(req.getBallotsInBox(), entity.getBallotsInBox());
+
+        validateTally(
+                null,
+                newInvalid,
+                newBlank,
+                newRejected,
+                newSpoiled,
+                newUnused,                           // ✅ NEW
+                newCast,
+                allocation.getRegisteredVoters(),
+                allocation.getBallotsIssued(),
+                sumVotes
+        );
 
         // Apply, enforce registered voters from allocation
         mapper.apply(req, entity);
@@ -152,7 +181,7 @@ public class NECResultServiceImplementation implements NECResultService {
         Map<String, Object> scalars = resultRepo.sumScalarColumns(electionId, centerId);
         BigInteger candSum = resultRepo.sumAllCandidateVotes(electionId, centerId);
 
-        long ballotsCast     = toLong(scalars.get("ballots_cast"));
+        long ballotsInBox     = toLong(scalars.get("ballots_cast"));
         long invalidBallots  = toLong(scalars.get("invalid_ballots"));
         long blankBallots    = toLong(scalars.get("blank_ballots"));
         long rejectedBallots = toLong(scalars.get("rejected_ballots"));
@@ -162,7 +191,7 @@ public class NECResultServiceImplementation implements NECResultService {
 
         return NECOverallTotalsDto.builder()
                 .totalCandidateVotes(totalCandVotes)
-                .ballotsCast(ballotsCast)
+                .ballotsCast(ballotsInBox)
                 .invalidBallots(invalidBallots)
                 .blankBallots(blankBallots)
                 .rejectedBallots(rejectedBallots)
@@ -296,24 +325,6 @@ public class NECResultServiceImplementation implements NECResultService {
     }
 
 
-    // ----------------- VALIDATION HELPERS -----------------
-    /** Create: sum votes from request map; Update: provide sumVotesOverride */
-    private void validateTally(Map<UUID,Integer> votesMap,
-                               int invalid, int blank, int rejected, int spoiled,
-                               int cast, int registered, Integer ballotsIssued) {
-        long sumVotes = (votesMap == null) ? 0L : votesMap.values().stream().mapToLong(Integer::longValue).sum();
-        validateTallyInternal(sumVotes, invalid, blank, rejected, spoiled, cast, registered, ballotsIssued);
-    }
-
-    private void validateTally(Map<UUID,Integer> votesMap,
-                               int invalid, int blank, int rejected, int spoiled,
-                               int cast, int registered, Integer ballotsIssued, long sumVotesOverride) {
-        long sumVotes = (votesMap == null) ? sumVotesOverride
-                : votesMap.values().stream().mapToLong(Integer::longValue).sum();
-        validateTallyInternal(sumVotes, invalid, blank, rejected, spoiled, cast, registered, ballotsIssued);
-    }
-
-
     // ----------------- LOCAL UTILS -----------------
     private int nz(Integer x) { return x == null ? 0 : x; }
     private int coalesce(Integer a, Integer b) { return a != null ? a : (b == null ? 0 : b); }
@@ -336,15 +347,36 @@ public class NECResultServiceImplementation implements NECResultService {
         catch (Exception e) { throw new ResponseStatusException(BAD_REQUEST, "Invalid candidateVotes", e); }
     }
 
+
+    // ----------------- VALIDATION HELPERS -----------------
+    /** Create: sum votes from request map; Update: provide sumVotesOverride */
+    private void validateTally(Map<UUID,Integer> votesMap,
+                               int invalid, int unmarked, int rejected, int spoiled,
+                               int unused,            // ✅ NEW
+                               int ballotsInBox, int registered, Integer ballotsIssued) {
+        long sumVotes = (votesMap == null) ? 0L : votesMap.values().stream().mapToLong(Integer::longValue).sum();
+        validateTallyInternal(sumVotes, invalid, unmarked, rejected, spoiled, unused, ballotsInBox, registered, ballotsIssued);
+    }
+
+    private void validateTally(Map<UUID,Integer> votesMap,
+                               int invalid, int unmarked, int rejected, int spoiled,
+                               int unused,            // ✅ NEW
+                               int ballotsInBox, int registered, Integer ballotsIssued, long sumVotesOverride) {
+        long sumVotes = (votesMap == null) ? sumVotesOverride
+                : votesMap.values().stream().mapToLong(Integer::longValue).sum();
+        validateTallyInternal(sumVotes, invalid, unmarked, rejected, spoiled, unused, ballotsInBox, registered, ballotsIssued);
+    }
+
+
     /**
      * Core integrity checks for a polling center tally.
      *
      * @param sumVotes        Sum of all candidate votes (already computed)
      * @param invalid         Count of invalid ballots
-     * @param blank           Count of blank ballots
+     * @param unmarked           Count of unmarked ballots
      * @param rejected        Count of rejected ballots
      * @param spoiled         Count of spoiled ballots
-     * @param cast            Total ballots cast at the center
+     * @param ballotsInBox            Total ballots cast at the center
      * @param registered      Total registered voters (authoritative, from allocation)
      * @param ballotsIssued   (Optional) ballots issued to the center for the election; may be null
      *
@@ -352,21 +384,25 @@ public class NECResultServiceImplementation implements NECResultService {
      */
     private void validateTallyInternal(long sumVotes,
                                        int invalid,
-                                       int blank,
+                                       int unmarked,
                                        int rejected,
                                        int spoiled,
-                                       int cast,
+                                       int unused,         // ✅ NEW
+                                       int ballotsInBox,
                                        int registered,
                                        Integer ballotsIssued) {
 
         // ---- Basic domain sanity ----
-        if (cast < 0 || registered < 0) {
-            throw new ResponseStatusException(BAD_REQUEST, "Negative counts are not allowed: cast=" + cast + ", registered=" + registered);
-        }
-        if (invalid < 0 || blank < 0 || rejected < 0 || spoiled < 0) {
+        if (ballotsInBox < 0 || registered < 0) {
             throw new ResponseStatusException(BAD_REQUEST,
-                    "Negative category count (invalid/blank/rejected/spoiled) is not allowed: " +
-                            "invalid=" + invalid + ", blank=" + blank + ", rejected=" + rejected + ", spoiled=" + spoiled);
+                    "Negative counts are not allowed: cast=" + ballotsInBox + ", registered=" + registered);
+        }
+
+        if (invalid < 0 || unmarked < 0 || rejected < 0 || spoiled < 0 || unused < 0) {
+            throw new ResponseStatusException(BAD_REQUEST,
+                    "Negative category count (invalid/unmarked/rejected/spoiled/unused) is not allowed: " +
+                            "invalid=" + invalid + ", unmarked=" + unmarked + ", rejected=" + rejected +
+                            ", spoiled=" + spoiled + ", unused=" + unused);
         }
         if (ballotsIssued != null && ballotsIssued < 0) {
             throw new ResponseStatusException(BAD_REQUEST, "Negative ballotsIssued is not allowed: " + ballotsIssued);
@@ -375,39 +411,47 @@ public class NECResultServiceImplementation implements NECResultService {
             throw new ResponseStatusException(BAD_REQUEST, "sumVotes cannot be negative: " + sumVotes);
         }
 
-        // ---- Accounting check: all buckets must fit within 'cast' ----
-        long accounted = sumVotes + (long) invalid + blank + rejected + spoiled;
-        if (accounted > (long) cast) {
+        // ---- Accounting check: buckets that are part of ballotsInBox must fit within 'cast' ----
+        // ✅ NOTE: unused ballots are NOT part of cast, so exclude from accounted.
+        long insideBox = sumVotes + (long) invalid + unmarked + rejected;
+        if (insideBox != (long) ballotsInBox) {
             throw new ResponseStatusException(
                     BAD_REQUEST,
-                    "Accounted ballots exceed ballotsCast. " +
-                            "accounted=" + accounted + " (votes=" + sumVotes +
-                            ", invalid=" + invalid + ", blank=" + blank +
-                            ", rejected=" + rejected + ", spoiled=" + spoiled + "), cast=" + cast
-            );
-        }
-        // ---- Logistics check: cannot cast more than issued (when available) ----
-        if (ballotsIssued != null && (long) cast > ballotsIssued) {
-            throw new ResponseStatusException(
-                    BAD_REQUEST,
-                    "ballotsCast exceeds ballotsIssued. cast=" + cast + ", ballotsIssued=" + ballotsIssued
-            );
-        }
-        // ---- Registration check: turnout cannot exceed 100% ----
-        if ((long) cast > (long) registered) {
-            throw new ResponseStatusException(
-                    BAD_REQUEST,
-                    "ballotsCast exceeds totalRegisteredVoters. cast=" + cast + ", registered=" + registered
+                    "ballotsInBox mismatch. Expected ballotsInBox = validVotes + invalid + unmarked + rejected. " +
+                            "expected=" + insideBox +
+                            " (validVotes=" + sumVotes +
+                            ", invalid=" + invalid +
+                            ", unmarked=" + unmarked +
+                            ", rejected=" + rejected +
+                            "), but ballotsInBox=" + ballotsInBox
             );
         }
 
-        // ---- Soft warning: unaccounted ballots (not an error, but useful for QA) ----
-        long unaccounted = (long) cast - accounted;
-        if (unaccounted > 0) {
-            // If you have a logger, keep this; otherwise remove or replace with your preferred logging.
-            // log.warn("Unaccounted ballots detected: {} out of cast={} (votes={}, invalid={}, blank={}, rejected={}, spoiled={})",
-            //         unaccounted, cast, sumVotes, invalid, blank, rejected, spoiled);
+
+        // ---- Logistics check: ballotsInBox + unused cannot exceed issued (when available) ----
+        long totalHandled = (long) ballotsInBox + (long) unused + (long) spoiled;
+        if (ballotsIssued != null && totalHandled > ballotsIssued) {
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "ballotsInBox + unusedBallots + spoiledBallots exceeds ballotsIssued. " +
+                            "ballotsInBox=" + ballotsInBox +
+                            ", unusedBallots=" + unused +
+                            ", spoiledBallots=" + spoiled +
+                            ", total=" + totalHandled +
+                            ", ballotsIssued=" + ballotsIssued
+            );
         }
+
+
+        // ---- Registration check: turnout cannot exceed 100% ----
+        if ((long) ballotsInBox > (long) registered) {
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "ballotsInBox exceeds totalRegisteredVoters. ballotsInBox=" + ballotsInBox + ", registered=" + registered
+            );
+        }
+
     }
+
 
 }

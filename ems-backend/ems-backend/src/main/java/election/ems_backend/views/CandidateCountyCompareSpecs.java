@@ -17,6 +17,15 @@ public final class CandidateCountyCompareSpecs {
         };
     }
 
+    public static Specification<CandidateCountyCompare> contestEquals(UUID contestId) {
+        return (root, query, cb) -> {
+            if (contestId == null) return null;
+            Path<UUID> p = root.get("id").get("contestId");
+            return cb.equal(p, contestId);
+        };
+    }
+
+
     public static Specification<CandidateCountyCompare> countyEquals(UUID countyId) {
         return (root, query, cb) -> {
             if (countyId == null) return null;

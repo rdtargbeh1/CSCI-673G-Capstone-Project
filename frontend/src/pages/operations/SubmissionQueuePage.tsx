@@ -1,13 +1,24 @@
-// ✅ FILE: src/pages/operations/submissions/SubmissionQueuePage.tsx
+
+
+// ✅ FILE: src/pages/operations/SubmissionQueuePage.tsx
 //
-// ✅ FIX: Table stays (was disappearing because earlier snippet was partial).
-// ✅ ENHANCEMENT: Drawer is NO LONGER full-height. It “floats”, max-height limited, content-driven height.
-// ✅ ENHANCEMENT: Candidate list comfortably fits Liberia’s ~15 candidates; only scrolls if more than 15.
-// ✅ ENHANCEMENT: “New” button stands out (primary background).
-// ✅ UPDATE (REQUESTED): Reduce size of status cards AND align them on the right.
+// ✅ UPDATE (REQUESTED):
+// 1) Add "Spoiled" column on the table.
+// 2) Fix Invalid Total: spoiled MUST NOT be included in Invalid total (same as SubmissionTab).
+//    - Invalid = invalidBallots + rejectedBallots + unmarkedBallots
+//    - Spoiled shown separately
+//    - Cast = valid + invalid + spoiled
+// 3) Evidence column now comes from TallySheet uploads (backend /api/tally-sheets/submission/{submissionId})
+//    - If no tally sheet uploads → show "Missing evidence"
+//    - Missing Evidence tab uses tally-sheet evidence too.
 
 import React, { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  useQueries,
+} from "@tanstack/react-query";
 import {
   Plus,
   RefreshCw,
@@ -21,6 +32,7 @@ import {
 } from "lucide-react";
 
 import { useAuthStore } from "../../shared/store/authStore";
+import { apiClient } from "../../shared/lib/apiClient";
 import { Panel, Badge } from "../elections/shared/elections-ui";
 
 import {
@@ -98,25 +110,45 @@ function computeValidVotes(s: any) {
     0
   );
 }
+function computeSpoiled(s: any) {
+  return Number(s?.spoiledBallots) || 0;
+}
+
+/**
+ * ✅ FIX: Invalid Total (match SubmissionTab)
+ * - DO NOT include spoiled ballots in invalid total
+ */
 function computeInvalidTotal(s: any) {
-  const it = s?.invalidTotal;
-  if (typeof it === "number" && isFinite(it)) return it;
   return (
     (Number(s?.invalidBallots) || 0) +
     (Number(s?.rejectedBallots) || 0) +
-    (Number(s?.spoiledBallots) || 0) +
     (Number(s?.unmarkedBallots) || 0)
   );
 }
+
+/**
+ * ✅ Cast should include spoiled (since spoiled is no longer inside invalid)
+ */
 function computeBallotsCast(s: any) {
   const bc = s?.ballotsCast;
   if (typeof bc === "number" && isFinite(bc)) return bc;
-  return computeValidVotes(s) + computeInvalidTotal(s);
+  return computeValidVotes(s) + computeInvalidTotal(s) + computeSpoiled(s);
 }
-function hasEvidence(s: any) {
-  const cnt = Number(s?.tallySheetCount ?? 0);
-  const url = String(s?.tallySheetUrl ?? "").trim();
-  return cnt > 0 || Boolean(url);
+
+/** Tally sheet DTO (minimal; adjust if you want more fields) */
+type TallySheetDto = {
+  uploadId?: string;
+  submissionId?: string;
+  url?: string;
+  fileUrl?: string;
+  originalFileName?: string;
+  createdAt?: string;
+};
+
+/** Fetch tally sheets for a submission */
+async function fetchTallySheetsBySubmission(submissionId: string) {
+  const { data } = await apiClient.get(`/tally-sheets/submission/${submissionId}`);
+  return (data ?? []) as TallySheetDto[];
 }
 
 type QueueTab = "ALL" | VoteStatus | "MISSING_EVIDENCE";
@@ -142,9 +174,7 @@ export default function SubmissionQueuePage() {
   ].includes((role || "DATA_ENTRY").toUpperCase());
 
   const canVerify =
-    Boolean(currentOrgId) ||
-    dashboardMode === "SYSTEM" ||
-    dashboardMode === "NEC";
+    Boolean(currentOrgId) || dashboardMode === "SYSTEM" || dashboardMode === "NEC";
 
   const canFlag = canVerify;
 
@@ -163,9 +193,7 @@ export default function SubmissionQueuePage() {
 
   useEffect(() => {
     if (!electionId && elections.length) {
-      const sorted = [...elections].sort(
-        (a, b) => (b.year ?? 0) - (a.year ?? 0)
-      );
+      const sorted = [...elections].sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
       setElectionId(sorted[0].electionId);
     }
   }, [elections, electionId]);
@@ -311,10 +339,7 @@ export default function SubmissionQueuePage() {
         electionId,
         page,
         size,
-        status:
-          queue === "ALL" || queue === "MISSING_EVIDENCE"
-            ? undefined
-            : (queue as any),
+        status: queue === "ALL" || queue === "MISSING_EVIDENCE" ? undefined : (queue as any),
         contestId: filterContest || undefined,
         countyId: filterCounty || undefined,
         districtId: filterDistrict || undefined,
@@ -327,10 +352,62 @@ export default function SubmissionQueuePage() {
 
   const rawItems: VoteSubmissionDto[] = (submissionsQ.data?.items ?? []) as any;
 
+  /**
+   * ✅ Evidence comes from tally sheet uploads.
+   * We fetch tally-sheets per submission on the current page (size=20).
+   * This avoids depending on stale submission fields like tallySheetCount/tallySheetUrl.
+   */
+  const submissionIds = useMemo(
+    () =>
+      (rawItems as any[])
+        .map((s) => String(s?.submissionId ?? ""))
+        .filter(Boolean),
+    [rawItems]
+  );
+
+  const tallySheetQueries = useQueries({
+    queries: submissionIds.map((id) => ({
+      queryKey: ["tally-sheets", "by-submission", id],
+      queryFn: () => fetchTallySheetsBySubmission(id),
+      enabled: enabled && Boolean(id),
+      staleTime: 30_000,
+      retry: 1,
+    })),
+  });
+
+  const evidenceMap = useMemo(() => {
+    const map = new Map<string, { count: number; firstUrl?: string }>();
+    submissionIds.forEach((id, idx) => {
+      const q = tallySheetQueries[idx];
+      if (!q || q.isLoading || q.isError) return;
+      const arr = (q.data ?? []) as TallySheetDto[];
+      const first = arr[0];
+      const url = String(first?.url ?? first?.fileUrl ?? "").trim() || undefined;
+      map.set(id, { count: arr.length, firstUrl: url });
+    });
+    return map;
+  }, [submissionIds, tallySheetQueries]);
+
+  const evidenceLoading = useMemo(() => {
+    // if any query is still loading, treat as loading for the page
+    return tallySheetQueries.some((q) => q.isLoading);
+  }, [tallySheetQueries]);
+
+  const hasEvidence = (submissionId: string) => {
+    if (!submissionId) return false;
+    const v = evidenceMap.get(submissionId);
+    return (v?.count ?? 0) > 0;
+  };
+
   const items: VoteSubmissionDto[] = useMemo(() => {
     if (queue !== "MISSING_EVIDENCE") return rawItems as any;
-    return (rawItems as any[]).filter((s) => !hasEvidence(s)) as any;
-  }, [rawItems, queue]);
+    return (rawItems as any[]).filter((s) => {
+      const id = String(s?.submissionId ?? "");
+      // While evidence is loading, don't hide rows unexpectedly:
+      if (evidenceLoading) return true;
+      return !hasEvidence(id);
+    }) as any;
+  }, [rawItems, queue, evidenceLoading, evidenceMap]);
 
   const clearFilters = () => {
     setFilterContest("");
@@ -341,9 +418,9 @@ export default function SubmissionQueuePage() {
   };
 
   const refetchList = async () => {
-    await qc.invalidateQueries({
-      queryKey: ["ops-submission-queue", electionId],
-    });
+    await qc.invalidateQueries({ queryKey: ["ops-submission-queue", electionId] });
+    // Also refresh tally sheet evidence for current page
+    await qc.invalidateQueries({ queryKey: ["tally-sheets"] });
   };
 
   /** ---------------- Status Cards (reduced) ---------------- */
@@ -362,10 +439,15 @@ export default function SubmissionQueuePage() {
       base.ALL++;
       const st = String(s?.status ?? "").toUpperCase();
       if ((base as any)[st] != null) (base as any)[st] += 1;
-      if (!hasEvidence(s)) base.MISSING_EVIDENCE += 1;
+
+      const id = String(s?.submissionId ?? "");
+      if (!id) continue;
+
+      // While loading, don't inflate missing evidence
+      if (!evidenceLoading && !hasEvidence(id)) base.MISSING_EVIDENCE += 1;
     }
     return base;
-  }, [rawItems]);
+  }, [rawItems, evidenceLoading, evidenceMap]);
 
   /** ---------------- Create/Edit ---------------- */
   const [openNew, setOpenNew] = useState(false);
@@ -374,9 +456,7 @@ export default function SubmissionQueuePage() {
 
   const canEditRow = (s: VoteSubmissionDto) => {
     const st = String((s as any).status ?? "").toUpperCase();
-    return (
-      canCreate && (st === "PENDING" || st === "REJECTED" || st === "DRAFT")
-    );
+    return canCreate && (st === "PENDING" || st === "REJECTED" || st === "DRAFT");
   };
 
   const isFlaggedRow = (s: VoteSubmissionDto) =>
@@ -399,9 +479,7 @@ export default function SubmissionQueuePage() {
   /** ---------------- VERIFY ---------------- */
   const [openVerify, setOpenVerify] = useState(false);
   const [verifyId, setVerifyId] = useState<string>("");
-  const [verifyDecision, setVerifyDecision] = useState<"ACCEPT" | "REJECT">(
-    "ACCEPT"
-  );
+  const [verifyDecision, setVerifyDecision] = useState<"ACCEPT" | "REJECT">("ACCEPT");
   const [verifyComment, setVerifyComment] = useState<string>("");
 
   const verifierMeQ = useQuery<UserDto>({
@@ -416,11 +494,7 @@ export default function SubmissionQueuePage() {
   const verifierName = fullName(verifierUser) || "—";
 
   const verifyM = useMutation({
-    mutationFn: async (p: {
-      id: string;
-      accept: boolean;
-      comment?: string;
-    }) => {
+    mutationFn: async (p: { id: string; accept: boolean; comment?: string }) => {
       return verifySubmission(p.id, {
         verifierUserId: (verifierUser as any)?.userId ?? (user as any)?.userId,
         accept: p.accept,
@@ -442,10 +516,7 @@ export default function SubmissionQueuePage() {
     enabled: openDrawer && Boolean(drawerContestId),
     queryKey: ["contest-options", "drawer", drawerContestId],
     queryFn: async () =>
-      (await listOptionsByContest({
-        contestId: drawerContestId,
-        onlyActive: true,
-      })) as any,
+      (await listOptionsByContest({ contestId: drawerContestId, onlyActive: true })) as any,
     staleTime: 60_000,
     retry: 1,
   });
@@ -469,10 +540,7 @@ export default function SubmissionQueuePage() {
   }, [contestOptionsQ.data]);
 
   const drawerVotes = useMemo(() => {
-    const cv = ((drawerRow as any)?.candidateVotes ?? {}) as Record<
-      string,
-      number
-    >;
+    const cv = ((drawerRow as any)?.candidateVotes ?? {}) as Record<string, number>;
     const entries = Object.entries(cv).map(([k, v]) => ({
       key: k,
       name: candidateNameByKey.get(k) ?? k,
@@ -494,96 +562,26 @@ export default function SubmissionQueuePage() {
             {/* ✅ UPDATED: cards smaller + RIGHT-ALIGNED */}
             <div className="w-full flex justify-end">
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-1.5 w-auto">
-                <StatCard
-                  label="All"
-                  value={statusCounts.ALL}
-                  tone="gray"
-                  icon={<FileText className="h-3.5 w-3.5" />}
-                />
-                <StatCard
-                  label="Pending"
-                  value={statusCounts.PENDING}
-                  tone="blue"
-                  icon={<AlertTriangle className="h-3.5 w-3.5" />}
-                />
-                <StatCard
-                  label="Flagged"
-                  value={statusCounts.FLAGGED}
-                  tone="orange"
-                  icon={<Flag className="h-3.5 w-3.5" />}
-                />
-                <StatCard
-                  label="Draft"
-                  value={statusCounts.DRAFT}
-                  tone="purple"
-                  icon={<FileText className="h-3.5 w-3.5" />}
-                />
-                <StatCard
-                  label="Verified"
-                  value={statusCounts.VERIFIED}
-                  tone="green"
-                  icon={<CheckCircle2 className="h-3.5 w-3.5" />}
-                />
-                <StatCard
-                  label="Rejected"
-                  value={statusCounts.REJECTED}
-                  tone="red"
-                  icon={<X className="h-3.5 w-3.5" />}
-                />
-                <StatCard
-                  label="Missing Evidence"
-                  value={statusCounts.MISSING_EVIDENCE}
-                  tone="amber"
-                  icon={<FileText className="h-3.5 w-3.5" />}
-                />
+                <StatCard label="All" value={statusCounts.ALL} tone="gray" icon={<FileText className="h-3.5 w-3.5" />} />
+                <StatCard label="Pending" value={statusCounts.PENDING} tone="blue" icon={<AlertTriangle className="h-3.5 w-3.5" />} />
+                <StatCard label="Flagged" value={statusCounts.FLAGGED} tone="orange" icon={<Flag className="h-3.5 w-3.5" />} />
+                <StatCard label="Draft" value={statusCounts.DRAFT} tone="purple" icon={<FileText className="h-3.5 w-3.5" />} />
+                <StatCard label="Verified" value={statusCounts.VERIFIED} tone="green" icon={<CheckCircle2 className="h-3.5 w-3.5" />} />
+                <StatCard label="Rejected" value={statusCounts.REJECTED} tone="red" icon={<X className="h-3.5 w-3.5" />} />
+                <StatCard label="Missing Evidence" value={statusCounts.MISSING_EVIDENCE} tone="amber" icon={<FileText className="h-3.5 w-3.5" />} />
               </div>
             </div>
 
             <div className="w-full flex flex-col gap-2">
               <div className="w-full flex justify-end">
                 <div className="flex flex-wrap gap-2 items-center justify-end">
-                  <StatusPill
-                    active={queue === "ALL"}
-                    label="All"
-                    tone="gray"
-                    onClick={() => setQueue("ALL")}
-                  />
-                  <StatusPill
-                    active={queue === "PENDING"}
-                    label="Pending"
-                    tone="blue"
-                    onClick={() => setQueue("PENDING")}
-                  />
-                  <StatusPill
-                    active={queue === "FLAGGED"}
-                    label="Flagged"
-                    tone="orange"
-                    onClick={() => setQueue("FLAGGED")}
-                  />
-                  <StatusPill
-                    active={queue === "DRAFT"}
-                    label="Draft"
-                    tone="purple"
-                    onClick={() => setQueue("DRAFT")}
-                  />
-                  <StatusPill
-                    active={queue === "VERIFIED"}
-                    label="Verified"
-                    tone="green"
-                    onClick={() => setQueue("VERIFIED")}
-                  />
-                  <StatusPill
-                    active={queue === "REJECTED"}
-                    label="Rejected"
-                    tone="red"
-                    onClick={() => setQueue("REJECTED")}
-                  />
-                  <StatusPill
-                    active={queue === "MISSING_EVIDENCE"}
-                    label="Missing Evidence"
-                    tone="amber"
-                    onClick={() => setQueue("MISSING_EVIDENCE")}
-                  />
+                  <StatusPill active={queue === "ALL"} label="All" tone="gray" onClick={() => setQueue("ALL")} />
+                  <StatusPill active={queue === "PENDING"} label="Pending" tone="blue" onClick={() => setQueue("PENDING")} />
+                  <StatusPill active={queue === "FLAGGED"} label="Flagged" tone="orange" onClick={() => setQueue("FLAGGED")} />
+                  <StatusPill active={queue === "DRAFT"} label="Draft" tone="purple" onClick={() => setQueue("DRAFT")} />
+                  <StatusPill active={queue === "VERIFIED"} label="Verified" tone="green" onClick={() => setQueue("VERIFIED")} />
+                  <StatusPill active={queue === "REJECTED"} label="Rejected" tone="red" onClick={() => setQueue("REJECTED")} />
+                  <StatusPill active={queue === "MISSING_EVIDENCE"} label="Missing Evidence" tone="amber" onClick={() => setQueue("MISSING_EVIDENCE")} />
                   <Badge text={`Actor: ${actorName}`} />
                 </div>
               </div>
@@ -713,7 +711,6 @@ export default function SubmissionQueuePage() {
                     Refresh
                   </button>
 
-                  {/* ✅ STAND-OUT BUTTON */}
                   {canCreate ? (
                     <button
                       type="button"
@@ -731,8 +728,7 @@ export default function SubmissionQueuePage() {
 
               {dashboardMode === "SYSTEM" && !effectiveOrgId ? (
                 <div className="text-xs font-bold text-red-700 text-right">
-                  Select a tenant (organization) to view submissions in
-                  Operations.
+                  Select a tenant (organization) to view submissions in Operations.
                 </div>
               ) : null}
             </div>
@@ -757,7 +753,8 @@ export default function SubmissionQueuePage() {
                 <Th className="text-right">Ballots Issued</Th>
                 <Th className="text-right">Valid</Th>
                 <Th className="text-right">Invalid</Th>
-                <Th className="text-right">Cast</Th>
+                <Th className="text-right">Spoiled</Th>
+                <Th className="text-right">Cast (In Box)</Th>
                 <Th className="text-right">Unused</Th>
                 <Th>Agent</Th>
                 <Th>Contest</Th>
@@ -770,20 +767,21 @@ export default function SubmissionQueuePage() {
             <tbody>
               {submissionsQ.isLoading ? (
                 <tr>
-                  <td className="p-3 text-slate-500" colSpan={14}>
+                  <td className="p-3 text-slate-500" colSpan={15}>
                     Loading submissions…
                   </td>
                 </tr>
               ) : !items.length ? (
                 <tr>
-                  <td className="p-3 text-slate-500" colSpan={14}>
+                  <td className="p-3 text-slate-500" colSpan={15}>
                     No submissions found.
                   </td>
                 </tr>
               ) : (
                 items.map((s: any) => {
                   const valid = computeValidVotes(s);
-                  const invTotal = computeInvalidTotal(s);
+                  const invalid = computeInvalidTotal(s);
+                  const spoiled = computeSpoiled(s);
                   const cast = computeBallotsCast(s);
                   const unused = s?.unusedBallots ?? s?.blankBallots ?? 0;
 
@@ -794,14 +792,15 @@ export default function SubmissionQueuePage() {
                       : s?.placeCode ?? "—");
 
                   const flagged = isFlaggedRow(s);
-                  const evidenceOk = hasEvidence(s);
+
+                  const sid = String(s?.submissionId ?? "");
+                  const evidenceOk = evidenceLoading ? false : hasEvidence(sid);
+                  const evidenceCount = evidenceMap.get(sid)?.count ?? 0;
+                  const evidenceUrl = evidenceMap.get(sid)?.firstUrl;
 
                   return (
                     <tr key={s.submissionId} className="border-t">
-                      <Td
-                        title={s.centerName ?? ""}
-                        className="truncate max-w-220px"
-                      >
+                      <Td title={s.centerName ?? ""} className="truncate max-w-220px">
                         {s.centerName ?? "—"}
                       </Td>
                       <Td title={place} className="truncate max-w-160px">
@@ -809,47 +808,59 @@ export default function SubmissionQueuePage() {
                       </Td>
 
                       <Td>
-                        <span
-                          className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-extrabold ${
-                            evidenceOk
-                              ? "bg-green-50 text-green-700 border border-green-200"
-                              : "bg-red-50 text-red-700 border border-red-200"
-                          }`}
-                          title={
-                            evidenceOk
-                              ? "Evidence attached"
-                              : "No evidence uploaded"
-                          }
-                        >
-                          {evidenceOk ? "Attached" : "Missing"}
-                        </span>
+                        {evidenceLoading ? (
+                          <span className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-extrabold bg-slate-50 text-slate-700 border border-slate-200">
+                            Checking…
+                          </span>
+                        ) : (
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-extrabold ${
+                              evidenceOk
+                                ? "bg-green-50 text-green-700 border border-green-200"
+                                : "bg-red-50 text-red-700 border border-red-200"
+                            }`}
+                            title={
+                              evidenceOk
+                                ? `Tally sheet attached (${evidenceCount})`
+                                : "No tally sheet uploaded during submission"
+                            }
+                          >
+                            {evidenceOk ? (
+                              evidenceUrl ? (
+                                <a
+                                  className="underline underline-offset-2"
+                                  href={evidenceUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  Attached ({evidenceCount})
+                                </a>
+                              ) : (
+                                `Attached (${evidenceCount})`
+                              )
+                            ) : (
+                              "Missing evidence"
+                            )}
+                          </span>
+                        )}
                       </Td>
 
-                      <Td className="text-right font-semibold">
-                        {fmtNum(s.registeredVoters)}
-                      </Td>
-                      <Td className="text-right font-semibold">
-                        {fmtNum(s.ballotsIssued)}
-                      </Td>
+                      <Td className="text-right font-semibold">{fmtNum(s.registeredVoters)}</Td>
+                      <Td className="text-right font-semibold">{fmtNum(s.ballotsIssued)}</Td>
 
                       <Td className="text-right font-semibold">{valid}</Td>
-                      <Td className="text-right font-semibold">{invTotal}</Td>
+                      <Td className="text-right font-semibold">{invalid}</Td>
+                      <Td className="text-right font-semibold">{spoiled}</Td>
                       <Td className="text-right font-semibold">{cast}</Td>
-                      <Td className="text-right font-semibold">
-                        {fmtNum(unused)}
-                      </Td>
 
-                      <Td className="truncate max-w-170px">
-                        {s.agentName ?? "—"}
-                      </Td>
-                      <Td className="truncate max-w-220px">
-                        {s.contestName ?? "—"}
-                      </Td>
+                      <Td className="text-right font-semibold">{fmtNum(unused)}</Td>
+
+                      <Td className="truncate max-w-170px">{s.agentName ?? "—"}</Td>
+                      <Td className="truncate max-w-220px">{s.contestName ?? "—"}</Td>
                       <Td>{s.status ?? "—"}</Td>
                       <Td className="whitespace-nowrap">
-                        {s.submissionTime
-                          ? new Date(s.submissionTime).toLocaleString()
-                          : "—"}
+                        {s.submissionTime ? new Date(s.submissionTime).toLocaleString() : "—"}
                       </Td>
 
                       <Td>
@@ -888,9 +899,7 @@ export default function SubmissionQueuePage() {
                           <button
                             type="button"
                             className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border bg-white ${
-                              !canVerify || verifyM.isPending
-                                ? "opacity-50"
-                                : ""
+                              !canVerify || verifyM.isPending ? "opacity-50" : ""
                             }`}
                             disabled={!canVerify || verifyM.isPending}
                             onClick={() => {
@@ -915,9 +924,7 @@ export default function SubmissionQueuePage() {
                               if (!id) return;
 
                               if (!actorUserId) {
-                                alert(
-                                  "actorUserId missing. Ensure /users/me loads."
-                                );
+                                alert("actorUserId missing. Ensure /users/me loads.");
                                 return;
                               }
 
@@ -955,9 +962,7 @@ export default function SubmissionQueuePage() {
             <button
               type="button"
               onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={
-                !submissionsQ.data || page <= 0 || submissionsQ.isFetching
-              }
+              disabled={!submissionsQ.data || page <= 0 || submissionsQ.isFetching}
               className="h-9 rounded-lg border bg-white px-3 text-sm font-bold"
             >
               Prev
@@ -967,17 +972,13 @@ export default function SubmissionQueuePage() {
               type="button"
               onClick={() =>
                 setPage((p) =>
-                  submissionsQ.data &&
-                  p + 1 < (submissionsQ.data as any).totalPages
-                    ? p + 1
-                    : p
+                  submissionsQ.data && p + 1 < (submissionsQ.data as any).totalPages ? p + 1 : p
                 )
               }
               disabled={
                 !submissionsQ.data ||
                 submissionsQ.isFetching ||
-                (submissionsQ.data as any).page + 1 >=
-                  ((submissionsQ.data as any).totalPages ?? 0)
+                (submissionsQ.data as any).page + 1 >= ((submissionsQ.data as any).totalPages ?? 0)
               }
               className="h-9 rounded-lg border bg-white px-3 text-sm font-bold"
             >
@@ -986,9 +987,8 @@ export default function SubmissionQueuePage() {
           </div>
 
           <div className="text-xs text-slate-600 sm:text-right">
-            Page{" "}
-            {submissionsQ.data ? (submissionsQ.data as any).page + 1 : page + 1}{" "}
-            / {submissionsQ.data ? (submissionsQ.data as any).totalPages : "?"}
+            Page {submissionsQ.data ? (submissionsQ.data as any).page + 1 : page + 1} /{" "}
+            {submissionsQ.data ? (submissionsQ.data as any).totalPages : "?"}
           </div>
         </div>
 
@@ -1103,9 +1103,7 @@ export default function SubmissionQueuePage() {
                     {
                       id: verifyId,
                       accept: verifyDecision === "ACCEPT",
-                      comment: verifyComment?.trim()
-                        ? verifyComment.trim()
-                        : undefined,
+                      comment: verifyComment?.trim() ? verifyComment.trim() : undefined,
                     },
                     { onSuccess: () => setOpenVerify(false) }
                   );
@@ -1125,9 +1123,7 @@ export default function SubmissionQueuePage() {
       {openDrawer ? (
         <Drawer
           title="Submission Details"
-          subtitle={`${electionName} • ${
-            (drawerRow as any)?.contestName ?? "—"
-          }`}
+          subtitle={`${electionName} • ${(drawerRow as any)?.contestName ?? "—"}`}
           onClose={() => setOpenDrawer(false)}
         >
           {!drawerRow ? (
@@ -1135,18 +1131,9 @@ export default function SubmissionQueuePage() {
           ) : (
             <div className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <Info
-                  label="Status"
-                  value={String((drawerRow as any).status ?? "—")}
-                />
-                <Info
-                  label="Agent"
-                  value={String((drawerRow as any).agentName ?? "—")}
-                />
-                <Info
-                  label="Center"
-                  value={String((drawerRow as any).centerName ?? "—")}
-                />
+                <Info label="Status" value={String((drawerRow as any).status ?? "—")} />
+                <Info label="Agent" value={String((drawerRow as any).agentName ?? "—")} />
+                <Info label="Center" value={String((drawerRow as any).centerName ?? "—")} />
                 <Info
                   label="Place"
                   value={String(
@@ -1156,47 +1143,42 @@ export default function SubmissionQueuePage() {
                         : (drawerRow as any).placeCode ?? "—")
                   )}
                 />
-                <Info
-                  label="Registered Voters"
-                  value={fmtNum((drawerRow as any).registeredVoters)}
-                />
-                <Info
-                  label="Ballots Issued"
-                  value={fmtNum((drawerRow as any).ballotsIssued)}
-                />
+                <Info label="Registered Voters" value={fmtNum((drawerRow as any).registeredVoters)} />
+                <Info label="Ballots Issued" value={fmtNum((drawerRow as any).ballotsIssued)} />
+
+                {/* Evidence from tally sheets */}
                 <Info
                   label="Evidence"
-                  value={hasEvidence(drawerRow) ? "Attached" : "Missing"}
+                  value={
+                    evidenceLoading
+                      ? "Checking…"
+                      : hasEvidence(String((drawerRow as any)?.submissionId ?? ""))
+                      ? `Attached (${evidenceMap.get(String((drawerRow as any)?.submissionId ?? ""))?.count ?? 0})`
+                      : "Missing evidence"
+                  }
                 />
+
                 <Info
                   label="Submitted At"
                   value={
                     (drawerRow as any).submissionTime
-                      ? new Date(
-                          (drawerRow as any).submissionTime
-                        ).toLocaleString()
+                      ? new Date((drawerRow as any).submissionTime).toLocaleString()
                       : "—"
                   }
                 />
               </div>
 
               <div className="rounded-xl border p-3">
-                <div className="text-sm font-extrabold mb-2">
-                  Candidate Votes
-                </div>
+                <div className="text-sm font-extrabold mb-2">Candidate Votes</div>
 
                 {contestOptionsQ.isLoading ? (
-                  <div className="text-sm text-slate-600">
-                    Loading candidate names…
-                  </div>
+                  <div className="text-sm text-slate-600">Loading candidate names…</div>
                 ) : contestOptionsQ.isError ? (
                   <div className="text-sm font-bold text-red-700">
                     {friendlyError(contestOptionsQ.error)}
                   </div>
                 ) : !drawerVotes.length ? (
-                  <div className="text-sm text-slate-600">
-                    No candidate votes.
-                  </div>
+                  <div className="text-sm text-slate-600">No candidate votes.</div>
                 ) : (
                   <div className="overflow-x-auto">
                     <div className="rounded-lg border max-h-[520px] sm:max-h-[560px] overflow-y-auto">
@@ -1214,9 +1196,7 @@ export default function SubmissionQueuePage() {
                         <tbody>
                           {drawerVotes.map((r) => (
                             <tr key={r.key} className="border-t">
-                              <td className="p-2 text-sm font-bold">
-                                {r.name}
-                              </td>
+                              <td className="p-2 text-sm font-bold">{r.name}</td>
                               <td className="p-2 text-sm font-extrabold text-right">
                                 {fmtNum(r.votes)}
                               </td>
@@ -1228,8 +1208,7 @@ export default function SubmissionQueuePage() {
 
                     {drawerVotes.length > 15 ? (
                       <div className="mt-2 text-[11px] font-bold text-slate-600">
-                        This contest has {drawerVotes.length} candidates. Scroll
-                        to view all.
+                        This contest has {drawerVotes.length} candidates. Scroll to view all.
                       </div>
                     ) : null}
                   </div>
@@ -1297,91 +1276,46 @@ type Tone = "gray" | "blue" | "orange" | "purple" | "green" | "red" | "amber";
 function toneStyles(t: Tone) {
   switch (t) {
     case "blue":
-      return {
-        icon: "text-blue-600",
-        bg: "bg-blue-50",
-        border: "border-blue-200",
-      };
+      return { icon: "text-blue-600", bg: "bg-blue-50", border: "border-blue-200" };
     case "orange":
-      return {
-        icon: "text-orange-600",
-        bg: "bg-orange-50",
-        border: "border-orange-200",
-      };
+      return { icon: "text-orange-600", bg: "bg-orange-50", border: "border-orange-200" };
     case "purple":
-      return {
-        icon: "text-purple-600",
-        bg: "bg-purple-50",
-        border: "border-purple-200",
-      };
+      return { icon: "text-purple-600", bg: "bg-purple-50", border: "border-purple-200" };
     case "green":
-      return {
-        icon: "text-green-600",
-        bg: "bg-green-50",
-        border: "border-green-200",
-      };
+      return { icon: "text-green-600", bg: "bg-green-50", border: "border-green-200" };
     case "red":
-      return {
-        icon: "text-red-600",
-        bg: "bg-red-50",
-        border: "border-red-200",
-      };
+      return { icon: "text-red-600", bg: "bg-red-50", border: "border-red-200" };
     case "amber":
-      return {
-        icon: "text-amber-700",
-        bg: "bg-amber-50",
-        border: "border-amber-200",
-      };
+      return { icon: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200" };
     default:
-      return {
-        icon: "text-slate-600",
-        bg: "bg-slate-50",
-        border: "border-slate-200",
-      };
+      return { icon: "text-slate-600", bg: "bg-slate-50", border: "border-slate-200" };
   }
 }
 
-/** ✅ UPDATED: smaller StatCard */
-function StatCard(props: {
-  label: string;
-  value: number;
-  icon?: React.ReactNode;
-  tone: Tone;
-}) {
+function StatCard(props: { label: string; value: number; icon?: React.ReactNode; tone: Tone }) {
   const ts = toneStyles(props.tone);
   return (
     <div className="rounded-xl border bg-white px-2 py-1.5 flex items-center gap-1.5">
-      <div
-        className={`h-8 w-8 rounded-lg border ${ts.border} ${ts.bg} grid place-items-center`}
-      >
+      <div className={`h-8 w-8 rounded-lg border ${ts.border} ${ts.bg} grid place-items-center`}>
         <span className={ts.icon}>{props.icon}</span>
       </div>
 
       <div className="min-w-0 leading-tight">
-        <div className="text-[10px] font-extrabold text-slate-600 truncate">
-          {props.label}
-        </div>
+        <div className="text-[10px] font-extrabold text-slate-600 truncate">{props.label}</div>
         <div className="text-base font-extrabold leading-4">{props.value}</div>
       </div>
     </div>
   );
 }
 
-function StatusPill(props: {
-  active: boolean;
-  label: string;
-  tone: Tone;
-  onClick: () => void;
-}) {
+function StatusPill(props: { active: boolean; label: string; tone: Tone; onClick: () => void }) {
   const ts = toneStyles(props.tone);
   return (
     <button
       type="button"
       onClick={props.onClick}
       className={`relative h-9 px-3 rounded-xl border text-sm font-extrabold transition ${
-        props.active
-          ? `bg-white border-slate-300 shadow-sm`
-          : `bg-white border-slate-200 hover:bg-slate-50`
+        props.active ? `bg-white border-slate-300 shadow-sm` : `bg-white border-slate-200 hover:bg-slate-50`
       }`}
       title={props.label}
     >
@@ -1389,9 +1323,7 @@ function StatusPill(props: {
         <span className={`h-2.5 w-2.5 rounded-full ${ts.icon}`} />
         <span className="text-slate-800">{props.label}</span>
       </span>
-      {props.active ? (
-        <span className="absolute left-3 right-3 -bottom-1 h-1 rounded-full bg-blue-600" />
-      ) : null}
+      {props.active ? <span className="absolute left-3 right-3 -bottom-1 h-1 rounded-full bg-blue-600" /> : null}
     </button>
   );
 }
@@ -1400,20 +1332,13 @@ function Th(props: React.ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
       {...props}
-      className={`p-2 text-[10px] sm:text-[11px] font-extrabold ${
-        props.className ?? ""
-      }`}
+      className={`p-2 text-[10px] sm:text-[11px] font-extrabold ${props.className ?? ""}`}
     />
   );
 }
 
 function Td(props: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  return (
-    <td
-      {...props}
-      className={`p-2 align-top text-slate-800 ${props.className ?? ""}`}
-    />
-  );
+  return <td {...props} className={`p-2 align-top text-slate-800 ${props.className ?? ""}`} />;
 }
 
 function NoteCard(props: { title: string; lines: string[] }) {
@@ -1432,31 +1357,16 @@ function NoteCard(props: { title: string; lines: string[] }) {
 function Info(props: { label: string; value: string }) {
   return (
     <div className="rounded-xl border bg-slate-50 px-3 py-2">
-      <div className="text-[11px] font-extrabold text-slate-600">
-        {props.label}
-      </div>
+      <div className="text-[11px] font-extrabold text-slate-600">{props.label}</div>
       <div className="text-sm font-extrabold text-slate-900">{props.value}</div>
     </div>
   );
 }
 
-/** ✅ UPDATED Drawer:
- * - no longer full-height
- * - responsive floating panel
- * - max-height protected, content-driven height
- */
-function Drawer(props: {
-  title: string;
-  subtitle?: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
+function Drawer(props: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-50">
-      <div
-        className="absolute inset-0 bg-slate-900/40"
-        onClick={props.onClose}
-      />
+      <div className="absolute inset-0 bg-slate-900/40" onClick={props.onClose} />
 
       <div className="absolute inset-y-0 right-0 p-3 sm:p-4 flex items-start justify-end">
         <div
@@ -1478,16 +1388,10 @@ function Drawer(props: {
             <div className="min-w-0">
               <div className="text-base font-extrabold">{props.title}</div>
               {props.subtitle ? (
-                <div className="text-xs text-slate-500 mt-0.5 truncate">
-                  {props.subtitle}
-                </div>
+                <div className="text-xs text-slate-500 mt-0.5 truncate">{props.subtitle}</div>
               ) : null}
             </div>
-            <button
-              type="button"
-              onClick={props.onClose}
-              className="px-3 py-1.5 rounded-md border bg-white text-sm"
-            >
+            <button type="button" onClick={props.onClose} className="px-3 py-1.5 rounded-md border bg-white text-sm">
               Close
             </button>
           </div>
@@ -1502,9 +1406,7 @@ function Drawer(props: {
 function Field(props: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-[11px] font-extrabold text-slate-600 mb-1">
-        {props.label}
-      </div>
+      <div className="text-[11px] font-extrabold text-slate-600 mb-1">{props.label}</div>
       {props.children}
     </div>
   );
@@ -1526,27 +1428,19 @@ function ModalShell(props: {
       onClick={() => props.onClose()}
     >
       <div
-        className={`w-full ${
-          props.maxWidth ?? "max-w-4xl"
-        } bg-white rounded-xl border border-slate-200 p-3 mx-auto shadow-xl`}
+        className={`w-full ${props.maxWidth ?? "max-w-4xl"} bg-white rounded-xl border border-slate-200 p-3 mx-auto shadow-xl`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-start gap-3">
           <div className="min-w-0">
             <div className="font-extrabold text-base">{props.title}</div>
-            {props.subtitle ? (
-              <div className="text-xs text-slate-500 mt-0.5">
-                {props.subtitle}
-              </div>
-            ) : null}
+            {props.subtitle ? <div className="text-xs text-slate-500 mt-0.5">{props.subtitle}</div> : null}
           </div>
           <button
             type="button"
             onClick={props.onClose}
             disabled={Boolean(props.busy)}
-            className={`px-3 py-1.5 rounded-md border border-slate-200 bg-white text-sm ${
-              props.busy ? "opacity-60" : ""
-            }`}
+            className={`px-3 py-1.5 rounded-md border border-slate-200 bg-white text-sm ${props.busy ? "opacity-60" : ""}`}
           >
             Close
           </button>
@@ -1557,3 +1451,4 @@ function ModalShell(props: {
     </div>
   );
 }
+

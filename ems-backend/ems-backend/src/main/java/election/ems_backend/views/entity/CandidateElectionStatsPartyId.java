@@ -16,8 +16,10 @@ import java.util.UUID;
 @AllArgsConstructor
 @EqualsAndHashCode
 public class CandidateElectionStatsPartyId implements Serializable {
+
     private UUID orgId;
     private UUID electionId;
+    private UUID contestId;
     private UUID candidateId;
 
     public UUID getOrgId() { return orgId; }
@@ -25,6 +27,9 @@ public class CandidateElectionStatsPartyId implements Serializable {
 
     public UUID getElectionId() { return electionId; }
     public void setElectionId(UUID electionId) { this.electionId = electionId; }
+
+    public UUID getContestId() { return contestId; }
+    public void setContestId(UUID contestId) { this.contestId = contestId; }
 
     public UUID getCandidateId() { return candidateId; }
     public void setCandidateId(UUID candidateId) { this.candidateId = candidateId; }

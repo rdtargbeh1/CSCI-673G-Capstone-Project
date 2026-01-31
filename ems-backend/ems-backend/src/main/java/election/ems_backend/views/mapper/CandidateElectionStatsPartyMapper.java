@@ -10,6 +10,7 @@ public class CandidateElectionStatsPartyMapper {
         if (e.getId() != null) {
             d.setOrgId(e.getId().getOrgId());
             d.setElectionId(e.getId().getElectionId());
+            d.setContestId(e.getId().getContestId());
             d.setCandidateId(e.getId().getCandidateId());
         }
         d.setCandidateName(e.getCandidateName());

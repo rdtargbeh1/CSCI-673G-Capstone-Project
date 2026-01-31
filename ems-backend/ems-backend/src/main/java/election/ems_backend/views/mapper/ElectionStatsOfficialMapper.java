@@ -6,10 +6,16 @@ import election.ems_backend.views.entity.ElectionStatsOfficial;
 public class ElectionStatsOfficialMapper {
 
     public ElectionStatsOfficialDto toDto(ElectionStatsOfficial e) {
+
         if (e == null) return null;
 
         ElectionStatsOfficialDto d = new ElectionStatsOfficialDto();
-        d.setElectionId(e.getElectionId());
+
+        if (e.getId() != null) {
+            d.setElectionId(e.getId().getElectionId());
+            d.setContestId(e.getId().getContestId());
+        }
+
         d.setRegisteredVoters(e.getRegisteredVoters());
         d.setBallotsCast(e.getBallotsCast());
         d.setValidVotes(e.getValidVotes());

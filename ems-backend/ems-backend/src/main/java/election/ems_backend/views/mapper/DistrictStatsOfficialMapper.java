@@ -9,6 +9,7 @@ public class DistrictStatsOfficialMapper {
         DistrictStatsOfficialDto d = new DistrictStatsOfficialDto();
         if (e.getId() != null) {
             d.setElectionId(e.getId().getElectionId());
+            d.setContestId(e.getId().getContestId());
             d.setDistrictId(e.getId().getDistrictId());
         }
         d.setDistrictName(e.getDistrictName());

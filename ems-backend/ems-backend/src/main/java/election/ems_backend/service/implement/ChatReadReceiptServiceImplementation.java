@@ -9,7 +9,7 @@ import election.ems_backend.repository.ChatMessageRepository;
 import election.ems_backend.repository.ChatReadReceiptRepository;
 import election.ems_backend.service.ChatReadReceiptService;
 import election.ems_backend.utility.ChatReadReceiptId;
-import election.ems_backend.utility.TenantUtils;
+import election.ems_backend.tenant.TenantUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;

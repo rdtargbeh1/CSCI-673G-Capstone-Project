@@ -18,6 +18,13 @@ public final class NecResultGeoSpecs {
         };
     }
 
+    public static Specification<NecResultGeo> contestEquals(UUID contestId) {
+        return (root, query, cb) -> {
+            if (contestId == null) return null;
+            return cb.equal(root.get("contestId"), contestId);
+        };
+    }
+
     public static Specification<NecResultGeo> countyEquals(UUID countyId) {
         return (root, query, cb) -> {
             if (countyId == null) return null;

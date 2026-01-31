@@ -29,6 +29,9 @@ public class NecResultGeo {
     @Column(name = "election_id")
     private UUID electionId;
 
+    @Column(name = "contest_id")
+    private UUID contestId;
+
     @Column(name = "center_id")
     private UUID centerId;
 

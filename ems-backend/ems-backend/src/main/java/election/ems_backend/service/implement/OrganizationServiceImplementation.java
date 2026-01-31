@@ -19,7 +19,7 @@ import election.ems_backend.service.AuditLogService;
 import election.ems_backend.service.OrganizationService;
 import election.ems_backend.utility.OrganizationSearchRequest;
 import election.ems_backend.utility.QueryUtils;
-import election.ems_backend.utility.TenantContext;
+import election.ems_backend.tenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -81,14 +81,21 @@ public class OrganizationServiceImplementation implements OrganizationService {
         Organization saved = organizationRepository.save(org);
         organizationRepository.flush(); // ✅ critical
 
-        // 5) Audit using the NEW org id (do NOT use context org id for create)
-        UUID actor = currentUserProvider.currentUserId(); // best source
         auditLogService.logOrgCreate(
                 saved.getOrgId(),
-                actor,
                 "organization",
                 "Organization created: " + saved.getOrgName() + " (" + saved.getOrgId() + ")"
         );
+
+
+        // 5) Audit using the NEW org id (do NOT use context org id for create)
+//        UUID actor = currentUserProvider.currentUserId(); // best source
+//        auditLogService.logOrgCreate(
+//                saved.getOrgId(),
+//                actor,
+//                "organization",
+//                "Organization created: " + saved.getOrgName() + " (" + saved.getOrgId() + ")"
+//        );
 
         return mapper.toDTO(saved);
     }

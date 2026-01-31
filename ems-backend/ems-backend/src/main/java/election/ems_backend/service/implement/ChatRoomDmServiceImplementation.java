@@ -7,7 +7,7 @@ import election.ems_backend.enums.RoomType;
 import election.ems_backend.mapper.ChatRoomDmMapper;
 import election.ems_backend.repository.*;
 import election.ems_backend.service.ChatRoomDmService;
-import election.ems_backend.utility.TenantUtils;
+import election.ems_backend.tenant.TenantUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;

@@ -9,6 +9,7 @@ import java.util.UUID;
  * Composite primary key type for nec_result_public: (election_id, assigned_center_id)
  */
 public class NecResultPublicId implements Serializable {
+
     private UUID electionId;
     private UUID assignedCenterId;
 

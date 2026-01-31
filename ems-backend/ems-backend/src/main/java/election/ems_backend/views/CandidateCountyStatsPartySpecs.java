@@ -25,6 +25,12 @@ public final class CandidateCountyStatsPartySpecs {
         };
     }
 
+    public static Specification<CandidateCountyStatsParty> contestEquals(UUID contestId) {
+        return (root, query, cb) -> contestId == null
+                ? cb.conjunction()
+                : cb.equal(root.get("id").get("contestId"), contestId);
+    }
+
     public static Specification<CandidateCountyStatsParty> countyEquals(UUID countyId) {
         return (root, query, cb) -> {
             if (countyId == null) return null;

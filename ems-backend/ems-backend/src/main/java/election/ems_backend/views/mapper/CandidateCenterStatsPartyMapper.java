@@ -4,15 +4,20 @@ import election.ems_backend.views.dto.CandidateCenterStatsPartyDto;
 import election.ems_backend.views.entity.CandidateCenterStatsParty;
 
 public class CandidateCenterStatsPartyMapper {
+
     public CandidateCenterStatsPartyDto toDto(CandidateCenterStatsParty e) {
         if (e == null) return null;
+
         CandidateCenterStatsPartyDto d = new CandidateCenterStatsPartyDto();
+
         if (e.getId() != null) {
             d.setOrgId(e.getId().getOrgId());
             d.setElectionId(e.getId().getElectionId());
+            d.setContestId(e.getId().getContestId());   // ✅ NEW
             d.setCenterId(e.getId().getCenterId());
             d.setCandidateId(e.getId().getCandidateId());
         }
+
         d.setCountyId(e.getCountyId());
         d.setCountyName(e.getCountyName());
         d.setDistrictId(e.getDistrictId());
@@ -29,6 +34,8 @@ public class CandidateCenterStatsPartyMapper {
         d.setCenterValidVotes(e.getCenterValidVotes());
         d.setCenterInvalidTotal(e.getCenterInvalidTotal());
         d.setVoteSharePct(e.getVoteSharePct());
+
         return d;
     }
+
 }

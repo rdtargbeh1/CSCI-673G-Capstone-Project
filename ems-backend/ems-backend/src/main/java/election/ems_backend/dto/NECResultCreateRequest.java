@@ -18,6 +18,9 @@ public class NECResultCreateRequest {
     private UUID electionId;
 
     @NotNull
+    private UUID contestId;
+
+    @NotNull
     private UUID centerId;
 
     @NotNull @Size(min = 1, message = "At least one candidate vote is required")
@@ -27,7 +30,7 @@ public class NECResultCreateRequest {
     private Integer totalRegisteredVoters;
 
     @NotNull @Min(0)
-    private Integer ballotsCast;
+    private Integer ballotsInBox;
 
     @NotNull @Min(0)
     private Integer invalidBallots = 0;

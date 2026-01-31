@@ -13,6 +13,8 @@ import election.ems_backend.repository.SystemUserRepository;
 import election.ems_backend.service.AuditLedgerRetryService;
 import election.ems_backend.service.AuditLedgerService;
 import election.ems_backend.service.AuditLogService;
+import election.ems_backend.tenant.AuditCurrentUser;
+import election.ems_backend.tenant.OrgContext;
 import election.ems_backend.utility.AuditLogSpecs;
 import election.ems_backend.utility.HashUtil;
 import lombok.RequiredArgsConstructor;
@@ -34,17 +36,28 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AuditLogServiceImplementation implements AuditLogService {
 
+
     private static final Logger LOGGER = LoggerFactory.getLogger(AuditLogServiceImplementation.class);
 
+    // Repos
     private final AuditLogRepository auditLogRepository;
     private final OrganizationRepository orgRepo;
     private final SystemUserRepository userRepo;
 
+    // Ledger
     private final AuditLedgerService auditLedgerService;
     private final AuditLedgerRetryService auditLedgerRetryService;
 
+    private final AuditCurrentUser auditCurrentUser;
+
+    // Mapper / JSON
     private final AuditLogMapper mapper = new AuditLogMapper();
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /**
+     * Core writer: best-effort audit insert + best-effort ledger append.
+     * Never throws to caller.
+     */
 
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -59,8 +72,8 @@ public class AuditLogServiceImplementation implements AuditLogService {
             SystemUser user = (userId == null) ? null : userRepo.findById(userId).orElse(null);
 
             AuditLog a = new AuditLog();
-            a.setOrganization(org); // can be null
-            a.setUser(user);        // can be null
+            a.setOrganization(org); // ✅ can be null (system)
+            a.setUser(user);        // ✅ can be null (system/batch)
             a.setActivityType(type != null ? type : ActivityType.OTHER);
             a.setEntityAffected(entity);
             a.setActionDescription(description);
@@ -85,13 +98,29 @@ public class AuditLogServiceImplementation implements AuditLogService {
                 payloadJson = "logId=" + saved.getLogId();
             }
 
+            // ✅ Convert orgId UUID -> String for ledger services
+            final String orgIdStr = (orgId == null ? null : orgId.toString());
+
             // Ledger append MUST NOT break app
             try {
-                auditLedgerService.appendEntry("audit_log", saved.getLogId(), payloadJson, userId, null);
+                auditLedgerService.appendEntry(
+                        "audit_log",
+                        saved.getLogId(),
+                        payloadJson,
+                        userId,
+                        orgIdStr
+                );
             } catch (Exception ex) {
                 LOGGER.warn("Audit ledger append failed (will enqueue retry): {}", ex.getMessage());
                 try {
-                    auditLedgerRetryService.enqueueRetry("audit_log", saved.getLogId(), payloadJson, userId, null, ex.getMessage());
+                    auditLedgerRetryService.enqueueRetry(
+                            "audit_log",
+                            saved.getLogId(),
+                            payloadJson,
+                            userId,
+                            orgIdStr,
+                            ex.getMessage()
+                    );
                 } catch (Exception inner) {
                     LOGGER.warn("Audit retry enqueue failed (ignored): {}", inner.getMessage());
                 }
@@ -105,6 +134,28 @@ public class AuditLogServiceImplementation implements AuditLogService {
         }
     }
 
+
+    /**
+     * Auto-scoped audit log:
+     * - orgId from OrgContext (set by OrgContextFilter from X-Org-Id)
+     * - userId from SecurityContext via AuditCurrentUser
+     * - if no org context => SYSTEM (org_id null)
+     */
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public AuditLogDto logAuto(ActivityType type, String entity, String description) {
+        UUID orgId = OrgContext.get(); // null => SYSTEM
+        UUID userId = auditCurrentUser.userIdOrNull();
+        return log(orgId, userId, type, entity, description);
+    }
+
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public AuditLogDto logWithOrg(UUID orgId, ActivityType type, String entity, String description) {
+        UUID userId = auditCurrentUser.userIdOrNull();
+        return log(orgId, userId, type, entity, description);
+    }
     @Override
     @Transactional(readOnly = true)
     public Page<AuditLogDto> search(UUID orgId,
@@ -114,6 +165,7 @@ public class AuditLogServiceImplementation implements AuditLogService {
                                     LocalDateTime to,
                                     String q,
                                     Pageable pageable) {
+
         Specification<AuditLog> spec = Specification
                 .where(AuditLogSpecs.orgEquals(orgId))
                 .and(AuditLogSpecs.userEquals(userId))
@@ -123,6 +175,26 @@ public class AuditLogServiceImplementation implements AuditLogService {
 
         return auditLogRepository.findAll(spec, pageable).map(mapper::toDTO);
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<AuditLogDto> searchSystemLogs(UUID userId,
+                                              ActivityType type,
+                                              LocalDateTime from,
+                                              LocalDateTime to,
+                                              String q,
+                                              Pageable pageable) {
+
+        Specification<AuditLog> spec = Specification
+                .where(AuditLogSpecs.systemOnly()) // ✅ org_id IS NULL
+                .and(AuditLogSpecs.userEquals(userId))
+                .and(AuditLogSpecs.typeEquals(type))
+                .and(AuditLogSpecs.between(from, to))
+                .and(AuditLogSpecs.textSearch(q));
+
+        return auditLogRepository.findAll(spec, pageable).map(mapper::toDTO);
+    }
+
 
 
 }

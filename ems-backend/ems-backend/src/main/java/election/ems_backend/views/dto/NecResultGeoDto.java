@@ -12,6 +12,7 @@ import java.util.UUID;
 public class NecResultGeoDto {
     private Long resultId;
     private UUID electionId;
+    private UUID contestId;
 
     private UUID centerId;
     private String centerCode;

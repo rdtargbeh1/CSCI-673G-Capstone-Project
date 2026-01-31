@@ -1,5 +1,6 @@
 package election.ems_backend.views.contro;
 
+import election.ems_backend.tenant.OrgContext;
 import election.ems_backend.utility.SecurityUtils;
 import election.ems_backend.views.dto.CandidateCenterStatsPartyDto;
 import election.ems_backend.views.service.CandidateCenterStatsPartyService;
@@ -31,6 +32,7 @@ import java.util.UUID;
 @Validated
 public class CandidateCenterStatsPartyController {
 
+
     private static final Logger log = LoggerFactory.getLogger(CandidateCenterStatsPartyController.class);
 
     private final CandidateCenterStatsPartyService service;
@@ -43,6 +45,7 @@ public class CandidateCenterStatsPartyController {
     public ResponseEntity<Page<CandidateCenterStatsPartyDto>> list(
             @RequestParam(value = "orgId", required = false) UUID orgIdParam,
             @RequestParam(value = "electionId") UUID electionId,
+            @RequestParam(value = "contestId") UUID contestId, // ✅ NEW (required)
             @RequestParam(value = "countyId", required = false) UUID countyId,
             @RequestParam(value = "districtId", required = false) UUID districtId,
             @RequestParam(value = "centerId", required = false) UUID centerId,
@@ -53,9 +56,18 @@ public class CandidateCenterStatsPartyController {
             @RequestParam(value = "sort", required = false) String[] sort
     ) {
         if (electionId == null) return ResponseEntity.badRequest().build();
+        if (contestId == null) return ResponseEntity.badRequest().build(); // ✅ NEW
 
+        // ✅ 1) try Security context (JWT-derived tenant)
         UUID derivedOrgId = SecurityUtils.getOrgIdFromContext();
+
+        // ✅ 2) if missing, try X-Org-Id (set by OrgContextFilter) - keep if you use it
+        if (derivedOrgId == null) {
+            derivedOrgId = OrgContext.get();
+        }
+
         UUID effectiveOrgId = orgIdParam;
+
         if (derivedOrgId != null) {
             if (orgIdParam != null && !derivedOrgId.equals(orgIdParam)) {
                 return ResponseEntity.status(403).build();
@@ -77,7 +89,10 @@ public class CandidateCenterStatsPartyController {
                 if (parts.length == 1) {
                     orders[i] = Sort.Order.asc(parts[0].trim());
                 } else {
-                    orders[i] = new Sort.Order(Sort.Direction.fromString(parts[1].trim()), parts[0].trim());
+                    orders[i] = new Sort.Order(
+                            Sort.Direction.fromString(parts[1].trim()),
+                            parts[0].trim()
+                    );
                 }
             }
             sortObj = Sort.by(orders);
@@ -85,12 +100,32 @@ public class CandidateCenterStatsPartyController {
 
         Pageable pageable = PageRequest.of(page, pageSize, sortObj);
 
-        log.debug("Controller list candidate center stats orgId={} electionId={} countyId={} districtId={} centerId={} candidateId={} partyId={} page={} size={} sort={}",
-                effectiveOrgId, electionId, countyId, districtId, centerId, candidateId, partyId, page, pageSize, sortObj);
+        log.debug(
+                "Controller list candidate center stats orgId={} electionId={} contestId={} countyId={} districtId={} centerId={} candidateId={} partyId={} page={} size={} sort={}",
+                effectiveOrgId, electionId, contestId, countyId, districtId, centerId, candidateId, partyId, page, pageSize, sortObj
+        );
 
-        meterRegistry.counter("api.stats.candidate_center.controller.requests", "endpoint", "/api/stats/party/candidates/centers").increment();
+        meterRegistry.counter(
+                "api.stats.candidate_center.controller.requests",
+                "endpoint", "/api/stats/party/candidates/centers"
+        ).increment();
 
-        Page<CandidateCenterStatsPartyDto> result = service.listCandidateCenterStats(effectiveOrgId, electionId, countyId, districtId, centerId, candidateId, partyId, pageable);
+        Page<CandidateCenterStatsPartyDto> result =
+                service.listCandidateCenterStats(
+                        effectiveOrgId,
+                        electionId,
+                        contestId,   // ✅ NEW
+                        countyId,
+                        districtId,
+                        centerId,
+                        candidateId,
+                        partyId,
+                        pageable
+                );
+
         return ResponseEntity.ok(result);
     }
+
+
+
 }

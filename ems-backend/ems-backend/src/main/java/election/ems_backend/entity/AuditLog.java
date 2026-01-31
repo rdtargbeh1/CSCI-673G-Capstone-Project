@@ -42,9 +42,10 @@ public class AuditLog {
 
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false,
+    @JoinColumn(name = "user_id", nullable = true,
             foreignKey = @ForeignKey(name = "audit_log_user_id_fkey"))
     private SystemUser user;
+
 
     @Enumerated(EnumType.STRING)
     @Column(name = "activity_type", length = 50, nullable = false)

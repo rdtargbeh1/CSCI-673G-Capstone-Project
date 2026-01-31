@@ -9,6 +9,7 @@ public class CenterStatsOfficialMapper {
         CenterStatsOfficialDto d = new CenterStatsOfficialDto();
         if (e.getId() != null) {
             d.setElectionId(e.getId().getElectionId());
+            d.setContestId(e.getId().getContestId());
             d.setCenterId(e.getId().getCenterId());
         }
         d.setCenterCode(e.getCenterCode());

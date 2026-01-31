@@ -18,11 +18,15 @@ import java.util.UUID;
 @EqualsAndHashCode
 public class CandidateDistrictStatsOfficialId implements Serializable {
     private UUID electionId;
+    private UUID contestId;
     private UUID districtId;
     private UUID candidateId;
 
     public UUID getElectionId() { return electionId; }
     public void setElectionId(UUID electionId) { this.electionId = electionId; }
+
+    public UUID getContestId() { return contestId; }
+    public void setContestId(UUID contestId) { this.contestId = contestId; }
 
     public UUID getDistrictId() { return districtId; }
     public void setDistrictId(UUID districtId) { this.districtId = districtId; }

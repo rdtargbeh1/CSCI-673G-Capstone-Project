@@ -43,11 +43,14 @@ public class NecResultGeoController {
     @GetMapping
     public ResponseEntity<Page<NecResultGeoDto>> list(
             @RequestParam(value = "electionId") UUID electionId,
+            @RequestParam(value = "contestId", required = false) UUID contestId, // ✅ NEW
             @RequestParam(value = "countyId", required = false) UUID countyId,
             @RequestParam(value = "districtId", required = false) UUID districtId,
             @RequestParam(value = "centerId", required = false) UUID centerId,
-            @RequestParam(value = "uploadedAfter", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime uploadedAfter,
-            @RequestParam(value = "uploadedBefore", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime uploadedBefore,
+            @RequestParam(value = "uploadedAfter", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime uploadedAfter,
+            @RequestParam(value = "uploadedBefore", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime uploadedBefore,
             @RequestParam(value = "page", required = false, defaultValue = "0") @Min(0) int page,
             @RequestParam(value = "size", required = false) Integer size,
             @RequestParam(value = "sort", required = false) String[] sort
@@ -71,12 +74,22 @@ public class NecResultGeoController {
 
         Pageable pageable = PageRequest.of(page, pageSize, sortObj);
 
-        log.debug("Controller list nec geo electionId={} countyId={} districtId={} centerId={} uploadedAfter={} uploadedBefore={} page={} size={} sort={}",
-                electionId, countyId, districtId, centerId, uploadedAfter, uploadedBefore, page, pageSize, sortObj);
+        log.debug("Controller list nec geo electionId={} contestId={} countyId={} districtId={} centerId={} uploadedAfter={} uploadedBefore={} page={} size={} sort={}",
+                electionId, contestId, countyId, districtId, centerId, uploadedAfter, uploadedBefore, page, pageSize, sortObj);
 
-        meterRegistry.counter("api.stats.official.nec_geo.controller.requests", "endpoint", "/api/stats/official/nec/geo").increment();
+        meterRegistry.counter("api.stats.official.nec_geo.controller.requests",
+                "endpoint", "/api/stats/official/nec/geo").increment();
 
-        Page<NecResultGeoDto> result = service.listNecResultGeo(electionId, countyId, districtId, centerId, uploadedAfter, uploadedBefore, pageable);
+        Page<NecResultGeoDto> result = service.listNecResultGeo(
+                electionId,
+                contestId, // ✅ NEW
+                countyId,
+                districtId,
+                centerId,
+                uploadedAfter,
+                uploadedBefore,
+                pageable
+        );
         return ResponseEntity.ok(result);
     }
 }

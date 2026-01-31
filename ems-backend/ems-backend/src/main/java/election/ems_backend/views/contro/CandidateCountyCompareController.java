@@ -42,6 +42,7 @@ public class CandidateCountyCompareController {
     @GetMapping
     public ResponseEntity<Page<CandidateCountyCompareDto>> list(
             @RequestParam(value = "electionId") UUID electionId,
+            @RequestParam(value = "contestId", required = false) UUID contestId,
             @RequestParam(value = "countyId", required = false) UUID countyId,
             @RequestParam(value = "candidateId", required = false) UUID candidateId,
             @RequestParam(value = "orgId", required = false) UUID orgId,
@@ -87,7 +88,7 @@ public class CandidateCountyCompareController {
 
         meterRegistry.counter("api.stats.compare.candidate_county.controller.requests", "endpoint", "/api/stats/compare/candidates/counties").increment();
 
-        Page<CandidateCountyCompareDto> result = service.listCandidateCountyCompare(electionId, countyId, candidateId, effectiveOrgId, partyId, pageable);
+        Page<CandidateCountyCompareDto> result = service.listCandidateCountyCompare(electionId, contestId, countyId, candidateId, effectiveOrgId, partyId, pageable);
         return ResponseEntity.ok(result);
     }
 }

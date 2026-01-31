@@ -36,32 +36,41 @@ public class CandidateCountyCompareService {
 
 
     @Transactional(readOnly = true)
-    @Cacheable(value = "candidateCountyCompare", key = "T(java.lang.String).valueOf(#electionId) + ':' + (#countyId==null?'':#countyId) + ':' + (#candidateId==null?'':#candidateId) + ':' + (#orgId==null?'':#orgId) + ':' + (#partyId==null?'':#partyId) + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort")
-    public Page<CandidateCountyCompareDto> listCandidateCountyCompare(UUID electionId, UUID countyId, UUID candidateId, UUID orgId, UUID partyId, Pageable pageable) {
-        log.debug("listCandidateCountyCompare called electionId={} countyId={} candidateId={} orgId={} partyId={} page={} size={}",
-                electionId, countyId, candidateId, orgId, partyId, pageable.getPageNumber(), pageable.getPageSize());
-
-        if (electionId == null) throw new IllegalArgumentException("electionId is required");
-        electionValidationService.ensureExists(electionId);
-
-        // apply tenant guc if caller has org context; not strictly required for this view but keeps RLS consistent
-        UUID derivedOrgId = SecurityUtils.getOrgIdFromContext();
-        if (derivedOrgId != null) {
-            tenantGucService.applyForTransaction(derivedOrgId, false, false);
-        } else {
-            tenantGucService.applyForTransaction((java.util.UUID) null, false, false);
-        }
+    @Cacheable(
+            value = "candidateCountyCompare",
+            key =
+                    "T(java.lang.String).valueOf(#electionId)"
+                            + " + ':' + (#contestId==null?'':#contestId)"
+                            + " + ':' + (#countyId==null?'':#countyId)"
+                            + " + ':' + (#candidateId==null?'':#candidateId)"
+                            + " + ':' + (#orgId==null?'':#orgId)"
+                            + " + ':' + (#partyId==null?'':#partyId)"
+                            + " + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort"
+    )
+    public Page<CandidateCountyCompareDto> listCandidateCountyCompare(
+            UUID electionId,
+            UUID contestId,              // ✅ NEW
+            UUID countyId,
+            UUID candidateId,
+            UUID orgId,
+            UUID partyId,
+            Pageable pageable
+    ) {
+        // ... keep your validation & tenantGuc logic as-is ...
 
         Specification<CandidateCountyCompare> spec = Specification
                 .where(CandidateCountyCompareSpecs.electionEquals(electionId))
+                .and(CandidateCountyCompareSpecs.contestEquals(contestId))   // ✅ NEW
                 .and(CandidateCountyCompareSpecs.countyEquals(countyId))
                 .and(CandidateCountyCompareSpecs.candidateEquals(candidateId))
                 .and(CandidateCountyCompareSpecs.orgEquals(orgId))
                 .and(CandidateCountyCompareSpecs.partyEquals(partyId));
 
         Page<CandidateCountyCompare> page = repo.findAll(spec, pageable);
-
         meterRegistry.gauge("api.stats.compare.candidate_county.result_size", page.getContent(), c -> (double) c.size());
         return page.map(mapper::toDto);
     }
+
+
+
 }

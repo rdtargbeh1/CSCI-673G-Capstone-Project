@@ -10,6 +10,7 @@ public class CenterStatsPartyMapper {
         if (e.getId() != null) {
             d.setOrgId(e.getId().getOrgId());
             d.setElectionId(e.getId().getElectionId());
+            d.setContestId(e.getId().getContestId());
             d.setCenterId(e.getId().getCenterId());
         }
         d.setCenterCode(e.getCenterCode());

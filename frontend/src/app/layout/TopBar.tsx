@@ -1,3 +1,4 @@
+
 // src/app/layout/TopBar.tsx
 import { useState } from "react";
 import { useLocation, useParams, useNavigate } from "react-router-dom";
@@ -84,8 +85,16 @@ export default function TopBar() {
   const org = orgQuery.data;
   const election = electionQuery.data;
 
-  const tenantName =
-    org?.orgName ?? useAuthStore.getState().tenantMeta?.orgName ?? "—";
+  // ✅ FINAL: tenant name logic + boolean
+  const rawTenantName =
+    org?.orgName ?? useAuthStore.getState().tenantMeta?.orgName ?? null;
+
+  const isSystemPlatform =
+    !rawTenantName || rawTenantName.trim().length === 0;
+
+  const tenantName = isSystemPlatform
+    ? "System Platform"
+    : rawTenantName;
 
   const role =
     user?.roleName ?? (user?.isSystemAdmin ? "SYSTEM_ADMIN" : undefined) ?? "—";
@@ -99,25 +108,20 @@ export default function TopBar() {
   const showOfficial = dashboardMode === "NEC";
   const officialValue = false;
 
-  // ✅ ADD: logout handler
+  // ✅ Logout handler
   const handleLogout = async () => {
     try {
-      // Optional (only if your backend supports it): invalidate session/cookie
       await apiClient.post("/auth/logout");
     } catch {
       // ignore
     } finally {
-      // Clear client-side auth state (adjust to your store API if different)
       const st: any = useAuthStore.getState();
       st.logout?.();
       st.reset?.();
-      // Fallback: clear common tokens if you store any
       try {
         localStorage.removeItem("accessToken");
         localStorage.removeItem("refreshToken");
-      } catch {
-        // ignore
-      }
+      } catch {}
       navigate("/login", { replace: true });
     }
   };
@@ -138,25 +142,19 @@ export default function TopBar() {
             </div>
 
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <span
-                className={pill("border-slate-200 bg-white text-slate-700")}
-              >
+              <span className={pill("border-slate-200 bg-white text-slate-700")}>
                 {tenantName}
               </span>
 
-              <span
-                className={pill("border-slate-200 bg-white text-slate-700")}
-              >
+              <span className={pill("border-slate-200 bg-white text-slate-700")}>
                 Role: {role}
               </span>
 
-              <span
-                className={pill("border-slate-200 bg-white text-slate-700")}
-              >
+              <span className={pill("border-slate-200 bg-white text-slate-700")}>
                 {dashboardMode ?? "—"}
               </span>
 
-              {isElectionScope ? (
+              {isElectionScope && (
                 <>
                   {electionQuery.isLoading ? (
                     <span className="text-xs text-slate-500">
@@ -168,83 +166,62 @@ export default function TopBar() {
                     </span>
                   ) : (
                     <>
-                      <span
-                        className={pill(
-                          "border-slate-200 bg-white text-slate-700"
-                        )}
-                      >
+                      <span className={pill("border-slate-200 bg-white text-slate-700")}>
                         Election: {election?.electionName ?? "—"}
                       </span>
 
-                      <span
-                        className={pill(
-                          "border-slate-200 bg-white text-slate-700"
-                        )}
-                      >
+                      <span className={pill("border-slate-200 bg-white text-slate-700")}>
                         Status: {election?.isActive ? "Active" : "Inactive"}
                       </span>
 
-                      {showOfficial ? (
+                      {showOfficial && (
                         <span
                           className={pill(
                             officialValue
                               ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                               : "border-red-200 bg-red-50 text-red-700"
                           )}
-                          title="Official Results Flag"
                         >
                           Official: {officialValue ? "✓" : "✗"}
                         </span>
-                      ) : null}
+                      )}
                     </>
                   )}
                 </>
-              ) : null}
+              )}
 
-              {meQuery.isLoading ? (
+              {meQuery.isLoading && (
                 <span className="text-xs text-slate-500">Loading user…</span>
-              ) : null}
-              {meQuery.isError ? (
+              )}
+              {meQuery.isError && (
                 <span className="text-xs font-semibold text-red-600">
                   User load error
                 </span>
-              ) : null}
-              {orgQuery.isError ? (
+              )}
+              {orgQuery.isError && (
                 <span className="text-xs font-semibold text-red-600">
                   Org load error
                 </span>
-              ) : null}
+              )}
             </div>
           </div>
 
           {/* Right */}
           <div className="flex items-center gap-3">
-            {/* ✅ ADD: Logout button (top bar) */}
             <button
               type="button"
               onClick={() => {
                 if (confirm("Log out of EMS?")) handleLogout();
               }}
               className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold hover:bg-slate-50"
-              title="Log out"
             >
               Logout
             </button>
 
             <button
               type="button"
-              className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm hover:bg-slate-50"
-              title="Notifications"
-            >
-              🔔
-            </button>
-
-            {/* ✅ CLICK to open drawer */}
-            <button
-              type="button"
               onClick={() => setProfileOpen(true)}
               className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 hover:bg-slate-50"
-              title="Open profile"
             >
               <div className="h-8 w-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center">
                 👤
@@ -257,7 +234,6 @@ export default function TopBar() {
         </div>
       </header>
 
-      {/* ✅ Drawer */}
       <UserProfileDrawer
         open={profileOpen}
         onClose={() => setProfileOpen(false)}
@@ -265,3 +241,5 @@ export default function TopBar() {
     </>
   );
 }
+
+

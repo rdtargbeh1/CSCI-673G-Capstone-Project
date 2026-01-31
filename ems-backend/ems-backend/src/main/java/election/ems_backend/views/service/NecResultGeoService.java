@@ -34,16 +34,30 @@ public class NecResultGeoService {
 
 
     @Transactional(readOnly = true)
-    @Cacheable(value = "necResultGeo", key = "T(java.lang.String).valueOf(#electionId) + ':' + (#countyId==null?'':#countyId) + ':' + (#districtId==null?'':#districtId) + ':' + (#centerId==null?'':#centerId) + ':' + (#uploadedAfter==null?'':#uploadedAfter.toInstant().toEpochMilli()) + ':' + (#uploadedBefore==null?'':#uploadedBefore.toInstant().toEpochMilli()) + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort")
-    public Page<NecResultGeoDto> listNecResultGeo(UUID electionId,
-                                                  UUID countyId,
-                                                  UUID districtId,
-                                                  UUID centerId,
-                                                  OffsetDateTime uploadedAfter,
-                                                  OffsetDateTime uploadedBefore,
-                                                  Pageable pageable) {
-        log.debug("listNecResultGeo called electionId={} countyId={} districtId={} centerId={} uploadedAfter={} uploadedBefore={} page={} size={}",
-                electionId, countyId, districtId, centerId, uploadedAfter, uploadedBefore, pageable.getPageNumber(), pageable.getPageSize());
+    @Cacheable(
+            value = "necResultGeo",
+            key = "T(java.lang.String).valueOf(#electionId)"
+                    + " + ':' + (#contestId==null?'':#contestId)" // ✅ NEW
+                    + " + ':' + (#countyId==null?'':#countyId)"
+                    + " + ':' + (#districtId==null?'':#districtId)"
+                    + " + ':' + (#centerId==null?'':#centerId)"
+                    + " + ':' + (#uploadedAfter==null?'':#uploadedAfter.toInstant().toEpochMilli())"
+                    + " + ':' + (#uploadedBefore==null?'':#uploadedBefore.toInstant().toEpochMilli())"
+                    + " + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort"
+    )
+    public Page<NecResultGeoDto> listNecResultGeo(
+            UUID electionId,
+            UUID contestId, // ✅ NEW
+            UUID countyId,
+            UUID districtId,
+            UUID centerId,
+            OffsetDateTime uploadedAfter,
+            OffsetDateTime uploadedBefore,
+            Pageable pageable
+    ) {
+        log.debug("listNecResultGeo called electionId={} contestId={} countyId={} districtId={} centerId={} uploadedAfter={} uploadedBefore={} page={} size={}",
+                electionId, contestId, countyId, districtId, centerId, uploadedAfter, uploadedBefore,
+                pageable.getPageNumber(), pageable.getPageSize());
 
         if (electionId == null) throw new IllegalArgumentException("electionId is required");
         electionValidationService.ensureExists(electionId);
@@ -56,23 +70,20 @@ public class NecResultGeoService {
             tenantGucService.applyForTransaction((java.util.UUID) null, false, false);
         }
 
-        // Build and pass the Specification inline to avoid any type/import mismatches
         Specification<NecResultGeo> spec = Specification
                 .where(NecResultGeoSpecs.electionEquals(electionId))
+                .and(NecResultGeoSpecs.contestEquals(contestId)) // ✅ NEW (you must add this spec)
                 .and(NecResultGeoSpecs.countyEquals(countyId))
                 .and(NecResultGeoSpecs.districtEquals(districtId))
                 .and(NecResultGeoSpecs.centerEquals(centerId))
                 .and(NecResultGeoSpecs.uploadedAfter(uploadedAfter))
                 .and(NecResultGeoSpecs.uploadedBefore(uploadedBefore));
 
-        // Explicitly reference the Spring JPA Specification type at call site for clarity
         Page<NecResultGeo> page = repo.findAll((Specification<NecResultGeo>) spec, pageable);
 
         meterRegistry.gauge("api.stats.official.nec_geo.result_size", page.getContent(), c -> (double) c.size());
         return page.map(mapper::toDto);
     }
-
-
 
 
 }

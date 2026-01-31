@@ -17,6 +17,14 @@ public final class DistrictStatsOfficialSpecs {
         };
     }
 
+    public static Specification<DistrictStatsOfficial> contestEquals(UUID contestId) {
+        return (root, query, cb) -> {
+            if (contestId == null) return null;
+            Path<UUID> p = root.get("id").get("contestId");
+            return cb.equal(p, contestId);
+        };
+    }
+
     public static Specification<DistrictStatsOfficial> districtEquals(UUID districtId) {
         return (root, query, cb) -> {
             if (districtId == null) return null;

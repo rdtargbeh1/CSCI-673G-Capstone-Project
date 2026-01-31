@@ -16,7 +16,7 @@ import election.ems_backend.service.ElectionService;
 import election.ems_backend.service.ElectionStatsProjection;
 import election.ems_backend.utility.ElectionSpecs;
 import election.ems_backend.utility.ElectionStatsDto;
-import election.ems_backend.utility.TenantContext;
+import election.ems_backend.tenant.TenantContext;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
@@ -115,38 +115,6 @@ public class ElectionServiceImplementation implements ElectionService {
         return electionMapper.toDTO(saved);
     }
 
-//    @Override
-//    @Transactional
-//    public ElectionDto create(ElectionCreateRequest req) {
-//        if (electionRepository.existsByElectionNameIgnoreCaseAndYear(
-//                req.getElectionName(), req.getYear())) {
-//            throw new ResponseStatusException(CONFLICT, "Election '" + req.getElectionName() + "' (" + req.getYear() + ") already exists"
-//            );
-//        }
-//
-//        Election saved = electionRepository.save(electionMapper.toEntity(req));
-//
-//        // Audit log (best-effort)
-//        try {
-//            // Resolve actor user id in a type-safe way
-//            UUID actor = null;
-//            // 1) prefer currentUserProvider if available
-//            try {
-//                actor = (currentUserProvider != null ? currentUserProvider.currentUserId() : null);
-//            } catch (Exception ignored) {}
-//            // 2) fallback to TenantContext if still null
-//            if (actor == null) {
-//                try {
-//                    var ctx = TenantContext.get();
-//                    if (ctx != null) actor = ctx.userId().orElse(null);
-//                } catch (Exception ignored) {}
-//            }
-//            String desc = "Created election: " + saved.getElectionName();
-//        } catch (Exception ignored) {}
-//
-//
-//        return electionMapper.toDTO(saved);
-//    }
 
 
     // ElectionServiceImplementation.java (update)

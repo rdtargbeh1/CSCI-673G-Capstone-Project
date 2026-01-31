@@ -8,7 +8,7 @@ import election.ems_backend.mapper.ChatReactionMapper;
 import election.ems_backend.repository.ChatMessageRepository;
 import election.ems_backend.repository.ChatReactionRepository;
 import election.ems_backend.service.ChatReactionService;
-import election.ems_backend.utility.TenantUtils;
+import election.ems_backend.tenant.TenantUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;

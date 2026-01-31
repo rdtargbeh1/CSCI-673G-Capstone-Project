@@ -35,10 +35,32 @@ public class CandidateDistrictStatsPartyService {
 
 
     @Transactional(readOnly = true)
-    @Cacheable(value = "candidateDistrictStatsParty", key = "T(java.lang.String).valueOf(#orgId) + ':' + #electionId + ':' + (#countyId==null?'':#countyId) + ':' + (#districtId==null?'':#districtId) + ':' + (#candidateId==null?'':#candidateId) + ':' + (#partyId==null?'':#partyId) + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort")
-    public Page<CandidateDistrictStatsPartyDto> listCandidateDistrictStats(UUID orgId, UUID electionId, UUID countyId, UUID districtId, UUID candidateId, UUID partyId, Pageable pageable) {
-        log.debug("listCandidateDistrictStats called orgId={} electionId={} countyId={} districtId={} candidateId={} partyId={} page={} size={}",
-                orgId, electionId, countyId, districtId, candidateId, partyId, pageable.getPageNumber(), pageable.getPageSize());
+    @Cacheable(
+            value = "candidateDistrictStatsParty",
+            key =
+                    "T(java.lang.String).valueOf(#orgId) + ':' + #electionId"
+                            + " + ':' + (#contestId==null?'':#contestId)"
+                            + " + ':' + (#countyId==null?'':#countyId)"
+                            + " + ':' + (#districtId==null?'':#districtId)"
+                            + " + ':' + (#candidateId==null?'':#candidateId)"
+                            + " + ':' + (#partyId==null?'':#partyId)"
+                            + " + ':' + #pageable.pageNumber"
+                            + " + ':' + #pageable.pageSize"
+                            + " + ':' + #pageable.sort"
+    )
+    public Page<CandidateDistrictStatsPartyDto> listCandidateDistrictStats(
+            UUID orgId,
+            UUID electionId,
+            UUID contestId,   // ✅ NEW
+            UUID countyId,
+            UUID districtId,
+            UUID candidateId,
+            UUID partyId,
+            Pageable pageable
+    ) {
+        log.debug("listCandidateDistrictStats called orgId={} electionId={} contestId={} countyId={} districtId={} candidateId={} partyId={} page={} size={}",
+                orgId, electionId, contestId, countyId, districtId, candidateId, partyId,
+                pageable.getPageNumber(), pageable.getPageSize());
 
         if (orgId == null) throw new IllegalArgumentException("orgId is required");
         electionValidationService.ensureExists(electionId);
@@ -48,14 +70,16 @@ public class CandidateDistrictStatsPartyService {
         Specification<CandidateDistrictStatsParty> spec = Specification
                 .where(CandidateDistrictStatsPartySpecs.orgEquals(orgId))
                 .and(CandidateDistrictStatsPartySpecs.electionEquals(electionId))
+                .and(CandidateDistrictStatsPartySpecs.contestEquals(contestId)) // ✅ NEW
                 .and(CandidateDistrictStatsPartySpecs.countyEquals(countyId))
                 .and(CandidateDistrictStatsPartySpecs.districtEquals(districtId))
                 .and(CandidateDistrictStatsPartySpecs.candidateEquals(candidateId))
                 .and(CandidateDistrictStatsPartySpecs.partyEquals(partyId));
 
         Page<CandidateDistrictStatsParty> page = repo.findAll(spec, pageable);
-
         meterRegistry.gauge("api.stats.candidate_district.result_size", page.getContent(), c -> (double) c.size());
         return page.map(mapper::toDto);
     }
+
+
 }

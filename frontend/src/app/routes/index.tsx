@@ -22,15 +22,62 @@ import OverviewTab from "../../pages/elections/workspace/tabs/overview/OverviewT
 import SetupTab from "../../pages/elections/workspace/tabs/setup/SetupTab";
 import AllocationTab from "../../pages/elections/workspace/tabs/allocation/AllocationTab";
 import SubmissionsTab from "../../pages/elections/workspace/tabs/submissions/SubmissionsTab";
-import ResultsTab from "../../pages/elections/workspace/tabs/results/ResultsTab";
 import IntegrityTab from "../../pages/elections/workspace/tabs/integrity/IntegrityTab";
-import NecWorkflowTab from "../../pages/elections/workspace/tabs/nec-workflow/NecWorkflowTab";
+import NecWorkflowTab from "../../pages/elections/workspace/tabs/nec-workflow/shared/NecWorkflowTab";
+import NecResultTab from "../../pages/elections/workspace/tabs/nec-workflow/NecResultTab";
+
+
+
+// For Election Results
+import ResultsTab from "../../pages/elections/workspace/tabs/results/shared/ResultsTab";
+import VoteTallyPage from "../../pages/elections/workspace/tabs/results/VoteTallyPage";
+
+
+
+// import VoteTallyPage from "../../pages/elections/workspace/tabs/results/VoteTallyPage";
+// import CandidateCountyStatsParty from "../../pages/elections/workspace/tabs/results/CandidateCountyStatsParty";
+// import CandidateCountyStatsOfficial from "../../pages/elections/workspace/tabs/results/CandidateCountyStatsOfficial";
+// import CandidateCountyCompare from "../../pages/elections/workspace/tabs/results/CandidateCountyCompare";
+
+
+// Party layout pages (from the template zip)
+import PartyResultsLayout from "../../pages/elections/workspace/tabs/results/shared/PartyResultsLayout";
+import PartyCandidateCentersPage from "../../pages/elections/workspace/tabs/results/party/PartyCandidateCentersPage";
+import PartyCandidateDistrictsPage from "../../pages/elections/workspace/tabs/results/party/PartyCandidateDistrictsPage";
+import PartyCandidateCountiesPage from "../../pages/elections/workspace/tabs/results/party/PartyCandidateCountiesPage";
+import PartyCandidateElectionPage from "../../pages/elections/workspace/tabs/results/party/PartyCandidateElectionPage";
+
+import PartyTotalsCentersPage from "../../pages/elections/workspace/tabs/results/party/PartyTotalsCentersPage";
+import PartyTotalsDistrictsPage from "../../pages/elections/workspace/tabs/results/party/PartyTotalsDistrictsPage";
+import PartyTotalsCountiesPage from "../../pages/elections/workspace/tabs/results/party/PartyTotalsCountiesPage";
+import PartyTotalsElectionPage from "../../pages/elections/workspace/tabs/results/party/PartyTotalsElectionPage";
+
+// Official layout pages
+import OfficialResultsLayout from "../../pages/elections/workspace/tabs/results/shared/OfficialResultsLayout";
+import OfficialCandidateCentersPage from "../../pages/elections/workspace/tabs/results/official/OfficialCandidateCentersPage";
+import OfficialCandidateDistrictsPage from "../../pages/elections/workspace/tabs/results/official/OfficialCandidateDistrictsPage";
+import OfficialCandidateCountiesPage from "../../pages/elections/workspace/tabs/results/official/OfficialCandidateCountiesPage";
+import OfficialCandidateElectionPage from "../../pages/elections/workspace/tabs/results/official/OfficialCandidateElectionPage";
+
+import OfficialTotalsCentersPage from "../../pages/elections/workspace/tabs/results/official/OfficialTotalsCentersPage";
+import OfficialTotalsDistrictsPage from "../../pages/elections/workspace/tabs/results/official/OfficialTotalsDistrictsPage";
+import OfficialTotalsCountiesPage from "../../pages/elections/workspace/tabs/results/official/OfficialTotalsCountiesPage";
+import OfficialTotalsElectionPage from "../../pages/elections/workspace/tabs/results/official/OfficialTotalsElectionPage";
+import NecResultGeoPage from "../../pages/elections/workspace/tabs/results/official/NecResultGeoPage";
+
+// Compare layout
+import CompareResultsLayout from "../../pages/elections/workspace/tabs/results/compare/CompareResultsLayout";
+import CompareCountyCandidatesPage from "../../pages/elections/workspace/tabs/results/compare/CompareCountyCandidatesPage";
+
+
 
 // Operations
 import OperationsLayout from "../../pages/operations/OperationsLayout";
 import SubmissionQueuePage from "../../pages/operations/SubmissionQueuePage";
 import ObserverReportsPage from "../../pages/operations/ObserverReportsPage";
 import NotificationsPage from "../../pages/operations/NotificationsPage";
+import TallySheetsPage from "../../pages/operations/TallySheetsPage";
+
 
 // Geography
 import GeoRegistryLayout from "../../pages/geo-registry/GeoRegistryLayout";
@@ -65,6 +112,7 @@ import SigningKeysPage from "../../pages/admin-security/security/SigningKeysPage
 import AuditLogsPage from "../../pages/admin-security/oversight/AuditLogsPage";
 import AuditLedgerPage from "../../pages/admin-security/oversight/AuditLedgerPage";
 import FileUploadsPage from "../../pages/admin-security/oversight/FileUploadsPage";
+
 
 // ✅ ADD: Smart dashboard entry
 function DashboardEntry() {
@@ -118,6 +166,8 @@ export const router = createBrowserRouter([
       // Elections Hub + Workspace
       { path: "elections", element: <ElectionsListPage /> },
 
+      
+      // New election route / path
       {
         path: "elections/:electionId",
         element: <ElectionWorkspaceLayout />,
@@ -127,11 +177,79 @@ export const router = createBrowserRouter([
           { path: "setup", element: <SetupTab /> },
           { path: "allocation", element: <AllocationTab /> },
           { path: "submissions", element: <SubmissionsTab /> },
-          { path: "results", element: <ResultsTab /> },
-          { path: "integrity", element: <IntegrityTab /> },
+           { path: "integrity", element: <IntegrityTab /> },
           { path: "nec-workflow", element: <NecWorkflowTab /> },
+          { path: "nec-result", element: <NecResultTab /> },
+
+
+          // results
+          {
+            path: "results",
+            element: <ResultsTab />,
+            children: [
+              // ✅ when clicking Results, go to tally
+              { index: true, element: <Navigate to="tally" replace /> },
+
+              { path: "tally", element: <VoteTallyPage /> },
+
+              // ✅ PARTY (tenant submissions rollup views)
+              {
+                path: "party",
+                element: <PartyResultsLayout />,
+                children: [
+                  { index: true, element: <Navigate to="candidates/counties" replace /> },
+
+                  // candidate stats party
+                  { path: "candidates/centers", element: <PartyCandidateCentersPage /> },
+                  { path: "candidates/districts", element: <PartyCandidateDistrictsPage /> },
+                  { path: "candidates/counties", element: <PartyCandidateCountiesPage /> },
+                  { path: "candidates/election", element: <PartyCandidateElectionPage /> },
+
+                  // global totals party
+                  { path: "totals/centers", element: <PartyTotalsCentersPage /> },
+                  { path: "totals/districts", element: <PartyTotalsDistrictsPage /> },
+                  { path: "totals/counties", element: <PartyTotalsCountiesPage /> },
+                  { path: "totals/election", element: <PartyTotalsElectionPage /> },
+                ],
+              },
+
+              // ✅ OFFICIAL (NEC published views)
+              {
+                path: "official",
+                element: <OfficialResultsLayout />,
+                children: [
+                  { index: true, element: <Navigate to="candidates/counties" replace /> },
+
+                  // candidate stats official
+                  { path: "candidates/centers", element: <OfficialCandidateCentersPage /> },
+                  { path: "candidates/districts", element: <OfficialCandidateDistrictsPage /> },
+                  { path: "candidates/counties", element: <OfficialCandidateCountiesPage /> },
+                  { path: "candidates/election", element: <OfficialCandidateElectionPage /> },
+
+                  // global totals official
+                  { path: "totals/centers", element: <OfficialTotalsCentersPage /> },
+                  { path: "totals/districts", element: <OfficialTotalsDistrictsPage /> },
+                  { path: "totals/counties", element: <OfficialTotalsCountiesPage /> },
+                  { path: "totals/election", element: <OfficialTotalsElectionPage /> },
+                  { path: "geo", element: <NecResultGeoPage /> },
+                ],
+              },
+
+              // ✅ COMPARE (party vs official)
+              {
+                path: "compare",
+                element: <CompareResultsLayout />,
+                children: [
+                  { index: true, element: <Navigate to="candidates/counties" replace /> }, // ✅ FIX
+
+                  { path: "candidates/counties", element: <CompareCountyCandidatesPage /> }, // ✅ MATCH
+                ],
+              },
+            ],
+          },
         ],
       },
+
 
       // Operations
       {
@@ -142,6 +260,7 @@ export const router = createBrowserRouter([
           { path: "submissions", element: <SubmissionQueuePage /> },
           { path: "observer-reports", element: <ObserverReportsPage /> },
           { path: "notifications", element: <NotificationsPage /> },
+          { path: "tally-sheets", element: <TallySheetsPage /> },
         ],
       },
 

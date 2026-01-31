@@ -1,5 +1,6 @@
 package election.ems_backend.integration;
 
+import election.ems_backend.tenant.TenantUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
@@ -21,8 +22,8 @@ public class TenantHandshakeInterceptor implements HandshakeInterceptor  {
         if (request instanceof ServletServerHttpRequest sr) {
             HttpServletRequest req = sr.getServletRequest();
 
-            UUID orgId  = election.ems_backend.utility.TenantUtils.currentTenantOrg();
-            UUID userId = election.ems_backend.utility.TenantUtils.currentUserId();
+            UUID orgId  = TenantUtils.currentTenantOrg();
+            UUID userId = TenantUtils.currentUserId();
 
             // reject if unauthenticated or no tenant
             if (orgId == null || userId == null) return false;

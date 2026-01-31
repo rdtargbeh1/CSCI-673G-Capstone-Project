@@ -6,7 +6,7 @@ import election.ems_backend.entity.SystemUser;
 import election.ems_backend.repository.OrgMembershipRepository;
 import election.ems_backend.repository.OrganizationRepository;
 import election.ems_backend.repository.SystemUserRepository;
-import election.ems_backend.utility.TenantContext;
+import election.ems_backend.tenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
@@ -16,7 +16,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 

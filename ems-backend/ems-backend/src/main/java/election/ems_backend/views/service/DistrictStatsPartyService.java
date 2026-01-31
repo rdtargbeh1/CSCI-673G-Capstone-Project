@@ -55,18 +55,34 @@ public class DistrictStatsPartyService{
      */
 
     @Transactional(readOnly = true)
-    @Cacheable(value = "districtStatsParty", key = "T(java.lang.String).valueOf(#orgId) + ':' + #electionId + ':' + " +
-            "(#countyId==null?'':#countyId) + ':' + (#districtId==null?'':#districtId) + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort")
-    public Page<DistrictStatsPartyDto> listDistrictStats(UUID orgId, UUID electionId, UUID countyId, UUID districtId, Pageable pageable) {
+    @Cacheable(
+            value = "districtStatsParty",
+            key =
+                    "T(java.lang.String).valueOf(#orgId)"
+                            + " + ':' + #electionId"
+                            + " + ':' + (#contestId==null?'':#contestId)"
+                            + " + ':' + (#countyId==null?'':#countyId)"
+                            + " + ':' + (#districtId==null?'':#districtId)"
+                            + " + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort"
+    )
+    public Page<DistrictStatsPartyDto> listDistrictStats(
+            UUID orgId,
+            UUID electionId,
+            UUID contestId,  // ✅ NEW
+            UUID countyId,
+            UUID districtId,
+            Pageable pageable
+    ) {
 
         requestCounter.increment();
 
-        log.debug("listDistrictStats called orgId={} electionId={} countyId={} districtId={} page={} size={}",
-                orgId, electionId, countyId, districtId, pageable.getPageNumber(), pageable.getPageSize());
+        log.debug("listDistrictStats called orgId={} electionId={} contestId={} countyId={} districtId={} page={} size={}",
+                orgId, electionId, contestId, countyId, districtId, pageable.getPageNumber(), pageable.getPageSize());
 
-        if (orgId == null) {
-            throw new IllegalArgumentException("orgId is required");
-        }
+        if (orgId == null) throw new IllegalArgumentException("orgId is required");
+        if (electionId == null) throw new IllegalArgumentException("electionId is required");
+        if (contestId == null) throw new IllegalArgumentException("contestId is required");
+
         electionValidationService.ensureExists(electionId);
 
         // Important: apply tenant GUCs BEFORE running repository queries so RLS policies will see them.
@@ -75,18 +91,19 @@ public class DistrictStatsPartyService{
         Specification<DistrictStatsParty> spec = Specification
                 .where(DistrictStatsPartySpecs.orgEquals(orgId))
                 .and(DistrictStatsPartySpecs.electionEquals(electionId))
+                .and(DistrictStatsPartySpecs.contestEquals(contestId))   // ✅ NEW
                 .and(DistrictStatsPartySpecs.countyEquals(countyId))
                 .and(DistrictStatsPartySpecs.districtEquals(districtId));
 
         Page<DistrictStatsParty> page = repo.findAll(spec, pageable);
 
-        // map and return
         Page<DistrictStatsPartyDto> dtoPage = page.map(mapper::toDto);
-        log.debug("listDistrictStats returning {} elements (totalElements={})", dtoPage.getNumberOfElements(), dtoPage.getTotalElements());
+        log.debug("listDistrictStats returning {} elements (totalElements={})",
+                dtoPage.getNumberOfElements(), dtoPage.getTotalElements());
 
-        // instrumentation
         meterRegistry.gauge("api.stats.districts.result_size", dtoPage.getContent(), c -> (double) c.size());
 
         return dtoPage;
     }
+
 }

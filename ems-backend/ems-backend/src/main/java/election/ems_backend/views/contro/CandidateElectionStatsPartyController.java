@@ -43,6 +43,7 @@ public class CandidateElectionStatsPartyController {
     public ResponseEntity<Page<CandidateElectionStatsPartyDto>> list(
             @RequestParam(value = "orgId", required = false) UUID orgIdParam,
             @RequestParam(value = "electionId") UUID electionId,
+            @RequestParam(value = "contestId", required = false) UUID contestId, // ✅ NEW
             @RequestParam(value = "candidateId", required = false) UUID candidateId,
             @RequestParam(value = "partyId", required = false) UUID partyId,
             @RequestParam(value = "page", required = false, defaultValue = "0") @Min(0) int page,
@@ -62,7 +63,7 @@ public class CandidateElectionStatsPartyController {
             if (effectiveOrgId == null) return ResponseEntity.badRequest().build();
         }
 
-        int requestedSize = size == null ? DEFAULT_PAGE_SIZE : size;
+        int requestedSize = (size == null ? DEFAULT_PAGE_SIZE : size);
         int pageSize = Math.min(Math.max(1, requestedSize), MAX_PAGE_SIZE);
 
         Sort sortObj = Sort.unsorted();
@@ -74,7 +75,10 @@ public class CandidateElectionStatsPartyController {
                 if (parts.length == 1) {
                     orders[i] = Sort.Order.asc(parts[0].trim());
                 } else {
-                    orders[i] = new Sort.Order(Sort.Direction.fromString(parts[1].trim()), parts[0].trim());
+                    orders[i] = new Sort.Order(
+                            Sort.Direction.fromString(parts[1].trim()),
+                            parts[0].trim()
+                    );
                 }
             }
             sortObj = Sort.by(orders);
@@ -82,12 +86,19 @@ public class CandidateElectionStatsPartyController {
 
         Pageable pageable = PageRequest.of(page, pageSize, sortObj);
 
-        log.debug("Controller list candidate election stats orgId={} electionId={} candidateId={} partyId={} page={} size={} sort={}",
-                effectiveOrgId, electionId, candidateId, partyId, page, pageSize, sortObj);
+        log.debug(
+                "Controller list candidate election stats orgId={} electionId={} contestId={} candidateId={} partyId={} page={} size={} sort={}",
+                effectiveOrgId, electionId, contestId, candidateId, partyId, page, pageSize, sortObj
+        );
 
-        meterRegistry.counter("api.stats.candidate_election.controller.requests", "endpoint", "/api/stats/party/candidates/elections").increment();
+        meterRegistry.counter(
+                "api.stats.candidate_election.controller.requests",
+                "endpoint", "/api/stats/party/candidates/elections"
+        ).increment();
 
-        Page<CandidateElectionStatsPartyDto> result = service.listCandidateElectionStats(effectiveOrgId, electionId, candidateId, partyId, pageable);
+        Page<CandidateElectionStatsPartyDto> result =
+                service.listCandidateElectionStats(effectiveOrgId, electionId, contestId, candidateId, partyId, pageable);
+
         return ResponseEntity.ok(result);
     }
 }

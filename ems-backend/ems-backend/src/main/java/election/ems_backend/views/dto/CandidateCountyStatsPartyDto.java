@@ -12,6 +12,7 @@ import java.util.UUID;
 public class CandidateCountyStatsPartyDto {
     private UUID orgId;
     private UUID electionId;
+    private UUID contestId;
 
     private UUID countyId;
     private String countyName;

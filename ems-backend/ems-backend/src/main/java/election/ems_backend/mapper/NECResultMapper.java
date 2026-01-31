@@ -41,11 +41,13 @@ public class NECResultMapper {
                 .resultId(r.getResultId())
                 .electionId(r.getElection() != null ? r.getElection().getElectionId() : null)
                 .electionName(r.getElection() != null ? r.getElection().getElectionName() : null)
+                .centerId(r.getContest() != null ? r.getContest().getContestId() : null)
+                .contestName(r.getContest() != null ? r.getContest().getContestName() : null)
                 .centerId(r.getPollingCenter() != null ? r.getPollingCenter().getCenterId() : null)
                 .pollingCenterName(r.getPollingCenter() != null ? r.getPollingCenter().getCenterName() : null)
                 .candidateVotes(votes)
                 .totalRegisteredVoters(nz(r.getTotalRegisteredVoters()))
-                .ballotsCast(nz(r.getBallotsCast()))
+                .ballotsInBox(nz(r.getBallotsInBox()))
                 .invalidBallots(nz(r.getInvalidBallots()))
                 .unmarkedBallots(nz(r.getUnmarkedBallots()))
                 .unusedBallots(nz(r.getUnusedBallots()))
@@ -68,7 +70,7 @@ public class NECResultMapper {
         r.setPollingCenter(c);
         r.setCandidateVotes(write(req.getCandidateVotes()));
         r.setTotalRegisteredVoters(nz(req.getTotalRegisteredVoters()));
-        r.setBallotsCast(nz(req.getBallotsCast()));
+        r.setBallotsInBox(nz(req.getBallotsInBox()));
         r.setInvalidBallots(nz(req.getInvalidBallots()));
         r.setUnmarkedBallots(nz(req.getUnmarkedBallots()));
         r.setUnusedBallots(nz(req.getUnusedBallots()));
@@ -82,7 +84,7 @@ public class NECResultMapper {
         if (req == null || r == null) return;
         if (req.getCandidateVotes() != null) r.setCandidateVotes(write(req.getCandidateVotes()));
         if (req.getTotalRegisteredVoters() != null) r.setTotalRegisteredVoters(req.getTotalRegisteredVoters());
-        if (req.getBallotsCast() != null)    r.setBallotsCast(req.getBallotsCast());
+        if (req.getBallotsInBox() != null)    r.setBallotsInBox(req.getBallotsInBox());
         if (req.getInvalidBallots() != null) r.setInvalidBallots(req.getInvalidBallots());
         if (req.getUnmarkedBallots() != null)   r.setUnmarkedBallots(req.getUnmarkedBallots());
         if (req.getUnusedBallots() != null)   r.setUnusedBallots(req.getUnusedBallots());

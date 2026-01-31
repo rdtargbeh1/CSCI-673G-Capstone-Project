@@ -11,6 +11,7 @@ import java.util.UUID;
 @Data
 public class CenterStatsOfficialDto {
     private UUID electionId;
+    private UUID contestId;
     private UUID centerId;
 
     private String centerCode;

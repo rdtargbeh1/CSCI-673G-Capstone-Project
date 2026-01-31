@@ -42,6 +42,7 @@ public class CountyStatsPartyController {
     public ResponseEntity<Page<CountyStatsPartyDto>> list(
             @RequestParam(value = "orgId", required = false) UUID orgIdParam,
             @RequestParam(value = "electionId") UUID electionId,
+            @RequestParam(value = "contestId", required = false) UUID contestId, // ✅ NEW
             @RequestParam(value = "countyId", required = false) UUID countyId,
             @RequestParam(value = "page", required = false, defaultValue = "0") @Min(0) int page,
             @RequestParam(value = "size", required = false) Integer size,
@@ -51,6 +52,7 @@ public class CountyStatsPartyController {
 
         UUID derivedOrgId = SecurityUtils.getOrgIdFromContext();
         UUID effectiveOrgId = orgIdParam;
+
         if (derivedOrgId != null) {
             if (orgIdParam != null && !derivedOrgId.equals(orgIdParam)) {
                 return ResponseEntity.status(403).build();
@@ -72,7 +74,10 @@ public class CountyStatsPartyController {
                 if (parts.length == 1) {
                     orders[i] = Sort.Order.asc(parts[0].trim());
                 } else {
-                    orders[i] = new Sort.Order(Sort.Direction.fromString(parts[1].trim()), parts[0].trim());
+                    orders[i] = new Sort.Order(
+                            Sort.Direction.fromString(parts[1].trim()),
+                            parts[0].trim()
+                    );
                 }
             }
             sortObj = Sort.by(orders);
@@ -80,12 +85,14 @@ public class CountyStatsPartyController {
 
         Pageable pageable = PageRequest.of(page, pageSize, sortObj);
 
-        log.debug("Controller list counties orgId={} electionId={} countyId={} page={} size={} sort={}",
-                effectiveOrgId, electionId, countyId, page, pageSize, sortObj);
+        log.debug("Controller list counties orgId={} electionId={} contestId={} countyId={} page={} size={} sort={}",
+                effectiveOrgId, electionId, contestId, countyId, page, pageSize, sortObj);
 
         meterRegistry.counter("api.stats.county.controller.requests", "endpoint", "/api/stats/party/counties").increment();
 
-        Page<CountyStatsPartyDto> result = service.listCountyStats(effectiveOrgId, electionId, countyId, pageable);
+        Page<CountyStatsPartyDto> result =
+                service.listCountyStats(effectiveOrgId, electionId, contestId, countyId, pageable);
+
         return ResponseEntity.ok(result);
     }
 }

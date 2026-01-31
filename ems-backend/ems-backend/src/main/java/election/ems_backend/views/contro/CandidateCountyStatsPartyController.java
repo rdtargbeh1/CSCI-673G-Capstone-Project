@@ -1,5 +1,6 @@
 package election.ems_backend.views.contro;
 
+import election.ems_backend.tenant.OrgContext;
 import election.ems_backend.utility.SecurityUtils;
 import election.ems_backend.views.dto.CandidateCountyStatsPartyDto;
 import election.ems_backend.views.service.CandidateCountyStatsPartyService;
@@ -31,6 +32,7 @@ import java.util.UUID;
 @Validated
 public class CandidateCountyStatsPartyController {
 
+
     private static final Logger log = LoggerFactory.getLogger(CandidateCountyStatsPartyController.class);
 
     private final CandidateCountyStatsPartyService service;
@@ -43,6 +45,7 @@ public class CandidateCountyStatsPartyController {
     public ResponseEntity<Page<CandidateCountyStatsPartyDto>> list(
             @RequestParam(value = "orgId", required = false) UUID orgIdParam,
             @RequestParam(value = "electionId") UUID electionId,
+            @RequestParam(value = "contestId") UUID contestId, // ✅ NEW (required)
             @RequestParam(value = "countyId", required = false) UUID countyId,
             @RequestParam(value = "candidateId", required = false) UUID candidateId,
             @RequestParam(value = "partyId", required = false) UUID partyId,
@@ -51,19 +54,20 @@ public class CandidateCountyStatsPartyController {
             @RequestParam(value = "sort", required = false) String[] sort
     ) {
         if (electionId == null) return ResponseEntity.badRequest().build();
+        if (contestId == null) return ResponseEntity.badRequest().build(); // ✅ NEW
 
         UUID derivedOrgId = SecurityUtils.getOrgIdFromContext();
+        if (derivedOrgId == null) derivedOrgId = OrgContext.get();
+
         UUID effectiveOrgId = orgIdParam;
         if (derivedOrgId != null) {
-            if (orgIdParam != null && !derivedOrgId.equals(orgIdParam)) {
-                return ResponseEntity.status(403).build();
-            }
+            if (orgIdParam != null && !derivedOrgId.equals(orgIdParam)) return ResponseEntity.status(403).build();
             effectiveOrgId = derivedOrgId;
         } else {
             if (effectiveOrgId == null) return ResponseEntity.badRequest().build();
         }
 
-        int requestedSize = size == null ? DEFAULT_PAGE_SIZE : size;
+        int requestedSize = (size == null ? DEFAULT_PAGE_SIZE : size);
         int pageSize = Math.min(Math.max(1, requestedSize), MAX_PAGE_SIZE);
 
         Sort sortObj = Sort.unsorted();
@@ -72,23 +76,28 @@ public class CandidateCountyStatsPartyController {
             for (int i = 0; i < sort.length; i++) {
                 String s = sort[i];
                 String[] parts = s.split(",");
-                if (parts.length == 1) {
-                    orders[i] = Sort.Order.asc(parts[0].trim());
-                } else {
-                    orders[i] = new Sort.Order(Sort.Direction.fromString(parts[1].trim()), parts[0].trim());
-                }
+                orders[i] = (parts.length == 1)
+                        ? Sort.Order.asc(parts[0].trim())
+                        : new Sort.Order(Sort.Direction.fromString(parts[1].trim()), parts[0].trim());
             }
             sortObj = Sort.by(orders);
         }
 
         Pageable pageable = PageRequest.of(page, pageSize, sortObj);
 
-        log.debug("Controller list candidate county stats orgId={} electionId={} countyId={} candidateId={} partyId={} page={} size={} sort={}",
-                effectiveOrgId, electionId, countyId, candidateId, partyId, page, pageSize, sortObj);
+        Page<CandidateCountyStatsPartyDto> result =
+                service.listCandidateCountyStats(
+                        effectiveOrgId,
+                        electionId,
+                        contestId,   // ✅ NEW
+                        countyId,
+                        candidateId,
+                        partyId,
+                        pageable
+                );
 
-        meterRegistry.counter("api.stats.candidate_county.controller.requests", "endpoint", "/api/stats/party/candidates/counties").increment();
-
-        Page<CandidateCountyStatsPartyDto> result = service.listCandidateCountyStats(effectiveOrgId, electionId, countyId, candidateId, partyId, pageable);
         return ResponseEntity.ok(result);
     }
+
+
 }

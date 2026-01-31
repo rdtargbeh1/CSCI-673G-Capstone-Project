@@ -9,6 +9,7 @@ public class CountyStatsOfficialMapper {
         CountyStatsOfficialDto d = new CountyStatsOfficialDto();
         if (e.getId() != null) {
             d.setElectionId(e.getId().getElectionId());
+            d.setContestId(e.getId().getContestId());
             d.setCountyId(e.getId().getCountyId());
         }
         d.setCountyName(e.getCountyName());

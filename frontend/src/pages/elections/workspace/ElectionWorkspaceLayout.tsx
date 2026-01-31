@@ -6,6 +6,11 @@
  * - Switch Election popover: dropdown defaults to CURRENT election (no placeholder)
  * - Dropdown lists ACTIVE elections + ensures CURRENT election appears (even if inactive)
  * - Refresh button refetches header + active list
+ *
+ * ✅ UI UPDATES (like PartyResultsLayout):
+ * - Tabs + Refresh on the same row
+ * - Current tab indicator (dot + underline + active pill)
+ * - Reduce nav container width (max-width) to avoid over-stretching
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -19,7 +24,7 @@ import {
   searchElections,
   type ElectionDto,
 } from "../../../shared/services/electionService";
-import { Badge, TabsBar, WorkspaceHeader } from "../shared/elections-ui";
+import { Badge, WorkspaceHeader } from "../shared/elections-ui";
 
 /** ---------------- helpers ---------------- */
 function safeStr(v: any) {
@@ -56,6 +61,48 @@ function statusDot(active: boolean) {
 async function fetchElectionById(id: string): Promise<ElectionDto> {
   const { data } = await apiClient.get<ElectionDto>(`/elections/${id}`);
   return data;
+}
+
+/** ---------------- tab styles (active indicator) ---------------- */
+function tabClass(active: boolean) {
+  return [
+    "relative inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-extrabold transition",
+    active
+      ? "border-indigo-200 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-100"
+      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+  ].join(" ");
+}
+
+function TabPill({ to, label }: { to: string; label: string }) {
+  return (
+    <NavItem to={to} label={label} />
+  );
+}
+
+/**
+ * NavLink wrapper that works without importing NavLink in many shared setups.
+ * If you already use NavLink elsewhere, you can replace NavItem with NavLink directly.
+ */
+import { NavLink } from "react-router-dom";
+function NavItem({ to, label }: { to: string; label: string }) {
+  return (
+    <NavLink to={to} className={({ isActive }) => tabClass(isActive)}>
+      {({ isActive }) => (
+        <>
+          <span
+            className={[
+              "h-2.5 w-2.5 rounded-full",
+              isActive ? "bg-indigo-600" : "bg-slate-300",
+            ].join(" ")}
+          />
+          <span>{label}</span>
+          {isActive ? (
+            <span className="absolute -bottom-[2px] left-2 right-2 h-[2px] rounded-full bg-indigo-600" />
+          ) : null}
+        </>
+      )}
+    </NavLink>
+  );
 }
 
 export default function ElectionWorkspaceLayout() {
@@ -147,22 +194,26 @@ export default function ElectionWorkspaceLayout() {
     return Array.from(map.values());
   }, [activeElectionsQ.data, election]);
 
-  const tabs = [
-    { to: "overview", label: "Overview" },
-    { to: "setup", label: "Setup" },
-    { to: "allocation", label: "Allocation" },
-    { to: "submissions", label: "Submissions" },
-    { to: "results", label: "Results" },
-    { to: "integrity", label: "Integrity" },
-    { to: "nec-workflow", label: "NEC Workflow", hidden: !isNecOrSystem },
-  ];
+  const tabs = useMemo(
+    () =>
+      [
+        { to: "overview", label: "Overview", hidden: false },
+        { to: "setup", label: "Setup", hidden: false },
+        { to: "allocation", label: "Allocation", hidden: false },
+        { to: "submissions", label: "Submissions", hidden: false },
+        { to: "results", label: "Results", hidden: false },
+        { to: "integrity", label: "Integrity", hidden: false },
+        { to: "nec-workflow", label: "NEC Workflow", hidden: !isNecOrSystem },
+      ].filter((t) => !t.hidden),
+    [isNecOrSystem]
+  );
 
   const refreshAll = async () => {
     await Promise.allSettled([electionQ.refetch(), activeElectionsQ.refetch()]);
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div className="flex flex-col gap-3">
       <WorkspaceHeader
         electionName={election ? safeStr(election.electionName) : "Election"}
         meta={
@@ -177,76 +228,23 @@ export default function ElectionWorkspaceLayout() {
             : "No election selected"
         }
         right={
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {/* Back */}
             <button
               type="button"
               onClick={() => nav("/elections")}
               title="Back to Elections list"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                background: "#fff",
-              }}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-extrabold hover:bg-slate-50"
             >
               <ArrowLeft size={16} />
               Back
             </button>
 
-            {/* Refresh */}
-            <button
-              type="button"
-              onClick={refreshAll}
-              title="Refresh election header and active elections"
-              disabled={electionQ.isFetching || activeElectionsQ.isFetching}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                background: "#fff",
-                opacity:
-                  electionQ.isFetching || activeElectionsQ.isFetching ? 0.6 : 1,
-                cursor:
-                  electionQ.isFetching || activeElectionsQ.isFetching
-                    ? "not-allowed"
-                    : "pointer",
-              }}
-            >
-              <RefreshCw size={16} />
-              Refresh
-            </button>
-
             {/* Status badge with dot */}
             {election ? (
               <span
-                title={
-                  election.isActive ? "Active election" : "Inactive election"
-                }
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 999,
-                  padding: "2px 8px",
-                  background: "#fff",
-                  fontSize: 12,
-                  fontWeight: 700,
-                }}
+                title={election.isActive ? "Active election" : "Inactive election"}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-extrabold text-slate-800"
               >
                 {statusDot(!!election.isActive)}
                 {election.isActive ? "ACTIVE" : "INACTIVE"}
@@ -261,15 +259,7 @@ export default function ElectionWorkspaceLayout() {
                 type="button"
                 onClick={() => setSwitchOpen((s) => !s)}
                 title="Switch to another active election"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "8px 10px",
-                  borderRadius: 10,
-                  border: "1px solid #e5e7eb",
-                  background: "#fff",
-                }}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-extrabold hover:bg-slate-50"
               >
                 <Repeat2 size={16} />
                 Switch Election
@@ -277,31 +267,19 @@ export default function ElectionWorkspaceLayout() {
 
               {switchOpen ? (
                 <div
-                  style={{
-                    position: "absolute",
-                    right: 0,
-                    top: "calc(100% + 8px)",
-                    width: 420,
-                    maxWidth: "80vw",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 12,
-                    background: "#fff",
-                    padding: 10,
-                    boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
-                    zIndex: 50,
-                  }}
+                  className="absolute right-0 top-[calc(100%+8px)] z-50 w-[420px] max-w-[80vw] rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
                 >
-                  <div style={{ fontWeight: 900, fontSize: 13 }}>
+                  <div className="text-sm font-extrabold text-slate-900">
                     Switch election
                   </div>
 
-                  <div style={{ marginTop: 8 }}>
+                  <div className="mt-2">
                     {activeElectionsQ.isLoading && !switchOptions.length ? (
-                      <div style={{ fontSize: 13, opacity: 0.75 }}>
+                      <div className="text-sm text-slate-600">
                         Loading elections…
                       </div>
                     ) : activeElectionsQ.isError && !switchOptions.length ? (
-                      <div style={{ fontSize: 13, color: "#b91c1c" }}>
+                      <div className="text-sm text-red-700">
                         {(activeElectionsQ.error as any)?.message ??
                           "Failed to load active elections."}
                       </div>
@@ -320,15 +298,7 @@ export default function ElectionWorkspaceLayout() {
                           nav(nextPath);
                           setSwitchOpen(false);
                         }}
-                        style={{
-                          width: "100%",
-                          padding: "10px 10px",
-                          borderRadius: 10,
-                          border: "1px solid #e5e7eb",
-                          background: "#fff",
-                          fontSize: 13,
-                          fontWeight: 700,
-                        }}
+                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-extrabold"
                         title="Select an election (active list + current)"
                       >
                         {switchOptions.map((o) => (
@@ -340,22 +310,54 @@ export default function ElectionWorkspaceLayout() {
                     )}
                   </div>
 
-                  <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
+                  <div className="mt-2 text-xs text-slate-500">
                     Active elections are available for quick switching. Current
                     election is shown even if inactive.
                   </div>
                 </div>
               ) : null}
             </div>
+
+            {/* Refresh */}
+            <button
+              type="button"
+              onClick={refreshAll}
+              title="Refresh election header and active elections"
+              disabled={electionQ.isFetching || activeElectionsQ.isFetching}
+              className={[
+                "inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-extrabold",
+                electionQ.isFetching || activeElectionsQ.isFetching
+                  ? "cursor-not-allowed opacity-60"
+                  : "hover:bg-slate-50",
+              ].join(" ")}
+            >
+              <RefreshCw size={16} />
+              Refresh
+            </button>
           </div>
         }
       />
 
-      <TabsBar tabs={tabs} />
+      {/* ✅ Tabs row with indicator + reduced max width */}
+      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* nav container: reduced width so it doesn't stretch too wide */}
+          <div className="flex max-w-[980px] flex-wrap items-center gap-2">
+            {tabs.map((t) => (
+              <TabPill key={t.to} to={t.to} label={t.label} />
+            ))}
+          </div>
 
-      <div style={{ marginTop: 4 }}>
+          {/* right side mini status */}
+          <div className="flex items-center gap-2">
+            <Badge text={safeStr(dashboardMode || "—")} />
+          </div>
+        </div>
+      </div>
+
+      <div>
         {electionQ.isError ? (
-          <div style={{ color: "#b91c1c", fontSize: 13 }}>
+          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-800">
             {(electionQ.error as any)?.message ??
               "Failed to load election header."}
           </div>

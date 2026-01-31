@@ -10,6 +10,7 @@ import election.ems_backend.mapper.ChatMessageMapper;
 import election.ems_backend.mapper.ChatRoomMemberMapper;
 import election.ems_backend.repository.*;
 import election.ems_backend.service.ChatRoomMemberService;
+import election.ems_backend.tenant.TenantUtils;
 import election.ems_backend.utility.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;

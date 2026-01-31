@@ -35,11 +35,27 @@ public class CandidateCountyStatsPartyService{
 
 
     @Transactional(readOnly = true)
-    @Cacheable(value = "candidateCountyStatsParty", key = "T(java.lang.String).valueOf(#orgId) + ':' + #electionId + ':' + (#countyId==null?'':#countyId) + ':' + (#candidateId==null?'':#candidateId) + ':' + (#partyId==null?'':#partyId) + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort")
-    public Page<CandidateCountyStatsPartyDto> listCandidateCountyStats(UUID orgId, UUID electionId, UUID countyId, UUID candidateId, UUID partyId, Pageable pageable) {
-        log.debug("listCandidateCountyStats called orgId={} electionId={} countyId={} candidateId={} partyId={} page={} size={}",
-                orgId, electionId, countyId, candidateId, partyId, pageable.getPageNumber(), pageable.getPageSize());
-
+    @Cacheable(
+            value = "candidateCountyStatsParty",
+            key =
+                    "T(java.lang.String).valueOf(#orgId) + ':' + #electionId"
+                            + " + ':' + (#contestId==null?'':#contestId)"
+                            + " + ':' + (#countyId==null?'':#countyId)"
+                            + " + ':' + (#candidateId==null?'':#candidateId)"
+                            + " + ':' + (#partyId==null?'':#partyId)"
+                            + " + ':' + #pageable.pageNumber"
+                            + " + ':' + #pageable.pageSize"
+                            + " + ':' + #pageable.sort"
+    )
+    public Page<CandidateCountyStatsPartyDto> listCandidateCountyStats(
+            UUID orgId,
+            UUID electionId,
+            UUID contestId,   // ✅ NEW
+            UUID countyId,
+            UUID candidateId,
+            UUID partyId,
+            Pageable pageable
+    ) {
         if (orgId == null) throw new IllegalArgumentException("orgId is required");
         electionValidationService.ensureExists(electionId);
 
@@ -48,13 +64,14 @@ public class CandidateCountyStatsPartyService{
         Specification<CandidateCountyStatsParty> spec = Specification
                 .where(CandidateCountyStatsPartySpecs.orgEquals(orgId))
                 .and(CandidateCountyStatsPartySpecs.electionEquals(electionId))
+                .and(CandidateCountyStatsPartySpecs.contestEquals(contestId)) // ✅ NEW
                 .and(CandidateCountyStatsPartySpecs.countyEquals(countyId))
                 .and(CandidateCountyStatsPartySpecs.candidateEquals(candidateId))
                 .and(CandidateCountyStatsPartySpecs.partyEquals(partyId));
 
         Page<CandidateCountyStatsParty> page = repo.findAll(spec, pageable);
-
         meterRegistry.gauge("api.stats.candidate_county.result_size", page.getContent(), c -> (double) c.size());
         return page.map(mapper::toDto);
     }
+
 }

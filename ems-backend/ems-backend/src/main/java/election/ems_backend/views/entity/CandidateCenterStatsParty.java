@@ -51,7 +51,7 @@ public class CandidateCenterStatsParty {
     @Column(name = "party_name")
     private String partyName;
 
-    @Column(name = "party_code")
+    @Column(name = "abbreviation")
     private String partyCode;
 
     @Column(name = "candidate_votes")

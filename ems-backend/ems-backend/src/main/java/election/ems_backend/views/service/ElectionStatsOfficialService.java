@@ -41,28 +41,29 @@ public class ElectionStatsOfficialService {
 
 
     @Transactional(readOnly = true)
-    @Cacheable(value = "electionStatsOfficial", key = "T(java.lang.String).valueOf(#electionId) + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort")
-    public Page<ElectionStatsOfficialDto> listOfficialElections(UUID electionId, Pageable pageable) {
-        log.debug("listOfficialElections called electionId={} page={} size={}", electionId, pageable.getPageNumber(), pageable.getPageSize());
-
+    @Cacheable(
+            value = "electionStatsOfficial",
+            key = "T(java.lang.String).valueOf(#electionId)"
+                    + " + ':' + (#contestId==null?'':#contestId)" // ✅ NEW
+                    + " + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort"
+    )
+    public Page<ElectionStatsOfficialDto> listElectionStats(
+            UUID electionId,
+            UUID contestId,   // ✅ NEW
+            Pageable pageable
+    ) {
         if (electionId == null) throw new IllegalArgumentException("electionId is required");
-
         electionValidationService.ensureExists(electionId);
 
-        // Apply tenant GUC if caller is in an org context; view is filtered to published rows,
-        // but applying GUCs prevents other RLS surprises.
-        UUID derivedOrgId = SecurityUtils.getOrgIdFromContext();
-        if (derivedOrgId != null) {
-            tenantGucService.applyForTransaction(derivedOrgId, false, false);
-        } else {
-            tenantGucService.applyForTransaction((java.util.UUID) null, false, false);
-        }
+        Specification<ElectionStatsOfficial> spec = Specification
+                .where(ElectionStatsOfficialSpecs.electionEquals(electionId))
+                .and(ElectionStatsOfficialSpecs.contestEquals(contestId)); // ✅ NEW
 
-        Specification<ElectionStatsOfficial> spec = Specification.where(ElectionStatsOfficialSpecs.electionEquals(electionId));
         Page<ElectionStatsOfficial> page = repo.findAll(spec, pageable);
 
         meterRegistry.gauge("api.stats.official.election.result_size", page.getContent(), c -> (double) c.size());
 
         return page.map(mapper::toDto);
     }
+
 }

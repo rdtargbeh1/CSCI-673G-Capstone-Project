@@ -16,7 +16,11 @@ import election.ems_backend.views.dto.CenterStatsPartyDto;
 import election.ems_backend.views.entity.CenterStatsParty;
 import election.ems_backend.views.mapper.CenterStatsPartyMapper;
 import election.ems_backend.views.repo.CenterStatsPartyRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -41,6 +45,8 @@ public class CenterStatsPartyService {
     private final TenantGucService tenantGucService;
     private final CenterStatsPartyMapper mapper = new CenterStatsPartyMapper();
 
+    private static final Logger log = LoggerFactory.getLogger(CenterStatsPartyService.class);
+    private final MeterRegistry meterRegistry;
 
     /**
      * List center stats for given org/election filters.
@@ -51,52 +57,48 @@ public class CenterStatsPartyService {
      *  - Validates that the election exists using ElectionValidationService.
      */
     @Transactional(readOnly = true)
-    public Page<CenterStatsPartyDto> listCenterStats(UUID orgId, UUID electionId, UUID countyId, UUID districtId, UUID centerId, Pageable pageable) {
-        // Validate input via centralized helper
-        if (orgId == null) {
-            throw new IllegalArgumentException("orgId is required");
-        }
+    @Cacheable(
+            value = "centerStatsParty",
+            key =
+                    "T(java.lang.String).valueOf(#orgId)"
+                            + " + ':' + #electionId"
+                            + " + ':' + (#contestId==null?'':#contestId)"
+                            + " + ':' + (#countyId==null?'':#countyId)"
+                            + " + ':' + (#districtId==null?'':#districtId)"
+                            + " + ':' + (#centerId==null?'':#centerId)"
+                            + " + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort"
+    )
+    public Page<CenterStatsPartyDto> listCenterStats(
+            UUID orgId,
+            UUID electionId,
+            UUID contestId,   // ✅ NEW
+            UUID countyId,
+            UUID districtId,
+            UUID centerId,
+            Pageable pageable
+    ) {
+        log.debug("listCenterStatsParty orgId={} electionId={} contestId={} countyId={} districtId={} centerId={} page={} size={}",
+                orgId, electionId, contestId, countyId, districtId, centerId,
+                pageable.getPageNumber(), pageable.getPageSize());
+
+        if (orgId == null) throw new IllegalArgumentException("orgId is required");
+        if (electionId == null) throw new IllegalArgumentException("electionId is required");
         electionValidationService.ensureExists(electionId);
 
-        // Apply tenant GUCs for current transaction so RLS policies evaluate correctly.
-        // Treat caller as non-system and non-NEC admin; if your code has admin flags, pass them here.
         tenantGucService.applyForTransaction(orgId, false, false);
 
         Specification<CenterStatsParty> spec = Specification
                 .where(CenterStatsPartySpecs.orgEquals(orgId))
                 .and(CenterStatsPartySpecs.electionEquals(electionId))
+                .and(CenterStatsPartySpecs.contestEquals(contestId)) // ✅ NEW
                 .and(CenterStatsPartySpecs.countyEquals(countyId))
                 .and(CenterStatsPartySpecs.districtEquals(districtId))
                 .and(CenterStatsPartySpecs.centerEquals(centerId));
 
         Page<CenterStatsParty> page = repo.findAll(spec, pageable);
 
-        // Map entities to DTOs
-        List<CenterStatsPartyDto> dtos = page.getContent().stream()
-                .map(mapper::toDto)
-                .collect(Collectors.toList());
-
-        // Batch fetch polling center coordinates for enrichment
-        Set<UUID> centerIds = dtos.stream()
-                .map(CenterStatsPartyDto::getCenterId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-
-        if (!centerIds.isEmpty()) {
-            List<PollingCenter> centers = pollingCenterRepo.findAllById(centerIds);
-            Map<UUID, PollingCenter> byId = centers.stream()
-                    .collect(Collectors.toMap(PollingCenter::getCenterId, c -> c));
-            for (CenterStatsPartyDto d : dtos) {
-                if (d.getCenterId() == null) continue;
-                PollingCenter pc = byId.get(d.getCenterId());
-                if (pc != null) {
-                    d.setCenterLatitude(pc.getLatitude());
-                    d.setCenterLongitude(pc.getLongitude());
-                }
-            }
-        }
-
-        return new PageImpl<>(dtos, pageable, page.getTotalElements());
+        meterRegistry.gauge("api.stats.center_party.result_size", page.getContent(), c -> (double) c.size());
+        return page.map(mapper::toDto);
     }
 
 

@@ -12,16 +12,21 @@ import java.util.UUID;
 public class CandidateCenterStatsPartyDto {
     private UUID orgId;
     private UUID electionId;
+    private UUID contestId;
+
     private UUID countyId;
     private String countyName;
+
     private UUID districtId;
     private String districtName;
+
     private UUID centerId;
     private String centerCode;
     private String centerName;
 
     private UUID candidateId;
     private String candidateName;
+
     private UUID partyId;
     private String partyName;
     private String partyCode;

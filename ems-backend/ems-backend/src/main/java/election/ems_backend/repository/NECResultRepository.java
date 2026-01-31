@@ -19,6 +19,9 @@ public interface NECResultRepository extends JpaRepository<NECResult, UUID>, Jpa
 
     Optional<NECResult> findByElection_ElectionIdAndPollingCenter_CenterId(UUID electionId, UUID centerId);
 
+    boolean existsByElection_ElectionIdAndContest_ContestIdAndPollingCenter_CenterId(UUID electionId, UUID contestId, UUID centerId);
+
+
     boolean existsByElection_ElectionIdAndPollingCenter_CenterId(UUID electionId, UUID centerId);
 
     // Scalar sums

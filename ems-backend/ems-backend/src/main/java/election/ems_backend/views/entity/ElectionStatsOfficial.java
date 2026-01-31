@@ -1,9 +1,6 @@
 package election.ems_backend.views.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.Immutable;
@@ -22,9 +19,9 @@ import java.util.UUID;
 @NoArgsConstructor
 public class ElectionStatsOfficial {
 
-    @Id
-    @Column(name = "election_id")
-    private UUID electionId;
+
+    @EmbeddedId
+    private ElectionStatsOfficialId id;
 
     @Column(name = "registered_voters")
     private Integer registeredVoters; // ✅ FULL election basis

@@ -13,6 +13,7 @@ import election.ems_backend.repository.ChatRoomRepository;
 import election.ems_backend.repository.OrganizationRepository;
 import election.ems_backend.service.ChatMessageService;
 import election.ems_backend.service.NotificationService;
+import election.ems_backend.tenant.TenantUtils;
 import election.ems_backend.utility.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;

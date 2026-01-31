@@ -1,7 +1,7 @@
 package election.ems_backend.security;
 
 
-import election.ems_backend.utility.TenantContext;
+import election.ems_backend.tenant.TenantContext;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;

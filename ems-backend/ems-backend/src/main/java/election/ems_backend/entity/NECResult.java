@@ -39,6 +39,10 @@ public class NECResult {
             foreignKey = @ForeignKey(name = "fk_nec_election"))
     private Election election;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "contest_id", nullable = false)
+    private Contest contest;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "center_id", nullable = false,
             foreignKey = @ForeignKey(name = "fk_nec_center"))
@@ -51,7 +55,7 @@ public class NECResult {
     private Integer totalRegisteredVoters;
 
     @Column(name = "ballots_cast", nullable = false)
-    private Integer ballotsCast;
+    private Integer ballotsInBox;
 
     @Column(name = "invalid_ballots", nullable = false)
     private Integer invalidBallots = 0;

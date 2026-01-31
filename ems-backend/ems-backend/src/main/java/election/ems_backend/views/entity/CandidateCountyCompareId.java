@@ -17,12 +17,17 @@ import java.util.UUID;
 @AllArgsConstructor
 @EqualsAndHashCode
 public class CandidateCountyCompareId implements Serializable {
+
     private UUID electionId;
+    private UUID contestId;
     private UUID countyId;
     private UUID candidateId;
 
     public UUID getElectionId() { return electionId; }
     public void setElectionId(UUID electionId) { this.electionId = electionId; }
+
+    public UUID getContestId() { return contestId; }
+    public void setContestId(UUID contestId) { this.contestId = contestId; }
 
     public UUID getCountyId() { return countyId; }
     public void setCountyId(UUID countyId) { this.countyId = countyId; }

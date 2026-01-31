@@ -24,7 +24,8 @@ import java.util.UUID;
 
 
 @RestController
-@RequestMapping("/api/elections/{electionId}/vote-tallies")
+//@RequestMapping("/api/elections/{electionId}/vote-tallies")
+@RequestMapping("/api/org/{orgId}/elections/{electionId}/vote-tallies")
 @RequiredArgsConstructor
 public class VoteTallyController {
 

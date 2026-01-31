@@ -17,10 +17,14 @@ import java.util.UUID;
 @EqualsAndHashCode
 public class CountyStatsOfficialId implements Serializable {
     private UUID electionId;
+    private UUID contestId;
     private UUID countyId;
 
     public UUID getElectionId() { return electionId; }
     public void setElectionId(UUID electionId) { this.electionId = electionId; }
+
+    public UUID getContestId() { return contestId; }
+    public void setContestId(UUID contestId) { this.contestId = contestId; }
 
     public UUID getCountyId() { return countyId; }
     public void setCountyId(UUID countyId) { this.countyId = countyId; }

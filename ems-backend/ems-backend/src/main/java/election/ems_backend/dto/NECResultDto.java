@@ -1,5 +1,6 @@
 package election.ems_backend.dto;
 
+import election.ems_backend.entity.Contest;
 import lombok.Builder;
 import lombok.Data;
 
@@ -15,6 +16,9 @@ public class NECResultDto {
     private UUID electionId;
     private String electionName;
 
+    private UUID contest;
+    private String contestName;
+
     private UUID centerId;
     private String pollingCenterName;
 
@@ -22,7 +26,7 @@ public class NECResultDto {
     private Map<String, Integer> candidateVotes;
 
     private Integer totalRegisteredVoters;
-    private Integer ballotsCast;
+    private Integer ballotsInBox;
     private Integer invalidBallots;
     private Integer unmarkedBallots;
     private Integer unusedBallots;

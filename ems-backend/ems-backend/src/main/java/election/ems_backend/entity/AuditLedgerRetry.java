@@ -61,6 +61,7 @@ public class AuditLedgerRetry {
     private LocalDateTime nextAttemptAt;
 
     // Claiming / status fields added to support SELECT ... FOR UPDATE SKIP LOCKED or claim workflows
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 20, nullable = false)
     private AuditLedgerStatus status = AuditLedgerStatus.PENDING;
 

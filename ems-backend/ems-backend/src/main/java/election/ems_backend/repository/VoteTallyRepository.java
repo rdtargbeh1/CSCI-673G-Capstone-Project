@@ -2,10 +2,7 @@ package election.ems_backend.repository;
 
 import election.ems_backend.entity.VoteTally;
 import jakarta.transaction.Transactional;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
-import org.springframework.data.jpa.repository.Modifying;
-import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -36,11 +33,19 @@ public interface VoteTallyRepository
     long sumVotesByElection(@Param("orgId") UUID orgId,
                             @Param("electionId") UUID electionId);
 
-    List<VoteTally> findByOrganization_OrgIdAndElection_ElectionId(
-            UUID orgId,
-            UUID electionId
-    );
 
+
+    @EntityGraph(attributePaths = {
+            "election",
+            "organization",
+            "contest",
+            "electionCandidate",
+            "electionCandidate.candidate",
+            "electionParty",
+            "electionParty.party",
+            "recomputedBy"
+    })
+    List<VoteTally> findByOrganization_OrgIdAndElection_ElectionId(UUID orgId, UUID electionId);
 
 
 }

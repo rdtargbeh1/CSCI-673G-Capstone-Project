@@ -1,7 +1,7 @@
 package election.ems_backend.config;
 
 
-import election.ems_backend.utility.TenantContext;
+import election.ems_backend.tenant.TenantContext;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

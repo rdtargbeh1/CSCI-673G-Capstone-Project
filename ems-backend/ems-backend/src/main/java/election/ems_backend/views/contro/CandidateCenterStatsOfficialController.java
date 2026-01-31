@@ -38,9 +38,11 @@ public class CandidateCenterStatsOfficialController {
     private static final int MAX_PAGE_SIZE = 500;
     private static final int DEFAULT_PAGE_SIZE = 20;
 
+
     @GetMapping
     public ResponseEntity<Page<CandidateCenterStatsOfficialDto>> list(
             @RequestParam(value = "electionId") UUID electionId,
+            @RequestParam(value = "contestId") UUID contestId,  // ✅ NEW (make it required)
             @RequestParam(value = "countyId", required = false) UUID countyId,
             @RequestParam(value = "districtId", required = false) UUID districtId,
             @RequestParam(value = "centerId", required = false) UUID centerId,
@@ -50,7 +52,7 @@ public class CandidateCenterStatsOfficialController {
             @RequestParam(value = "size", required = false) Integer size,
             @RequestParam(value = "sort", required = false) String[] sort
     ) {
-        if (electionId == null) return ResponseEntity.badRequest().build();
+        if (electionId == null || contestId == null) return ResponseEntity.badRequest().build();
 
         int requestedSize = size == null ? DEFAULT_PAGE_SIZE : size;
         int pageSize = Math.min(Math.max(1, requestedSize), MAX_PAGE_SIZE);
@@ -72,12 +74,31 @@ public class CandidateCenterStatsOfficialController {
 
         Pageable pageable = PageRequest.of(page, pageSize, sortObj);
 
-        log.debug("Controller list official candidate center stats electionId={} countyId={} districtId={} centerId={} candidateId={} partyId={} page={} size={} sort={}",
-                electionId, countyId, districtId, centerId, candidateId, partyId, page, pageSize, sortObj);
+        log.debug(
+                "Controller list official candidate center stats electionId={} contestId={} countyId={} districtId={} centerId={} candidateId={} partyId={} page={} size={} sort={}",
+                electionId, contestId, countyId, districtId, centerId, candidateId, partyId, page, pageSize, sortObj
+        );
 
-        meterRegistry.counter("api.stats.official.candidate_center.controller.requests", "endpoint", "/api/stats/official/candidates/centers").increment();
+        meterRegistry.counter(
+                "api.stats.official.candidate_center.controller.requests",
+                "endpoint", "/api/stats/official/candidates/centers"
+        ).increment();
 
-        Page<CandidateCenterStatsOfficialDto> result = service.listCandidateCenterOfficialStats(electionId, countyId, districtId, centerId, candidateId, partyId, pageable);
+        Page<CandidateCenterStatsOfficialDto> result =
+                service.listCandidateCenterOfficialStats(
+                        electionId,
+                        contestId,
+                        countyId,
+                        districtId,
+                        centerId,
+                        candidateId,
+                        partyId,
+                        pageable
+                );
+
         return ResponseEntity.ok(result);
     }
+
+
+
 }

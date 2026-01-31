@@ -8,7 +8,7 @@ import election.ems_backend.repository.OrganizationRepository;
 import election.ems_backend.service.OrgSettingService;
 import election.ems_backend.utility.OrgSettingDefaults;
 import election.ems_backend.utility.OrgSettingKeys;
-import election.ems_backend.utility.TenantContext;
+import election.ems_backend.tenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;

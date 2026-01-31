@@ -41,6 +41,7 @@ public class CandidateDistrictStatsOfficialController {
     @GetMapping
     public ResponseEntity<Page<CandidateDistrictStatsOfficialDto>> list(
             @RequestParam(value = "electionId") UUID electionId,
+            @RequestParam(value = "contestId", required = false) UUID contestId, // ✅ NEW
             @RequestParam(value = "countyId", required = false) UUID countyId,
             @RequestParam(value = "districtId", required = false) UUID districtId,
             @RequestParam(value = "candidateId", required = false) UUID candidateId,
@@ -71,12 +72,15 @@ public class CandidateDistrictStatsOfficialController {
 
         Pageable pageable = PageRequest.of(page, pageSize, sortObj);
 
-        log.debug("Controller list candidate district official stats electionId={} countyId={} districtId={} candidateId={} partyId={} page={} size={} sort={}",
-                electionId, countyId, districtId, candidateId, partyId, page, pageSize, sortObj);
+        log.debug("Controller list candidate district official stats electionId={} contestId={} countyId={} districtId={} candidateId={} partyId={} page={} size={} sort={}",
+                electionId, contestId, countyId, districtId, candidateId, partyId, page, pageSize, sortObj);
 
-        meterRegistry.counter("api.stats.official.candidate_district.controller.requests", "endpoint", "/api/stats/official/candidates/districts").increment();
+        meterRegistry.counter("api.stats.official.candidate_district.controller.requests",
+                "endpoint", "/api/stats/official/candidates/districts").increment();
 
-        Page<CandidateDistrictStatsOfficialDto> result = service.listCandidateDistrictOfficialStats(electionId, countyId, districtId, candidateId, partyId, pageable);
+        Page<CandidateDistrictStatsOfficialDto> result =
+                service.listCandidateDistrictOfficialStats(electionId, contestId, countyId, districtId, candidateId, partyId, pageable);
+
         return ResponseEntity.ok(result);
     }
 

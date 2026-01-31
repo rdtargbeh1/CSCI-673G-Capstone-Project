@@ -11,7 +11,7 @@ import java.util.UUID;
 public class NECResultUpdateRequest {
     private Map<UUID, Integer> candidateVotes; // null => no change
     private Integer totalRegisteredVoters;
-    private Integer ballotsCast;
+    private Integer ballotsInBox;
     private Integer invalidBallots;
     private Integer unmarkedBallots;
     private Integer unusedBallots;

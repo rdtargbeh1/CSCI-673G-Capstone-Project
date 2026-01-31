@@ -40,19 +40,32 @@ public class ElectionStatsPartyService {
 
 
     @Transactional(readOnly = true)
-    @Cacheable(value = "electionStatsParty", key = "T(java.lang.String).valueOf(#orgId) + ':' + #electionId + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort")
-    public Page<ElectionStatsPartyDto> listElectionStats(UUID orgId, UUID electionId, Pageable pageable) {
-        log.debug("listElectionStats called orgId={} electionId={} page={} size={}",
-                orgId, electionId, pageable.getPageNumber(), pageable.getPageSize());
+    @Cacheable(
+            value = "electionStatsParty",
+            key = "T(java.lang.String).valueOf(#orgId) + ':' + #electionId"
+                    + " + ':' + (#contestId==null?'':#contestId)"
+                    + " + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort"
+    )
+    public Page<ElectionStatsPartyDto> listElectionStats(
+            UUID orgId,
+            UUID electionId,
+            UUID contestId,   // ✅ NEW
+            Pageable pageable
+    ) {
+        log.debug("listElectionStats called orgId={} electionId={} contestId={} page={} size={}",
+                orgId, electionId, contestId, pageable.getPageNumber(), pageable.getPageSize());
 
         if (orgId == null) throw new IllegalArgumentException("orgId is required");
+        if (electionId == null) throw new IllegalArgumentException("electionId is required");
+
         electionValidationService.ensureExists(electionId);
 
         tenantGucService.applyForTransaction(orgId, false, false);
 
         Specification<ElectionStatsParty> spec = Specification
                 .where(ElectionStatsPartySpecs.orgEquals(orgId))
-                .and(ElectionStatsPartySpecs.electionEquals(electionId));
+                .and(ElectionStatsPartySpecs.electionEquals(electionId))
+                .and(ElectionStatsPartySpecs.contestEquals(contestId)); // ✅ NEW
 
         Page<ElectionStatsParty> page = repo.findAll(spec, pageable);
 
@@ -60,4 +73,6 @@ public class ElectionStatsPartyService {
 
         return page.map(mapper::toDto);
     }
+
+
 }

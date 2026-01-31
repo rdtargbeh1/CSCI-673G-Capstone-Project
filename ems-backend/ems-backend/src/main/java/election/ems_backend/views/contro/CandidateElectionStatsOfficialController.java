@@ -41,6 +41,7 @@ public class CandidateElectionStatsOfficialController {
     @GetMapping
     public ResponseEntity<Page<CandidateElectionStatsOfficialDto>> list(
             @RequestParam(value = "electionId") UUID electionId,
+            @RequestParam(value = "contestId", required = false) UUID contestId,
             @RequestParam(value = "candidateId", required = false) UUID candidateId,
             @RequestParam(value = "partyId", required = false) UUID partyId,
             @RequestParam(value = "page", required = false, defaultValue = "0") @Min(0) int page,
@@ -74,7 +75,7 @@ public class CandidateElectionStatsOfficialController {
 
         meterRegistry.counter("api.stats.official.candidate_election.controller.requests", "endpoint", "/api/stats/official/candidates/elections").increment();
 
-        Page<CandidateElectionStatsOfficialDto> result = service.listCandidateElectionOfficialStats(electionId, candidateId, partyId, pageable);
+        Page<CandidateElectionStatsOfficialDto> result = service.listCandidateElectionOfficialStats(electionId, contestId, candidateId, partyId, pageable);
         return ResponseEntity.ok(result);
     }
 }

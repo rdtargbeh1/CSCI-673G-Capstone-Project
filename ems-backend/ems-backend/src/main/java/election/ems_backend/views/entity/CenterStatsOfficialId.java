@@ -19,10 +19,14 @@ import java.util.UUID;
 @EqualsAndHashCode
 public class CenterStatsOfficialId implements Serializable {
     private UUID electionId;
+    private UUID contestId;
     private UUID centerId;
 
     public UUID getElectionId() { return electionId; }
     public void setElectionId(UUID electionId) { this.electionId = electionId; }
+
+    public UUID getContestId() { return contestId; }
+    public void setContestId(UUID contestId) { this.contestId = contestId; }
 
     public UUID getCenterId() { return centerId; }
     public void setCenterId(UUID centerId) { this.centerId = centerId; }

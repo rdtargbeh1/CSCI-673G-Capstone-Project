@@ -1,3 +1,9 @@
+
+
+
+// ops-ui.tsx
+
+
 /**
  * OPERATIONS UI SHARED (Tailwind)
  * PURPOSE:
@@ -60,7 +66,17 @@ export function OpsTabs() {
       >
         Notifications
       </NavLink>
+
+      <NavLink
+        to="/operations/tally-sheets"
+        className={({ isActive }) => `${base} ${isActive ? active : idle}`}
+      >
+        Tally Sheets
+      </NavLink>
+      
     </div>
+
+    
   );
 }
 

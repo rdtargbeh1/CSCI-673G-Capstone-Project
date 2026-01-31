@@ -44,6 +44,7 @@ public class ElectionStatsPartyController {
     public ResponseEntity<Page<ElectionStatsPartyDto>> list(
             @RequestParam(value = "orgId", required = false) UUID orgIdParam,
             @RequestParam(value = "electionId") UUID electionId,
+            @RequestParam(value = "contestId", required = false) UUID contestId, // ✅ NEW
             @RequestParam(value = "page", required = false, defaultValue = "0") @Min(0) int page,
             @RequestParam(value = "size", required = false) Integer size,
             @RequestParam(value = "sort", required = false) String[] sort
@@ -52,6 +53,7 @@ public class ElectionStatsPartyController {
 
         UUID derivedOrgId = SecurityUtils.getOrgIdFromContext();
         UUID effectiveOrgId = orgIdParam;
+
         if (derivedOrgId != null) {
             if (orgIdParam != null && !derivedOrgId.equals(orgIdParam)) {
                 return ResponseEntity.status(403).build();
@@ -70,23 +72,22 @@ public class ElectionStatsPartyController {
             for (int i = 0; i < sort.length; i++) {
                 String s = sort[i];
                 String[] parts = s.split(",");
-                if (parts.length == 1) {
-                    orders[i] = Sort.Order.asc(parts[0].trim());
-                } else {
-                    orders[i] = new Sort.Order(Sort.Direction.fromString(parts[1].trim()), parts[0].trim());
-                }
+                if (parts.length == 1) orders[i] = Sort.Order.asc(parts[0].trim());
+                else orders[i] = new Sort.Order(Sort.Direction.fromString(parts[1].trim()), parts[0].trim());
             }
             sortObj = Sort.by(orders);
         }
 
         Pageable pageable = PageRequest.of(page, pageSize, sortObj);
 
-        log.debug("Controller list elections orgId={} electionId={} page={} size={} sort={}",
-                effectiveOrgId, electionId, page, pageSize, sortObj);
+        log.debug("Controller list elections orgId={} electionId={} contestId={} page={} size={} sort={}",
+                effectiveOrgId, electionId, contestId, page, pageSize, sortObj);
 
         meterRegistry.counter("api.stats.election.controller.requests", "endpoint", "/api/stats/party/elections").increment();
 
-        Page<ElectionStatsPartyDto> result = service.listElectionStats(effectiveOrgId, electionId, pageable);
+        Page<ElectionStatsPartyDto> result =
+                service.listElectionStats(effectiveOrgId, electionId, contestId, pageable); // ✅ NEW
+
         return ResponseEntity.ok(result);
     }
 }

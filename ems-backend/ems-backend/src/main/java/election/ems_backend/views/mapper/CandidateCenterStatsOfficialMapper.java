@@ -9,6 +9,7 @@ public class CandidateCenterStatsOfficialMapper {
         CandidateCenterStatsOfficialDto d = new CandidateCenterStatsOfficialDto();
         if (e.getId() != null) {
             d.setElectionId(e.getId().getElectionId());
+            d.setContestId(e.getId().getContestId());
             d.setCenterId(e.getId().getCenterId());
             d.setCandidateId(e.getId().getCandidateId());
         }

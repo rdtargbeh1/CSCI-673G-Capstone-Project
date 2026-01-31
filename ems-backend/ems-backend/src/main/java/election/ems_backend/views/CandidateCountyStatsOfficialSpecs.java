@@ -7,6 +7,7 @@ import org.springframework.data.jpa.domain.Specification;
 import java.util.UUID;
 
 public final class CandidateCountyStatsOfficialSpecs {
+
     private CandidateCountyStatsOfficialSpecs() {}
 
     public static Specification<CandidateCountyStatsOfficial> electionEquals(UUID electionId) {
@@ -14,6 +15,14 @@ public final class CandidateCountyStatsOfficialSpecs {
             if (electionId == null) return null;
             Path<UUID> p = root.get("id").get("electionId");
             return cb.equal(p, electionId);
+        };
+    }
+
+    public static Specification<CandidateCountyStatsOfficial> contestEquals(UUID contestId) { // ✅ NEW
+        return (root, query, cb) -> {
+            if (contestId == null) return null;
+            Path<UUID> p = root.get("id").get("contestId");
+            return cb.equal(p, contestId);
         };
     }
 

@@ -12,6 +12,7 @@ import java.util.UUID;
 public class ElectionStatsOfficialDto {
 
     private UUID electionId;
+    private UUID contestId;
 
     private Integer registeredVoters;
     private Integer ballotsCast;

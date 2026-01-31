@@ -1,6 +1,6 @@
 package election.ems_backend.security;
 
-import election.ems_backend.utility.TenantContext;
+import election.ems_backend.tenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;

@@ -41,6 +41,7 @@ public class CenterStatsOfficialController {
     @GetMapping
     public ResponseEntity<Page<CenterStatsOfficialDto>> list(
             @RequestParam(value = "electionId") UUID electionId,
+            @RequestParam(value="contestId", required=false) UUID contestId,
             @RequestParam(value = "countyId", required = false) UUID countyId,
             @RequestParam(value = "districtId", required = false) UUID districtId,
             @RequestParam(value = "centerId", required = false) UUID centerId,
@@ -75,7 +76,7 @@ public class CenterStatsOfficialController {
 
         meterRegistry.counter("api.stats.official.controller.requests", "endpoint", "/api/stats/official/centers").increment();
 
-        Page<CenterStatsOfficialDto> result = service.listOfficialCenters(electionId, countyId, districtId, centerId, pageable);
+        Page<CenterStatsOfficialDto> result = service.listOfficialCenters(electionId, contestId,countyId, districtId, centerId, pageable);
         return ResponseEntity.ok(result);
     }
 }

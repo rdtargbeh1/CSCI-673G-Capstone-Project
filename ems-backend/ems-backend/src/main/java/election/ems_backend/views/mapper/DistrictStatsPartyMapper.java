@@ -10,6 +10,7 @@ public class DistrictStatsPartyMapper {
         if (e.getId() != null) {
             d.setOrgId(e.getId().getOrgId());
             d.setElectionId(e.getId().getElectionId());
+            d.setContestId(e.getId().getContestId());
             d.setDistrictId(e.getId().getDistrictId());
         }
         d.setDistrictName(e.getDistrictName());

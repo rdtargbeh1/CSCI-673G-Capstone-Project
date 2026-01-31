@@ -18,6 +18,7 @@ public class ElectionStatsPartyDto {
 
     private UUID orgId;
     private UUID electionId;
+    private UUID contestId;
 
     // ✅ FULL election basis
     private Long registeredVoters;

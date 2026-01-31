@@ -31,6 +31,7 @@ public class VoteTallyDto {
 
     private LocalDateTime lastRecomputedAt;
     private UUID recomputedByUserId;
+    private String recomputedByUserName;
 
     private LocalDateTime lastUpdated;
 }

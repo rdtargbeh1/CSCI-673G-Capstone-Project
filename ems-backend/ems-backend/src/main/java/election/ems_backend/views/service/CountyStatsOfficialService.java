@@ -36,9 +36,21 @@ public class CountyStatsOfficialService {
 
 
     @Transactional(readOnly = true)
-    @Cacheable(value = "countyStatsOfficial", key = "T(java.lang.String).valueOf(#electionId) + ':' + (#countyId==null?'':#countyId) + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort")
-    public Page<CountyStatsOfficialDto> listOfficialCounties(UUID electionId, UUID countyId, Pageable pageable) {
-        log.debug("listOfficialCounties called electionId={} countyId={} page={} size={}", electionId, countyId, pageable.getPageNumber(), pageable.getPageSize());
+    @Cacheable(
+            value = "countyStatsOfficial",
+            key = "T(java.lang.String).valueOf(#electionId)"
+                    + " + ':' + (#contestId==null?'':#contestId)"          // ✅ NEW
+                    + " + ':' + (#countyId==null?'':#countyId)"
+                    + " + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort"
+    )
+    public Page<CountyStatsOfficialDto> listOfficialCounties(
+            UUID electionId,
+            UUID contestId,   // ✅ NEW
+            UUID countyId,
+            Pageable pageable
+    ) {
+        log.debug("listOfficialCounties called electionId={} contestId={} countyId={} page={} size={}",
+                electionId, contestId, countyId, pageable.getPageNumber(), pageable.getPageSize());
 
         if (electionId == null) throw new IllegalArgumentException("electionId is required");
 
@@ -53,11 +65,14 @@ public class CountyStatsOfficialService {
 
         Specification<CountyStatsOfficial> spec = Specification
                 .where(CountyStatsOfficialSpecs.electionEquals(electionId))
+                .and(CountyStatsOfficialSpecs.contestEquals(contestId)) // ✅ NEW
                 .and(CountyStatsOfficialSpecs.countyEquals(countyId));
 
         Page<CountyStatsOfficial> page = repo.findAll(spec, pageable);
+
         meterRegistry.gauge("api.stats.official.county.result_size", page.getContent(), c -> (double) c.size());
 
         return page.map(mapper::toDto);
     }
+
 }

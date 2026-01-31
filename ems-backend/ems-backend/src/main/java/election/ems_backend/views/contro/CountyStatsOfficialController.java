@@ -41,6 +41,7 @@ public class CountyStatsOfficialController {
     @GetMapping
     public ResponseEntity<Page<CountyStatsOfficialDto>> list(
             @RequestParam(value = "electionId") UUID electionId,
+            @RequestParam(value = "contestId", required = false) UUID contestId, // ✅ NEW
             @RequestParam(value = "countyId", required = false) UUID countyId,
             @RequestParam(value = "page", required = false, defaultValue = "0") @Min(0) int page,
             @RequestParam(value = "size", required = false) Integer size,
@@ -65,12 +66,17 @@ public class CountyStatsOfficialController {
 
         Pageable pageable = PageRequest.of(page, pageSize, sortObj);
 
-        log.debug("Controller list official counties electionId={} countyId={} page={} size={} sort={}",
-                electionId, countyId, page, pageSize, sortObj);
+        log.debug("Controller list official counties electionId={} contestId={} countyId={} page={} size={} sort={}",
+                electionId, contestId, countyId, page, pageSize, sortObj);
 
-        meterRegistry.counter("api.stats.official.county.controller.requests", "endpoint", "/api/stats/official/counties").increment();
+        meterRegistry.counter(
+                "api.stats.official.county.controller.requests",
+                "endpoint", "/api/stats/official/counties"
+        ).increment();
 
-        Page<CountyStatsOfficialDto> result = service.listOfficialCounties(electionId, countyId, pageable);
+        Page<CountyStatsOfficialDto> result =
+                service.listOfficialCounties(electionId, contestId, countyId, pageable); // ✅ NEW
+
         return ResponseEntity.ok(result);
     }
 }

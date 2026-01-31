@@ -9,6 +9,7 @@ public class CandidateCountyCompareMapper {
         CandidateCountyCompareDto d = new CandidateCountyCompareDto();
         if (e.getId() != null) {
             d.setElectionId(e.getId().getElectionId());
+            d.setContestId(e.getId().getContestId());
             d.setCountyId(e.getId().getCountyId());
             d.setCandidateId(e.getId().getCandidateId());
         }

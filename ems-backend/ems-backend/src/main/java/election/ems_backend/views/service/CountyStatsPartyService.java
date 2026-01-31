@@ -40,12 +40,26 @@ public class CountyStatsPartyService {
 
 
     @Transactional(readOnly = true)
-    @Cacheable(value = "countyStatsParty", key = "T(java.lang.String).valueOf(#orgId) + ':' + #electionId + ':' + (#countyId==null?'':#countyId) + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort")
-    public Page<CountyStatsPartyDto> listCountyStats(UUID orgId, UUID electionId, UUID countyId, Pageable pageable) {
-        log.debug("listCountyStats called orgId={} electionId={} countyId={} page={} size={}",
-                orgId, electionId, countyId, pageable.getPageNumber(), pageable.getPageSize());
+    @Cacheable(
+            value = "countyStatsParty",
+            key = "T(java.lang.String).valueOf(#orgId) + ':' + #electionId"
+                    + " + ':' + (#contestId==null?'':#contestId)"
+                    + " + ':' + (#countyId==null?'':#countyId)"
+                    + " + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort"
+    )
+    public Page<CountyStatsPartyDto> listCountyStats(
+            UUID orgId,
+            UUID electionId,
+            UUID contestId,   // ✅ NEW
+            UUID countyId,
+            Pageable pageable
+    ) {
+        log.debug("listCountyStats called orgId={} electionId={} contestId={} countyId={} page={} size={}",
+                orgId, electionId, contestId, countyId, pageable.getPageNumber(), pageable.getPageSize());
 
         if (orgId == null) throw new IllegalArgumentException("orgId is required");
+        if (electionId == null) throw new IllegalArgumentException("electionId is required");
+
         electionValidationService.ensureExists(electionId);
 
         tenantGucService.applyForTransaction(orgId, false, false);
@@ -53,6 +67,7 @@ public class CountyStatsPartyService {
         Specification<CountyStatsParty> spec = Specification
                 .where(CountyStatsPartySpecs.orgEquals(orgId))
                 .and(CountyStatsPartySpecs.electionEquals(electionId))
+                .and(CountyStatsPartySpecs.contestEquals(contestId))   // ✅ NEW
                 .and(CountyStatsPartySpecs.countyEquals(countyId));
 
         Page<CountyStatsParty> page = repo.findAll(spec, pageable);
@@ -61,4 +76,5 @@ public class CountyStatsPartyService {
 
         return page.map(mapper::toDto);
     }
+
 }

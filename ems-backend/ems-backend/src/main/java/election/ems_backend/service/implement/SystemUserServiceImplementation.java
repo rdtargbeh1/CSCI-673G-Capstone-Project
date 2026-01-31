@@ -14,7 +14,7 @@ import election.ems_backend.service.NotificationService;
 import election.ems_backend.service.SystemUserService;
 import election.ems_backend.utility.ChangePasswordRequest;
 import election.ems_backend.utility.QueryUtils;
-import election.ems_backend.utility.TenantContext;
+import election.ems_backend.tenant.TenantContext;
 import election.ems_backend.utility.UserSearchRequest;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;

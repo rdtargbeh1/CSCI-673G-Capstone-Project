@@ -10,6 +10,7 @@ public class CountyStatsPartyMapper {
         if (e.getId() != null) {
             d.setOrgId(e.getId().getOrgId());
             d.setElectionId(e.getId().getElectionId());
+            d.setContestId(e.getId().getContestId());
             d.setCountyId(e.getId().getCountyId());
         }
         d.setCountyName(e.getCountyName());

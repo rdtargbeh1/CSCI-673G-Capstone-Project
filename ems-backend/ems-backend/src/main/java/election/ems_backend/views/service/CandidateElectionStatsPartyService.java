@@ -35,10 +35,29 @@ public class CandidateElectionStatsPartyService{
 
 
     @Transactional(readOnly = true)
-    @Cacheable(value = "candidateElectionStatsParty", key = "T(java.lang.String).valueOf(#orgId) + ':' + #electionId + ':' + (#candidateId==null?'':#candidateId) + ':' + (#partyId==null?'':#partyId) + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort")
-    public Page<CandidateElectionStatsPartyDto> listCandidateElectionStats(UUID orgId, UUID electionId, UUID candidateId, UUID partyId, Pageable pageable) {
-        log.debug("listCandidateElectionStats called orgId={} electionId={} candidateId={} partyId={} page={} size={}",
-                orgId, electionId, candidateId, partyId, pageable.getPageNumber(), pageable.getPageSize());
+    @Cacheable(
+            value = "candidateElectionStatsParty",
+            key =
+                    "T(java.lang.String).valueOf(#orgId) + ':' + #electionId"
+                            + " + ':' + (#contestId==null?'':#contestId)"
+                            + " + ':' + (#candidateId==null?'':#candidateId)"
+                            + " + ':' + (#partyId==null?'':#partyId)"
+                            + " + ':' + #pageable.pageNumber"
+                            + " + ':' + #pageable.pageSize"
+                            + " + ':' + #pageable.sort"
+    )
+    public Page<CandidateElectionStatsPartyDto> listCandidateElectionStats(
+            UUID orgId,
+            UUID electionId,
+            UUID contestId,     // ✅ NEW
+            UUID candidateId,
+            UUID partyId,
+            Pageable pageable
+    ) {
+        log.debug(
+                "listCandidateElectionStats called orgId={} electionId={} contestId={} candidateId={} partyId={} page={} size={}",
+                orgId, electionId, contestId, candidateId, partyId, pageable.getPageNumber(), pageable.getPageSize()
+        );
 
         if (orgId == null) throw new IllegalArgumentException("orgId is required");
         electionValidationService.ensureExists(electionId);
@@ -48,6 +67,7 @@ public class CandidateElectionStatsPartyService{
         Specification<CandidateElectionStatsParty> spec = Specification
                 .where(CandidateElectionStatsPartySpecs.orgEquals(orgId))
                 .and(CandidateElectionStatsPartySpecs.electionEquals(electionId))
+                .and(CandidateElectionStatsPartySpecs.contestEquals(contestId)) // ✅ NEW
                 .and(CandidateElectionStatsPartySpecs.candidateEquals(candidateId))
                 .and(CandidateElectionStatsPartySpecs.partyEquals(partyId));
 
@@ -56,4 +76,5 @@ public class CandidateElectionStatsPartyService{
         meterRegistry.gauge("api.stats.candidate_election.result_size", page.getContent(), c -> (double) c.size());
         return page.map(mapper::toDto);
     }
+
 }

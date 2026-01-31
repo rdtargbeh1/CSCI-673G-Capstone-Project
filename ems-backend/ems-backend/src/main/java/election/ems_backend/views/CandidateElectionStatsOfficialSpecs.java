@@ -17,6 +17,14 @@ public final class CandidateElectionStatsOfficialSpecs {
         };
     }
 
+    public static Specification<CandidateElectionStatsOfficial> contestEquals(UUID contestId) { // ✅ NEW
+        return (root, query, cb) -> {
+            if (contestId == null) return null;
+            Path<UUID> p = root.get("id").get("contestId");
+            return cb.equal(p, contestId);
+        };
+    }
+
     public static Specification<CandidateElectionStatsOfficial> candidateEquals(UUID candidateId) {
         return (root, query, cb) -> {
             if (candidateId == null) return null;

@@ -17,7 +17,7 @@ import election.ems_backend.security.AuthorizationService;
 import election.ems_backend.security.CurrentUserProvider;
 import election.ems_backend.service.OrgMembershipService;
 import election.ems_backend.utility.QueryUtils;
-import election.ems_backend.utility.TenantContext;
+import election.ems_backend.tenant.TenantContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

@@ -21,6 +21,11 @@ public interface AuditLogService {
                     String entity,
                     String description);
 
+
+    AuditLogDto logAuto(ActivityType type, String entity, String description);
+
+    AuditLogDto logWithOrg(UUID orgId, ActivityType type, String entity, String description);
+
     // ------------------------------------------------------
     // Authentication
     // ------------------------------------------------------
@@ -28,6 +33,9 @@ public interface AuditLogService {
         return log(orgId, userId, ActivityType.LOGIN, entity, description);
     }
 
+    default AuditLogDto logUserCreate(String entity, String description) {
+        return logAuto(ActivityType.USER_CREATE, entity, description);
+    }
     default AuditLogDto logLogout(UUID orgId, UUID userId, String entity, String description) {
         return log(orgId, userId, ActivityType.LOGOUT, entity, description);
     }
@@ -105,6 +113,10 @@ public interface AuditLogService {
         return log(orgId, userId, ActivityType.SUBMISSION_VERIFY, entity, description);
     }
 
+    default AuditLogDto logSubmissionVerify(String entity, String description) {
+        return logAuto(ActivityType.SUBMISSION_VERIFY, entity, description);
+    }
+
     default AuditLogDto logSubmissionReject(UUID orgId, UUID userId, String entity, String description) {
         return log(orgId, userId, ActivityType.SUBMISSION_REJECT, entity, description);
     }
@@ -162,9 +174,28 @@ public interface AuditLogService {
         return log(orgId, userId, ActivityType.ORG_CREATE, entity, description);
     }
 
+    default AuditLogDto logOrgCreate(String entity, String description) {
+        return logAuto(ActivityType.ORG_CREATE, entity, description);
+    }
+
+    default AuditLogDto logOrgUpdate(String entity, String description) {
+        return logAuto(ActivityType.ORG_UPDATE, entity, description);
+    }
+
+    default AuditLogDto logOrgUpdate(UUID orgId, String entity, String description) {
+        return logWithOrg(orgId, ActivityType.ORG_UPDATE, entity, description);
+    }
+
+
     default AuditLogDto logOrgUpdate(UUID orgId, UUID userId, String entity, String description) {
         return log(orgId, userId, ActivityType.ORG_UPDATE, entity, description);
     }
+
+    //
+    default AuditLogDto logOrgCreate(UUID orgId, String entity, String description) {
+        return logWithOrg(orgId, ActivityType.ORG_CREATE, entity, description);
+    }
+
 
     default AuditLogDto logOrgDisable(UUID orgId, UUID userId, String entity, String description) {
         return log(orgId, userId, ActivityType.ORG_DISABLE, entity, description);
@@ -297,6 +328,15 @@ public interface AuditLogService {
                              LocalDateTime to,
                              String q,
                              Pageable pageable);
+
+    Page<AuditLogDto> searchSystemLogs(UUID userId,
+                                       ActivityType type,
+                                       LocalDateTime from,
+                                       LocalDateTime to,
+                                       String q,
+                                       Pageable pageable);
+
+
 }
 
 

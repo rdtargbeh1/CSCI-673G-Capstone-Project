@@ -4,6 +4,7 @@ package election.ems_backend.integration;
 import election.ems_backend.dto.AuditLogDto;
 import election.ems_backend.enums.ActivityType;
 import election.ems_backend.service.AuditLogService;
+import election.ems_backend.tenant.AuditCurrentUser;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +44,7 @@ import java.util.*;
 public class AuditLogServiceJdbc implements AuditLogService {
 
 
+    private final AuditCurrentUser auditCurrentUser;
     private static final Logger log = LoggerFactory.getLogger(AuditLogServiceJdbc.class);
 
     private final JdbcTemplate jdbc;
@@ -105,6 +107,25 @@ public class AuditLogServiceJdbc implements AuditLogService {
         }
     }
 
+    @Override
+    public AuditLogDto logAuto(ActivityType type, String entity, String description) {
+        // Tenant request => OrgContext has orgId
+        // System request => OrgContext is null
+        UUID orgId = election.ems_backend.tenant.OrgContext.get();
+
+        // Current authenticated user (may be null for system/background jobs)
+        UUID userId = auditCurrentUser.userIdOrNull();
+
+        // Reuse the existing JDBC writer
+        return log(orgId, userId, type, entity, description);
+    }
+
+    @Override
+    public AuditLogDto logWithOrg(UUID orgId, ActivityType type, String entity, String description) {
+        UUID userId = auditCurrentUser.userIdOrNull();   // auto user
+        return log(orgId, userId, type, entity, description); // force org
+    }
+
 
     @Override
     public Page<AuditLogDto> search(UUID orgId, UUID userId, ActivityType type, LocalDateTime from, LocalDateTime to, String q, Pageable pageable) {
@@ -125,11 +146,11 @@ public class AuditLogServiceJdbc implements AuditLogService {
             params.add(type.name());
         }
         if (from != null) {
-            where.append(" AND created_at >= ? ");
+            where.append(" AND date_created  >= ? ");
             params.add(java.sql.Timestamp.valueOf(from));
         }
         if (to != null) {
-            where.append(" AND created_at <= ? ");
+            where.append(" AND date_created  <= ? ");
             params.add(java.sql.Timestamp.valueOf(to));
         }
         if (StringUtils.hasText(q)) {
@@ -183,5 +204,93 @@ public class AuditLogServiceJdbc implements AuditLogService {
     }
 
 
+
+
+
+    @Override
+    public Page<AuditLogDto> searchSystemLogs(UUID userId,
+                                              ActivityType type,
+                                              LocalDateTime from,
+                                              LocalDateTime to,
+                                              String q,
+                                              Pageable pageable) {
+
+        // ✅ SYSTEM GLOBAL: org_id IS NULL
+        StringBuilder where = new StringBuilder(" WHERE org_id IS NULL ");
+        List<Object> params = new ArrayList<>();
+
+        if (userId != null) {
+            where.append(" AND user_id = ? ");
+            params.add(userId);
+        }
+        if (type != null) {
+            where.append(" AND activity_type = ? ");
+            params.add(type.name());
+        }
+
+        // ✅ FIX: use date_created (match insert + select)
+        if (from != null) {
+            where.append(" AND date_created >= ? ");
+            params.add(java.sql.Timestamp.valueOf(from));
+        }
+        if (to != null) {
+            where.append(" AND date_created <= ? ");
+            params.add(java.sql.Timestamp.valueOf(to));
+        }
+
+        if (StringUtils.hasText(q)) {
+            where.append(" AND (entity_affected ILIKE ? OR action_description ILIKE ?) ");
+            String like = "%" + q + "%";
+            params.add(like);
+            params.add(like);
+        }
+
+        String countSql = "SELECT COUNT(*) FROM audit_log " + where;
+        long total = 0;
+        try {
+            total = jdbc.queryForObject(countSql, Long.class, params.toArray());
+        } catch (EmptyResultDataAccessException ignored) {}
+
+        String orderBy = " ORDER BY date_created DESC ";
+        if (pageable != null && pageable.getSort() != null) {
+            List<String> orderClauses = new ArrayList<>();
+            for (Sort.Order o : pageable.getSort()) {
+                String prop = o.getProperty();
+                String col;
+                switch (prop) {
+                    case "timestamp":
+                    case "dateCreated":
+                        col = "date_created"; break;
+                    case "activityType":
+                        col = "activity_type"; break;
+                    case "entityAffected":
+                        col = "entity_affected"; break;
+                    default:
+                        col = "date_created"; break;
+                }
+                orderClauses.add(col + " " + (o.isAscending() ? "ASC" : "DESC"));
+            }
+            if (!orderClauses.isEmpty()) {
+                orderBy = " ORDER BY " + String.join(", ", orderClauses) + " ";
+            }
+        }
+
+        int page = (pageable == null) ? 0 : pageable.getPageNumber();
+        int size = (pageable == null) ? 20 : pageable.getPageSize();
+        int offset = page * size;
+
+        String sql =
+                "SELECT log_id, org_id, user_id, activity_type, entity_affected, action_description, date_created " +
+                        "FROM audit_log " + where + orderBy + " LIMIT ? OFFSET ?";
+
+        List<Object> pageParams = new ArrayList<>(params);
+        pageParams.add(size);
+        pageParams.add(offset);
+
+        List<AuditLogDto> rows = jdbc.query(sql, ROW_MAPPER, pageParams.toArray());
+
+        Sort sort = (pageable == null) ? Sort.by(Sort.Direction.DESC, "dateCreated") : pageable.getSort();
+        return new PageImpl<>(rows, PageRequest.of(page, size, sort), total);
+    }
 
 }

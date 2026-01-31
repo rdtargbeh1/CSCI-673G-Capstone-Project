@@ -25,6 +25,15 @@ public final class CandidateElectionStatsPartySpecs {
         };
     }
 
+
+    public static Specification<CandidateElectionStatsParty> contestEquals(UUID contestId) {
+        return (root, query, cb) -> {
+            if (contestId == null) return null;
+            Path<UUID> p = root.get("id").get("contestId");
+            return cb.equal(p, contestId);
+        };
+    }
+
     public static Specification<CandidateElectionStatsParty> candidateEquals(UUID candidateId) {
         return (root, query, cb) -> {
             if (candidateId == null) return null;

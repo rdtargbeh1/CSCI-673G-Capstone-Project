@@ -1,4 +1,8 @@
+
+
 // src/app/layout/SidebarNav.tsx
+
+
 import { useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../../auth/useAuth";
@@ -47,22 +51,23 @@ export default function SidebarNav() {
     else mode = "TENANT";
   }
 
+  // ✅ SAME LOGIC AS TOPBAR: SYSTEM PLATFORM fallback when orgName is null/empty
+  const rawTenantName = tenantMeta?.orgName ?? tenant?.orgName ?? null;
+
+  const isSystemPlatform =
+    !rawTenantName || String(rawTenantName).trim().length === 0;
+
+  const tenantName = isSystemPlatform ? " PLATFORM" : rawTenantName;
+
   const navItems: NavItem[] = [
     { to: "/dashboard", label: "Dashboard", show: () => true },
     { to: "/elections", label: "Elections", show: () => true },
     { to: "/operations", label: "Operations", show: () => true },
-
     {
       to: "/geography-registry",
       label: "Geography & Registry",
       show: () => true,
     },
-    // Show Geo only to System Admin & NEC admin
-    // {
-    //   to: "/geography-registry",
-    //   label: "Geography & Registry",
-    //   show: (m) => m === "NEC" || m === "SYSTEM",
-    // },
     { to: "/reports", label: "Reports", show: () => true },
     { to: "/admin-security", label: "Admin & Security", show: () => true },
   ];
@@ -94,27 +99,20 @@ export default function SidebarNav() {
           </div>
 
           <div>
-            {/* Tenant: */}{" "}
-            <span className="font-bold text-slate-800">
-              {tenantMeta?.orgName ?? tenant?.orgName ?? "—"}
-            </span>
+            <span className="font-bold text-slate-800">{tenantName}</span>
           </div>
 
           {user?.tenantRole ? (
             <div>
               Role:{" "}
-              <span className="font-bold text-slate-800">
-                {user.tenantRole}
-              </span>
+              <span className="font-bold text-slate-800">{user.tenantRole}</span>
             </div>
           ) : null}
 
           {user?.systemRole ? (
             <div>
               System:{" "}
-              <span className="font-bold text-slate-800">
-                {user.systemRole}
-              </span>
+              <span className="font-bold text-slate-800">{user.systemRole}</span>
             </div>
           ) : null}
         </div>
@@ -148,9 +146,7 @@ export default function SidebarNav() {
         {sidebarContent}
       </aside>
 
-      {/* ✅ Mobile “Menu” button (ONLY if you want it here).
-          If your TopBar already has a hamburger, you can remove this block.
-      */}
+      {/* ✅ Mobile “Menu” button */}
       <div className="lg:hidden px-3 pt-3">
         <button
           type="button"
@@ -173,7 +169,7 @@ export default function SidebarNav() {
           <aside
             className={[
               "fixed z-50 inset-y-0 left-0",
-              "w-[78vw] max-w-[320px]", // ✅ iPhone-friendly (not too wide)
+              "w-[78vw] max-w-[320px]",
               "bg-white border-r border-slate-200 shadow-2xl",
               "p-3",
             ].join(" ")}
@@ -181,9 +177,7 @@ export default function SidebarNav() {
             aria-modal="true"
           >
             <div className="flex items-center justify-between mb-3">
-              <div className="text-base font-extrabold text-slate-900">
-                Menu
-              </div>
+              <div className="text-base font-extrabold text-slate-900">Menu</div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
@@ -203,3 +197,4 @@ export default function SidebarNav() {
     </>
   );
 }
+

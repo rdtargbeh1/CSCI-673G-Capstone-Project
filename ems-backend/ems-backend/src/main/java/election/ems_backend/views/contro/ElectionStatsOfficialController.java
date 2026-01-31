@@ -41,6 +41,7 @@ public class ElectionStatsOfficialController {
     @GetMapping
     public ResponseEntity<Page<ElectionStatsOfficialDto>> list(
             @RequestParam(value = "electionId") UUID electionId,
+            @RequestParam(value = "contestId", required = false) UUID contestId, // ✅ NEW
             @RequestParam(value = "page", required = false, defaultValue = "0") @Min(0) int page,
             @RequestParam(value = "size", required = false) Integer size,
             @RequestParam(value = "sort", required = false) String[] sort
@@ -64,10 +65,12 @@ public class ElectionStatsOfficialController {
 
         Pageable pageable = PageRequest.of(page, pageSize, sortObj);
 
-        log.debug("Controller list official elections electionId={} page={} size={} sort={}", electionId, page, pageSize, sortObj);
-        meterRegistry.counter("api.stats.official.election.controller.requests", "endpoint", "/api/stats/official/elections").increment();
+        meterRegistry.counter("api.stats.official.election.controller.requests",
+                "endpoint", "/api/stats/official/election").increment();
 
-        Page<ElectionStatsOfficialDto> result = service.listOfficialElections(electionId, pageable);
+        Page<ElectionStatsOfficialDto> result =
+                service.listElectionStats(electionId, contestId, pageable); // ✅ NEW
+
         return ResponseEntity.ok(result);
     }
 }

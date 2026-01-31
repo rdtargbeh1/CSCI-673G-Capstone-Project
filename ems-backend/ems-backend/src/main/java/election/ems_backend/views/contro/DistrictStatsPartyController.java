@@ -31,10 +31,12 @@ public class DistrictStatsPartyController {
     public ResponseEntity<Page<DistrictStatsPartyDto>> list(
             @RequestParam(value = "orgId", required = false) UUID orgIdParam,
             @RequestParam(value = "electionId") UUID electionId,
+            @RequestParam(value = "contestId", required = false) UUID contestId, // ✅ NEW
             @RequestParam(value = "countyId", required = false) UUID countyId,
             @RequestParam(value = "districtId", required = false) UUID districtId,
             Pageable pageable
     ) {
+
         UUID derivedOrgId = SecurityUtils.getOrgIdFromContext();
 
         UUID effectiveOrgId = orgIdParam;
@@ -54,7 +56,17 @@ public class DistrictStatsPartyController {
         int page = Math.max(0, pageable.getPageNumber());
         Pageable adjusted = PageRequest.of(page, size, pageable.getSort());
 
-        Page<DistrictStatsPartyDto> result = service.listDistrictStats(effectiveOrgId, electionId, countyId, districtId, adjusted);
+        Page<DistrictStatsPartyDto> result = service.listDistrictStats(
+                effectiveOrgId,
+                electionId,
+                contestId,     // ✅ NEW
+                countyId,
+                districtId,
+                adjusted
+        );
+
         return ResponseEntity.ok(result);
     }
+
+
 }

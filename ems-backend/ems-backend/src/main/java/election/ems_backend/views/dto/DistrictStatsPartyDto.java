@@ -10,8 +10,10 @@ import java.util.UUID;
  */
 @Data
 public class DistrictStatsPartyDto {
+
     private UUID orgId;
     private UUID electionId;
+    private UUID contestId;
     private UUID districtId;
 
     private String districtName;

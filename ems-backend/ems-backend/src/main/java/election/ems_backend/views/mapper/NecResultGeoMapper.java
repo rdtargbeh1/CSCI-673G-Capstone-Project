@@ -9,6 +9,7 @@ public class NecResultGeoMapper {
         NecResultGeoDto d = new NecResultGeoDto();
         d.setResultId(e.getResultId());
         d.setElectionId(e.getElectionId());
+        d.setContestId(e.getContestId());
         d.setCenterId(e.getCenterId());
         d.setCenterCode(e.getCenterCode());
         d.setCenterName(e.getCenterName());

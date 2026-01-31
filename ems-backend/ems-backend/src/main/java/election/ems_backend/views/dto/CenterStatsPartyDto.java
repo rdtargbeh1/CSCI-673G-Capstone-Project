@@ -10,8 +10,9 @@ import java.util.UUID;
 public class CenterStatsPartyDto {
     private UUID orgId;
     private UUID electionId;
-    private UUID centerId;
+    private UUID contestId;
 
+    private UUID centerId;
     private String centerCode;
     private String centerName;
 

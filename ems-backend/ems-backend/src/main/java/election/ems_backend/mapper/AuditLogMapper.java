@@ -2,6 +2,8 @@ package election.ems_backend.mapper;
 
 import election.ems_backend.dto.AuditLogDto;
 import election.ems_backend.entity.AuditLog;
+import election.ems_backend.entity.Organization;
+import election.ems_backend.entity.SystemUser;
 import org.springframework.stereotype.Component;
 
 @Component

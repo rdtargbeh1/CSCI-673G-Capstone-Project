@@ -11,6 +11,7 @@ public class ElectionStatsPartyMapper {
         return ElectionStatsPartyDto.builder()
                 .orgId(e.getId() != null ? e.getId().getOrgId() : null)
                 .electionId(e.getId() != null ? e.getId().getElectionId() : null)
+                .contestId(e.getId() != null ? e.getId().getContestId() : null)
 
                 .registeredVoters(e.getRegisteredVoters())
                 .ballotsCast(e.getBallotsCast())
