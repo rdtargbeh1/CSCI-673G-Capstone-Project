@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigInteger;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -19,10 +20,12 @@ public interface NECResultRepository extends JpaRepository<NECResult, UUID>, Jpa
 
     Optional<NECResult> findByElection_ElectionIdAndPollingCenter_CenterId(UUID electionId, UUID centerId);
 
-    boolean existsByElection_ElectionIdAndContest_ContestIdAndPollingCenter_CenterId(UUID electionId, UUID contestId, UUID centerId);
+    boolean existsByElection_ElectionIdAndContest_ContestIdAndPollingCenter_CenterId(
+            UUID electionId,
+            UUID contestId,
+            UUID centerId
+    );
 
-
-    boolean existsByElection_ElectionIdAndPollingCenter_CenterId(UUID electionId, UUID centerId);
 
     // Scalar sums
     @Query(value = """
@@ -153,7 +156,6 @@ public interface NECResultRepository extends JpaRepository<NECResult, UUID>, Jpa
     """, nativeQuery = true)
     List<Object[]> dailyByCandidate(@Param("electionId") UUID electionId);
 
-    List<NECResult> findByElection_ElectionId(UUID electionId);
 
     @Modifying
     @Query("""
@@ -181,6 +183,57 @@ public interface NECResultRepository extends JpaRepository<NECResult, UUID>, Jpa
             and nr.isPublished = true 
             """)
     long countPublishedByElectionId(@Param("electionId") UUID electionId);
+
+
+    Optional<NECResult> findByElection_ElectionIdAndContest_ContestIdAndPollingCenter_CenterId(
+            UUID electionId,
+            UUID contestId,
+            UUID centerId
+    );
+
+    List<NECResult> findByElection_ElectionId(UUID electionId);
+
+    /**
+     * Only published results whose publishedUntil is expired.
+     * We return resultIds to keep the scheduled job light and avoid heavy entity graphs.
+     */
+    @Query("""
+        select nr.resultId
+          from NECResult nr
+         where nr.isPublished = true
+           and nr.publishedUntil is not null
+           and nr.publishedUntil <= :now
+    """)
+    List<UUID> findExpiredPublishedResultIds(LocalDateTime now);
+
+
+    @Modifying
+    @Query("""
+        UPDATE NECResult r
+           SET r.isPublished = false,
+               r.publishedAt = null,
+               r.publishedUntil = null,
+               r.resultSignature = null,
+               r.resultSignerKeyId = null,
+               r.chainHash = null
+         WHERE r.isPublished = true
+           AND r.publishedUntil IS NOT NULL
+           AND r.publishedUntil <= :now
+    """)
+    int autoUnpublishExpired(@Param("now") LocalDateTime now);
+
+
+
+    @Modifying
+    @Query("""
+  delete from NECResult nr
+  where nr.election.electionId = :electionId
+    and nr.contest.contestId = :contestId
+    and nr.pollingCenter.centerId = :centerId
+""")
+    int deleteByScope(@Param("electionId") UUID electionId,
+                      @Param("contestId") UUID contestId,
+                      @Param("centerId") UUID centerId);
 
 
 }

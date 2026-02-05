@@ -1,24 +1,37 @@
 package election.ems_backend.service.implement;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import election.ems_backend.dto.*;
-import election.ems_backend.entity.NECResult;
+import election.ems_backend.entity.*;
+import election.ems_backend.enums.ChangeType;
+import election.ems_backend.enums.OrganizationType;
+import election.ems_backend.integration.SigningService;
 import election.ems_backend.mapper.NECResultMapper;
+import election.ems_backend.nec.NecResultPublishRequest;
 import election.ems_backend.repository.*;
+import election.ems_backend.service.AuditLogService;
 import election.ems_backend.service.NECResultService;
 import election.ems_backend.utility.NECResultSpecs;
-import election.ems_backend.views.repo.NecResultGeoRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.springframework.http.HttpStatus.*;
 
@@ -26,131 +39,832 @@ import static org.springframework.http.HttpStatus.*;
 @RequiredArgsConstructor
 public class NECResultServiceImplementation implements NECResultService {
 
-    @Autowired
-    private NECResultRepository resultRepo;
-    @Autowired
-    private ElectionRepository electionRepo;
-    @Autowired
-    private ContestRepository contestRepository;
-    @Autowired
-    private PollingCenterRepository centerRepo;
-    @Autowired
-    private NecResultGeoRepository necResultGeoRepository;
-    @Autowired
-    private PollingCenterAllocationRepository allocationRepo;
+    private final JdbcTemplate jdbc;
+    private final SystemUserRepository systemUserRepository;
+    private final NECResultRepository resultRepo;
+    private final ElectionRepository electionRepo;
+    private final OrganizationRepository organizationRepository;
+    private final ContestRepository contestRepository;
+    private final PollingCenterRepository centerRepo;
+    private final PollingCenterAllocationRepository allocationRepo;
+    private final ContestRepository contestRepo;
+    private final  VoteSubmissionRepository voteSubmissionRepository;
+    private final SigningService signingService;
+    private final NecResultHistoryRepository necHistoryRepo;
+    private final AuditLogService auditLogService;
+
+
     private final NECResultMapper mapper = new NECResultMapper();
 
+    private static final Logger log = LoggerFactory.getLogger(NECResultServiceImplementation.class);
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+    private static final Map<String, Object> RUN_LOCKS = new ConcurrentHashMap<>();
 
-    // ----------------- CREATE -----------------
+
+
+    // ✅ FINAL CODE (AS REQUESTED)
+
+    // =========================
+    // PUBLISH (CANONICAL)
+    // =========================
+    @Override
+    @Transactional
+    public NECResult publishForCenterContest(UUID electionId,
+                                             UUID contestId,
+                                             UUID centerId,
+                                             NecResultPublishRequest req) {
+
+        if (electionId == null) throw new ResponseStatusException(BAD_REQUEST, "electionId is required");
+        if (contestId == null) throw new ResponseStatusException(BAD_REQUEST, "contestId is required");
+        if (centerId == null) throw new ResponseStatusException(BAD_REQUEST, "centerId is required");
+        if (req == null) throw new ResponseStatusException(BAD_REQUEST, "Request body is required");
+        if (req.getActorUserId() == null) throw new ResponseStatusException(BAD_REQUEST, "actorUserId is required");
+        if (req.getPublishedUntil() == null) throw new ResponseStatusException(BAD_REQUEST, "publishedUntil is required");
+
+        LocalDateTime now = LocalDateTime.now();
+        if (!req.getPublishedUntil().isAfter(now)) {
+            throw new ResponseStatusException(BAD_REQUEST, "publishedUntil must be in the future");
+        }
+
+        NECResult nr = resultRepo
+                .findByElection_ElectionIdAndContest_ContestIdAndPollingCenter_CenterId(
+                        electionId, contestId, centerId
+                )
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "NECResult not found"));
+
+        // ✅ Idempotent publish
+        if (Boolean.TRUE.equals(nr.isPublished())
+                && nr.getPublishedUntil() != null
+                && !nr.getPublishedUntil().isBefore(req.getPublishedUntil())) {
+            return nr;
+        }
+
+        boolean wasPublished = Boolean.TRUE.equals(nr.isPublished());
+        LocalDateTime prevUntil = nr.getPublishedUntil();
+
+        nr.setPublished(true);
+        nr.setPublishedAt(now);
+        nr.setPublishedUntil(req.getPublishedUntil());
+        nr = resultRepo.saveAndFlush(nr);
+
+        // ✅ Ledger (your existing function must match audit_ledger schema)
+        String payloadHash = buildNecResultPayloadHash(nr);
+
+        Map<String, Object> ledgerRes = jdbc.queryForMap(
+                "SELECT * FROM fn_log_ledger_and_update_nec_result(?, ?, ?, ?)",
+                "NEC_RESULT_PUBLISH",
+                nr.getResultId(),
+                payloadHash,
+                req.getActorUserId()
+        );
+
+        String chainHash = String.valueOf(ledgerRes.get("chain_hash"));
+
+        SigningService.SignResult signResult = signingService.signHex(chainHash);
+
+        jdbc.update(
+                "UPDATE audit_ledger SET signature = ? WHERE ledger_id = ?",
+                signResult.signature(),
+                ledgerRes.get("ledger_id")
+        );
+
+        jdbc.update("""
+        UPDATE nec_result
+           SET result_signature = ?,
+               result_signer_key_id = ?,
+               chain_hash = ?
+         WHERE result_id = ?
+    """, signResult.signature(), signResult.keyId(), chainHash, nr.getResultId());
+
+        nr.setResultSignature(signResult.signature());
+        nr.setResultSignerKeyId(signResult.keyId());
+        nr.setChainHash(chainHash);
+
+        // ✅ HISTORY
+        boolean extended = wasPublished && prevUntil != null && prevUntil.isBefore(req.getPublishedUntil());
+
+        writeHistory(
+                nr,
+                ChangeType.PUBLISHED,
+                req.getActorUserId(),
+                (extended ? "PUBLISHED (EXTENDED)" : "PUBLISHED")
+                        + ": publishedUntil=" + req.getPublishedUntil()
+        );
+
+        // ✅ AUDIT LOG — FIXED (NEC ORG)
+        UUID necOrgId = resolveNecOrgIdOrThrow();
+
+        auditLogService.logUpdate(
+                necOrgId,
+                req.getActorUserId(),
+                "NECResult",
+                "Published NEC result: resultId=" + nr.getResultId()
+                        + ", electionId=" + electionId
+                        + ", contestId=" + contestId
+                        + ", centerId=" + centerId
+                        + ", publishedUntil=" + req.getPublishedUntil()
+                        + (extended ? " (EXTENDED)" : "")
+        );
+
+        return nr;
+    }
+
+    // =========================
+    // BATCH PUBLISH (ELECTION)
+    // =========================
+    @Override
+    @Transactional
+    public int publishElection(UUID electionId, NecResultPublishRequest req) {
+        if (electionId == null) throw new ResponseStatusException(BAD_REQUEST, "electionId is required");
+        if (req == null) throw new ResponseStatusException(BAD_REQUEST, "Request body is required");
+        if (req.getActorUserId() == null) throw new ResponseStatusException(BAD_REQUEST, "actorUserId is required");
+        if (req.getPublishedUntil() == null) throw new ResponseStatusException(BAD_REQUEST, "publishedUntil is required");
+
+        List<NECResult> all = resultRepo.findByElection_ElectionId(electionId);
+
+        int changed = 0;
+        UUID necOrgId = resolveNecOrgIdOrThrow();
+
+        for (NECResult nr : all) {
+
+            // publish does idempotency internally
+            NECResult updated = publishForCenterContest(
+                    nr.getElection().getElectionId(),
+                    nr.getContest().getContestId(),
+                    nr.getPollingCenter().getCenterId(),
+                    req
+            );
+
+            // count only if it is published AND has exactly the requested publishedUntil
+            if (Boolean.TRUE.equals(updated.isPublished())
+                    && updated.getPublishedUntil() != null
+                    && updated.getPublishedUntil().equals(req.getPublishedUntil())) {
+                changed++;
+            }
+        }
+
+        safeAudit(
+                necOrgId,
+                req.getActorUserId(),
+                "NECResult",
+                "Batch published election results: electionId=" + electionId
+                        + ", changedCount=" + changed
+                        + ", publishedUntil=" + req.getPublishedUntil()
+        );
+
+        return changed;
+    }
+
+    // =========================
+    // UNPUBLISH (CANONICAL)
+    // =========================
+    @Override
+    @Transactional
+    public NECResult unpublishForCenterContest(UUID electionId,
+                                               UUID contestId,
+                                               UUID centerId,
+                                               UUID actorUserId,
+                                               String reason) {
+
+        if (electionId == null) throw new ResponseStatusException(BAD_REQUEST, "electionId is required");
+        if (contestId == null) throw new ResponseStatusException(BAD_REQUEST, "contestId is required");
+        if (centerId == null) throw new ResponseStatusException(BAD_REQUEST, "centerId is required");
+        if (actorUserId == null) throw new ResponseStatusException(BAD_REQUEST, "actorUserId is required");
+
+        NECResult nr = resultRepo
+                .findByElection_ElectionIdAndContest_ContestIdAndPollingCenter_CenterId(
+                        electionId, contestId, centerId
+                )
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "NECResult not found"));
+
+        // idempotent
+        if (!Boolean.TRUE.equals(nr.isPublished())) return nr;
+
+        LocalDateTime now = LocalDateTime.now();
+
+        nr.setPublished(false);
+        nr.setPublishedAt(null);
+        nr.setPublishedUntil(null);
+        nr = resultRepo.saveAndFlush(nr);
+
+        String payloadHash = buildNecResultPayloadHash(nr);
+
+        logLedgerAndSignNecResult("NEC_RESULT_UNPUBLISH", nr, actorUserId, payloadHash);
+
+        writeHistory(
+                nr,
+                ChangeType.UNPUBLISHED_MANUAL,
+                actorUserId,
+                "UNPUBLISHED: reason=" + (reason == null ? "N/A" : reason) + ", at=" + now
+        );
+
+        UUID necOrgId = resolveNecOrgIdOrThrow();
+        safeAudit(
+                necOrgId,
+                actorUserId,
+                "NECResult",
+                "Unpublished NEC result: resultId=" + nr.getResultId()
+                        + ", electionId=" + electionId
+                        + ", contestId=" + contestId
+                        + ", centerId=" + centerId
+                        + ", reason=" + (reason == null ? "N/A" : reason)
+        );
+
+        return nr;
+    }
+
+    // =========================
+    // BATCH UNPUBLISH (ELECTION)
+    // =========================
+    @Override
+    @Transactional
+    public int unpublishElection(UUID electionId, UUID actorUserId, String reason) {
+        if (electionId == null) throw new ResponseStatusException(BAD_REQUEST, "electionId is required");
+        if (actorUserId == null) throw new ResponseStatusException(BAD_REQUEST, "actorUserId is required");
+
+        List<NECResult> all = resultRepo.findByElection_ElectionId(electionId);
+
+        int changed = 0;
+        UUID necOrgId = resolveNecOrgIdOrThrow();
+
+        for (NECResult nr : all) {
+            if (Boolean.TRUE.equals(nr.isPublished())) {
+                unpublishForCenterContest(
+                        nr.getElection().getElectionId(),
+                        nr.getContest().getContestId(),
+                        nr.getPollingCenter().getCenterId(),
+                        actorUserId,
+                        reason
+                );
+                changed++;
+            }
+        }
+
+        safeAudit(
+                necOrgId,
+                actorUserId,
+                "NECResult",
+                "Batch unpublished election results: electionId=" + electionId
+                        + ", changedCount=" + changed
+                        + ", reason=" + (reason == null ? "N/A" : reason)
+        );
+
+        return changed;
+    }
+    // =========================
+    // AUTO UNPUBLISH (SCHEDULED)
+    // =========================
+    @Scheduled(fixedDelay = 60_000)
+    public void autoUnpublishExpiredJob() {
+        autoUnpublishExpired(LocalDateTime.now());
+    }
 
     @Override
-    public NECResultDto create(NECResultCreateRequest req) {
-        var election = electionRepo.findById(req.getElectionId())
+    @Transactional
+    public int autoUnpublishExpired(LocalDateTime nowUtcOrLocal) {
+        LocalDateTime now = (nowUtcOrLocal != null) ? nowUtcOrLocal : LocalDateTime.now();
+
+        List<UUID> expiredIds = resultRepo.findExpiredPublishedResultIds(now);
+        if (expiredIds.isEmpty()) return 0;
+
+        UUID systemActorUserId = resolveSystemActorUserId();
+
+        int count = 0;
+        for (UUID resultId : expiredIds) {
+            NECResult nr = resultRepo.findById(resultId).orElse(null);
+            if (nr == null) continue;
+
+            // canonical unpublish; reason is "AUTO_EXPIRED"
+            unpublishForCenterContest(
+                    nr.getElection().getElectionId(),
+                    nr.getContest().getContestId(),
+                    nr.getPollingCenter().getCenterId(),
+                    systemActorUserId,
+                    "AUTO_EXPIRED"
+            );
+            count++;
+        }
+        return count;
+    }
+
+    private UUID resolveSystemActorUserId() {
+        return systemUserRepository.findByUserNameIgnoreCase("SYSTEM")
+                .orElseThrow(() -> new IllegalStateException(
+                        "SYSTEM user not found in system_user table. Create username='SYSTEM' for automated actions."
+                ))
+                .getUserId();
+    }
+
+    // inside NECResultServiceImplementation
+
+    private UUID resolveNecOrgIdOrThrow() {
+        return organizationRepository
+                .findFirstByOrganizationType(OrganizationType.NEC)
+                .orElseThrow(() -> new IllegalStateException(
+                        "NEC organization not found. Ensure organization table has a row with organization_type='NEC'."
+                ))
+                .getOrgId();
+    }
+
+
+    private void safeAudit(UUID orgId, UUID actorUserId, String entity, String msg) {
+        // In prod, publishing should not fail if audit log has a config/data issue
+        try {
+            if (orgId != null) {
+                auditLogService.logUpdate(orgId, actorUserId, entity, msg);
+            } else {
+                log.warn("Skipping audit_log insert: orgId could not be resolved. msg={}", msg);
+            }
+        } catch (Exception ex) {
+            log.error("Audit log failed (non-blocking): {}", ex.getMessage(), ex);
+        }
+    }
+
+    private void logLedgerAndSignNecResult(String eventType,
+                                           NECResult nr,
+                                           UUID actorUserId,
+                                           String payloadHash) {
+
+        // ✅ Use your actual DB function signature:
+        // fn_log_ledger_and_update_nec_result(text, uuid, text, uuid)
+        // (entry_type, result_id, payload_hash, actor_id)
+        Map<String, Object> ledgerRes = jdbc.queryForMap(
+                """
+                SELECT * FROM fn_log_ledger_and_update_nec_result(
+                  ?::text,
+                  ?::uuid,
+                  ?::text,
+                  ?::uuid
+                )
+                """,
+                eventType,
+                nr.getResultId(),
+                payloadHash,
+                actorUserId
+        );
+
+        UUID ledgerId = toUuid(ledgerRes.get("ledger_id"));
+        String chainHash = ledgerRes.get("chain_hash") != null ? String.valueOf(ledgerRes.get("chain_hash")) : null;
+
+        if (chainHash == null || chainHash.isBlank()) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Missing chain_hash from ledger function");
+        }
+
+        SigningService.SignResult signResult = signingService.signHex(chainHash);
+
+        jdbc.update(
+                "UPDATE audit_ledger SET signature = ? WHERE ledger_id = ?",
+                signResult.signature(),
+                ledgerId
+        );
+
+        jdbc.update("""
+            UPDATE nec_result
+               SET result_signature = ?,
+                   result_signer_key_id = ?,
+                   chain_hash = ?
+             WHERE result_id = ?
+        """, signResult.signature(), signResult.keyId(), chainHash, nr.getResultId());
+
+        nr.setResultSignature(signResult.signature());
+        nr.setResultSignerKeyId(signResult.keyId());
+        nr.setChainHash(chainHash);
+    }
+
+
+
+    // ---------------------------------------------------------------------
+// ✅ small helper (keep near recompute methods)
+// ---------------------------------------------------------------------
+    private String cleanUserNote(String userNote) {
+        if (userNote == null) return null;
+        String s = userNote.trim();
+        return s.isEmpty() ? null : s;
+    }
+
+
+// ---------------------------------------------------------------------
+// ✅ 1) recomputeFromSubmission + recomputeFromSubmissionWithNotes
+// ---------------------------------------------------------------------
+
+    @Override
+    @Transactional
+    public void recomputeFromSubmission(UUID submissionId, UUID recomputedByUserId) {
+        // keep existing behavior but route through the new overload
+        recomputeFromSubmissionWithNotes(submissionId, recomputedByUserId, null);
+    }
+
+    /**
+     * ✅ NEW: recomputeFromSubmissionWithNotes
+     * - Same scope derivation
+     * - Same recompute logic
+     * - Only difference: can pass user note/reason/comment that gets stored in history.user_note
+     */
+    @Transactional
+    public void recomputeFromSubmissionWithNotes(UUID submissionId,
+                                                 UUID recomputedByUserId,
+                                                 String userNote) {
+
+        if (submissionId == null) throw new ResponseStatusException(BAD_REQUEST, "submissionId is required");
+
+        VoteSubmission s = voteSubmissionRepository.findById(submissionId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Submission not found"));
+
+        if (s.getOrganization() == null || s.getOrganization().getOrgId() == null)
+            throw new ResponseStatusException(BAD_REQUEST, "Submission missing orgId");
+        if (s.getElection() == null || s.getElection().getElectionId() == null)
+            throw new ResponseStatusException(BAD_REQUEST, "Submission missing electionId");
+        if (s.getContestId() == null)
+            throw new ResponseStatusException(BAD_REQUEST, "Submission missing contestId");
+
+        UUID centerId = null;
+        if (s.getPollingCenter() != null) centerId = s.getPollingCenter().getCenterId();
+        if (centerId == null && s.getPollingPlace() != null && s.getPollingPlace().getPollingCenter() != null) {
+            centerId = s.getPollingPlace().getPollingCenter().getCenterId();
+        }
+        if (centerId == null) {
+            throw new ResponseStatusException(BAD_REQUEST, "Submission missing centerId (center_id/place->center)");
+        }
+
+        UUID necOrgId = s.getOrganization().getOrgId();
+        UUID electionId = s.getElection().getElectionId();
+        UUID contestId = s.getContestId();
+
+        String cleaned = cleanUserNote(userNote);
+
+        log.info("NEC recomputeFromSubmission scope -> submissionId={} status={} election={} contest={} center={} userNotePresent={}",
+                submissionId, s.getStatus(), electionId, contestId, centerId, cleaned != null);
+
+        // ✅ IMPORTANT: note enters recompute -> history path here
+        recomputeForCenterContestInternal(necOrgId, electionId, contestId, centerId, recomputedByUserId, cleaned);
+    }
+
+
+    @Override
+    @Transactional
+    public void recomputeForCenterContest(UUID necOrgId,
+                                          UUID electionId,
+                                          UUID contestId,
+                                          UUID centerId,
+                                          UUID recomputedByUserId) {
+        recomputeForCenterContestInternal(necOrgId, electionId, contestId, centerId, recomputedByUserId, null);
+    }
+
+    @Override
+    @Transactional
+    public void recomputeForCenterContestWithNotes(UUID necOrgId,
+                                                   UUID electionId,
+                                                   UUID contestId,
+                                                   UUID centerId,
+                                                   UUID recomputedByUserId,
+                                                   String userNote) {
+        recomputeForCenterContestInternal(necOrgId, electionId, contestId, centerId, recomputedByUserId, cleanUserNote(userNote));
+    }
+
+
+    private void recomputeForCenterContestInternal(UUID necOrgId,
+                                                   UUID electionId,
+                                                   UUID contestId,
+                                                   UUID centerId,
+                                                   UUID recomputedByUserId,
+                                                   String userNote) {
+
+        if (necOrgId == null) throw new ResponseStatusException(BAD_REQUEST, "necOrgId is required");
+        if (electionId == null) throw new ResponseStatusException(BAD_REQUEST, "electionId is required");
+        if (contestId == null) throw new ResponseStatusException(BAD_REQUEST, "contestId is required");
+        if (centerId == null) throw new ResponseStatusException(BAD_REQUEST, "centerId is required");
+
+        log.info("NEC recompute ENTER necOrgId={} electionId={} contestId={} centerId={} userNotePresent={}",
+                necOrgId, electionId, contestId, centerId, userNote != null);
+
+        Election election = electionRepo.findById(electionId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Election not found"));
-
-        // ✅ NEW: contest required
-        var contest = contestRepository.findById(req.getContestId())
+        Contest contest = contestRepo.findById(contestId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Contest not found"));
-
-        var center = centerRepo.findById(req.getCenterId())
+        PollingCenter center = centerRepo.findById(centerId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Polling center not found"));
 
-        var allocation = allocationRepo
-                .findByElection_ElectionIdAndPollingCenter_CenterId(election.getElectionId(), center.getCenterId())
-                .orElseThrow(() -> new ResponseStatusException(BAD_REQUEST, "Center is not allocated for this election"));
-
-        // ✅ NEW: contest-aware uniqueness
-        if (resultRepo.existsByElection_ElectionIdAndContest_ContestIdAndPollingCenter_CenterId(
-                election.getElectionId(), contest.getContestId(), center.getCenterId())) {
-            throw new ResponseStatusException(CONFLICT, "Result already exists for this election, contest & center");
-        }
-
-        // ✅ UPDATED: request uses ballotsInBox, DB uses ballots_cast
-        // ✅ UPDATED: include unusedBallots (not part of invalids)
-        validateTally(
-                req.getCandidateVotes(),
-                nz(req.getInvalidBallots()),
-                nz(req.getUnmarkedBallots()),
-                nz(req.getRejectedBallots()),
-                nz(req.getSpoiledBallots()),
-                nz(req.getUnusedBallots()),        // ✅ NEW
-                nz(req.getBallotsInBox()),         // ✅ NEW (was ballotsCast)
-                allocation.getRegisteredVoters(),
-                allocation.getBallotsIssued()
+        // 1) Count NEC-verified submissions for this scope (same logic)
+        Long verifiedCount = jdbc.queryForObject("""
+    SELECT COUNT(*)
+    FROM vote_submission s
+    LEFT JOIN polling_place pp ON pp.place_id = s.place_id
+    WHERE s.org_id = ?
+      AND s.election_id = ?
+      AND s.contest_id = ?
+      AND (
+            s.center_id = ?
+            OR pp.center_id = ?
+      )
+      AND s.status = 'VERIFIED'
+      AND s.date_deleted IS NULL
+    """, Long.class,
+                necOrgId, electionId, contestId,
+                centerId, centerId
         );
 
-        // Persist NECResult (force authoritative registered number)
-        var entity = mapper.toEntity(req, election, center);
-        entity.setTotalRegisteredVoters(allocation.getRegisteredVoters());
+        long vc = verifiedCount == null ? 0L : verifiedCount;
+        log.info("NEC recompute verifiedCount={}", vc);
 
-        // ✅ NEW: set contest on entity (no mapper change required)
-        entity.setContest(contest);
+        // ---------------------------------------------------------------------
+        // ✅ 2) If none, delete global NECResult row
+        //     IMPORTANT: delete MUST NOT be blocked by audit log failures.
+        // ---------------------------------------------------------------------
+        if (vc == 0L) {
 
-        var saved = resultRepo.save(entity);
+            resultRepo.findByElection_ElectionIdAndContest_ContestIdAndPollingCenter_CenterId(
+                            electionId, contestId, centerId
+                    )
+                    .ifPresent(existing -> {
 
-        return mapper.toDTO(saved);
-    }
+                        // ✅ HISTORY (protected already by try/catch inside writeHistory)
+                        writeHistory(
+                                existing,
+                                ChangeType.CLEARED,
+                                recomputedByUserId,
+                                "AUTO_RECOMPUTE_DELETE: verifiedCount=0",
+                                userNote
+                        );
 
+                        // ✅ CORE correctness: delete FIRST
+                        resultRepo.delete(existing);
 
+                        log.info("NECResult deleted (no NEC verified submissions) election={} contest={} center={}",
+                                electionId, contestId, centerId);
 
-    // ----------------- UPDATE -----------------
-    @Override
-    public NECResultDto update(UUID resultId, NECResultUpdateRequest req) {
-        var entity = resultRepo.findById(resultId)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Result not found"));
+                        // ✅ AUDIT must NOT prevent delete
+                        try {
+                            auditLogService.logDelete(
+                                    necOrgId,
+                                    recomputedByUserId,
+                                    "NECResult",
+                                    "Auto recompute deleted NECResult: resultId=" + existing.getResultId() +
+                                            ", electionId=" + electionId +
+                                            ", contestId=" + contestId +
+                                            ", centerId=" + centerId +
+                                            ", verifiedCount=0"
+                            );
+                        } catch (Exception ignore) {
+                            log.warn("NEC audit delete failed (ignored): {}", ignore.getMessage());
+                        }
+                    });
 
-        var electionId = entity.getElection().getElectionId();
-        var centerId   = entity.getPollingCenter().getCenterId();
+            return;
+        }
 
-        var allocation = allocationRepo
-                .findByElection_ElectionIdAndPollingCenter_CenterId(electionId, centerId)
-                .orElseThrow(() -> new ResponseStatusException(BAD_REQUEST, "Center is not allocated for this election"));
+        // 3) Registered voters (same behavior)
+        Integer totalRegisteredVoters = jdbc.queryForObject("""
+    SELECT COALESCE(SUM(ppa.registered_voters), 0)
+    FROM polling_place_allocation ppa
+    JOIN polling_place pp ON pp.place_id = ppa.place_id
+    WHERE ppa.election_id = ?
+      AND pp.center_id = ?
+      AND ppa.is_active = true
+    """, Integer.class, electionId, centerId);
 
-        // Compute merged (post-update) values for validation
-        var newVotesJson = (req.getCandidateVotes() != null) ? writeVotes(req.getCandidateVotes())
-                : entity.getCandidateVotes();
-        long sumVotes = sumVotesFromJson(newVotesJson);
+        if (totalRegisteredVoters == null) totalRegisteredVoters = 0;
 
-        int newInvalid   = coalesce(req.getInvalidBallots(), entity.getInvalidBallots());
-        int newBlank     = coalesce(req.getUnmarkedBallots(), entity.getUnmarkedBallots());
-        int newUnused    = coalesce(req.getUnusedBallots(), entity.getUnusedBallots()); // ✅ NEW
-        int newRejected  = coalesce(req.getRejectedBallots(), entity.getRejectedBallots());
-        int newSpoiled   = coalesce(req.getSpoiledBallots(), entity.getSpoiledBallots());
-
-        // ✅ UPDATED: request uses ballotsInBox; DB field is ballots_cast
-        int newCast      = coalesce(req.getBallotsInBox(), entity.getBallotsInBox());
-
-        validateTally(
-                null,
-                newInvalid,
-                newBlank,
-                newRejected,
-                newSpoiled,
-                newUnused,                           // ✅ NEW
-                newCast,
-                allocation.getRegisteredVoters(),
-                allocation.getBallotsIssued(),
-                sumVotes
+        // 4) Aggregate (BIG SQL unchanged)
+        Map<String, Object> agg = jdbc.queryForMap("""
+    WITH scope_submissions AS (
+        SELECT s.*
+        FROM vote_submission s
+        LEFT JOIN polling_place pp ON pp.place_id = s.place_id
+        WHERE s.org_id = ?
+          AND s.election_id = ?
+          AND s.contest_id = ?
+          AND (
+                s.center_id = ?
+                OR pp.center_id = ?
+          )
+          AND s.status = 'VERIFIED'
+          AND s.date_deleted IS NULL
+    ),
+    exploded AS (
+        SELECT
+            (e.key)::uuid AS elect_id,
+            (e.value)::int AS votes,
+            COALESCE(s.ballots_cast, 0)           AS ballots_cast,
+            COALESCE(s.invalid_ballots, 0)        AS invalid_ballots,
+            COALESCE(s.unmarked_ballots, 0)       AS unmarked_ballots,
+            COALESCE(s.rejected_ballots, 0)       AS rejected_ballots,
+            COALESCE(s.spoiled_ballots, 0)        AS spoiled_ballots,
+            COALESCE(s.unused_ballots, 0)         AS unused_ballots
+        FROM scope_submissions s
+        CROSS JOIN LATERAL jsonb_each_text(s.candidate_votes) AS e(key, value)
+        WHERE e.value ~ '^[0-9]+$'
+    ),
+    scoped AS (
+        SELECT
+            x.elect_id,
+            SUM(x.votes)::int AS total_votes
+        FROM exploded x
+        JOIN contest_option co
+          ON co.contest_id  = ?
+         AND co.election_id = ?
+         AND co.is_active   = true
+         AND co.option_type = 'CANDIDATE'
+         AND co.elect_id    = x.elect_id
+        GROUP BY x.elect_id
+    ),
+    totals AS (
+        SELECT
+            SUM(ballots_cast)::int     AS ballots_cast,
+            SUM(invalid_ballots)::int  AS invalid_ballots,
+            SUM(unmarked_ballots)::int AS unmarked_ballots,
+            SUM(rejected_ballots)::int AS rejected_ballots,
+            SUM(spoiled_ballots)::int  AS spoiled_ballots,
+            SUM(unused_ballots)::int   AS unused_ballots
+        FROM (
+            SELECT DISTINCT ballots_cast, invalid_ballots, unmarked_ballots,
+                            rejected_ballots, spoiled_ballots, unused_ballots
+            FROM exploded
+        ) d
+    )
+    SELECT
+        (SELECT COALESCE(jsonb_object_agg(sc.elect_id::text, sc.total_votes), '{}'::jsonb)
+         FROM scoped sc) AS candidate_votes_json,
+        t.ballots_cast,
+        t.invalid_ballots,
+        t.unmarked_ballots,
+        t.rejected_ballots,
+        t.spoiled_ballots,
+        t.unused_ballots
+    FROM totals t
+    """,
+                necOrgId, electionId, contestId,
+                centerId, centerId,
+                contestId, electionId
         );
 
-        // Apply, enforce registered voters from allocation
-        mapper.apply(req, entity);
-        entity.setTotalRegisteredVoters(allocation.getRegisteredVoters());
-
-        var saved = resultRepo.save(entity);
-
-        return mapper.toDTO(saved);
-    }
-
-
-
-    @Override
-    public void delete(UUID resultId) {
-        if (!resultRepo.existsById(resultId)) {
-            throw new ResponseStatusException(NOT_FOUND, "Result not found");
+        // parse jsonb -> JsonNode (same logic)
+        JsonNode candidateVotesNode;
+        try {
+            String json = String.valueOf(agg.get("candidate_votes_json"));
+            candidateVotesNode = objectMapper.readTree(json);
+        } catch (Exception ex) {
+            log.warn("Failed to parse candidate_votes_json; defaulting to empty object. err={}", ex.getMessage());
+            candidateVotesNode = objectMapper.createObjectNode();
         }
-        resultRepo.deleteById(resultId);
+
+        int ballotsCast    = toInt(agg.get("ballots_cast"));
+        int invalidBallots = toInt(agg.get("invalid_ballots"));
+        int unmarked       = toInt(agg.get("unmarked_ballots"));
+        int rejected       = toInt(agg.get("rejected_ballots"));
+        int spoiled        = toInt(agg.get("spoiled_ballots"));
+        int unused         = toInt(agg.get("unused_ballots"));
+
+        // ✅ NEW: consume validateTally here (recompute canonical pipeline)
+        long sumVotes = 0L;
+        if (candidateVotesNode != null && candidateVotesNode.isObject()) {
+            var it = candidateVotesNode.fields();
+            while (it.hasNext()) {
+                var e = it.next();
+                JsonNode v = e.getValue();
+                if (v != null && v.isNumber()) {
+                    sumVotes += v.asLong();
+                } else if (v != null && v.isTextual()) {
+                    try {
+                        sumVotes += Long.parseLong(v.asText());
+                    } catch (Exception ignore) {
+                        // keep behavior: invalid entries don't contribute
+                    }
+                }
+            }
+        }
+
+        validateTallyInternal(
+                sumVotes,
+                invalidBallots,
+                unmarked,
+                rejected,
+                spoiled,
+                unused,
+                ballotsCast,
+                totalRegisteredVoters,
+                null
+        );
+
+        // 5) Upsert (same behavior)
+        Optional<NECResult> existingOpt =
+                resultRepo.findByElection_ElectionIdAndContest_ContestIdAndPollingCenter_CenterId(
+                        electionId, contestId, centerId
+                );
+
+        NECResult nr = existingOpt.orElseGet(NECResult::new);
+        boolean isCreate = existingOpt.isEmpty();
+
+        nr.setElection(election);
+        nr.setContest(contest);
+        nr.setPollingCenter(center);
+        nr.setCandidateVotes(candidateVotesNode);
+        nr.setTotalRegisteredVoters(totalRegisteredVoters);
+        nr.setBallotsInBox(ballotsCast);
+        nr.setInvalidBallots(invalidBallots);
+        nr.setUnmarkedBallots(unmarked);
+        nr.setRejectedBallots(rejected);
+        nr.setSpoiledBallots(spoiled);
+        nr.setUnusedBallots(unused);
+        nr.setSource("AUTO_FROM_VERIFIED_NEC_SUBMISSIONS");
+        nr.setUploadTime(LocalDateTime.now());
+        nr.setPublished(false);
+        nr.setPublishedAt(null);
+
+        nr = resultRepo.save(nr);
+
+        // ✅ HISTORY
+        writeHistory(
+                nr,
+                ChangeType.RECOMPUTED,
+                recomputedByUserId,
+                "AUTO_RECOMPUTE: verifiedCount=" + vc,
+                userNote
+        );
+
+        // ✅ AUDIT unchanged, but you can protect it similarly if you want
+        if (isCreate) {
+            auditLogService.logCreate(
+                    necOrgId,
+                    recomputedByUserId,
+                    "NECResult",
+                    "Auto recompute created NECResult: resultId=" + nr.getResultId() +
+                            ", electionId=" + electionId +
+                            ", contestId=" + contestId +
+                            ", centerId=" + centerId +
+                            ", verifiedCount=" + vc
+            );
+        } else {
+            auditLogService.logUpdate(
+                    necOrgId,
+                    recomputedByUserId,
+                    "NECResult",
+                    "Auto recompute updated NECResult: resultId=" + nr.getResultId() +
+                            ", electionId=" + electionId +
+                            ", contestId=" + contestId +
+                            ", centerId=" + centerId +
+                            ", verifiedCount=" + vc
+            );
+        }
+
+        log.info("NEC recompute OK -> nec_result updated election={} contest={} center={}",
+                electionId, contestId, centerId);
     }
+
+
+    // ✅ keep compatibility: old signature delegates to new one
+    private void writeHistory(NECResult nr,
+                              ChangeType changeType,
+                              UUID changedBy,
+                              String systemNotes) {
+        writeHistory(nr, changeType, changedBy, systemNotes, null);
+    }
+
+    private void writeHistory(NECResult nr,
+                              ChangeType changeType,
+                              UUID changedBy,
+                              String systemNotes,
+                              String userNote) {
+        try {
+            NecResultHistory h = new NecResultHistory();
+            h.setHistoryId(UUID.randomUUID());
+
+            h.setResultId(nr.getResultId());
+            h.setElectionId(nr.getElection() != null ? nr.getElection().getElectionId() : null);
+            h.setContestId(nr.getContest() != null ? nr.getContest().getContestId() : null);
+            h.setCenterId(nr.getPollingCenter() != null ? nr.getPollingCenter().getCenterId() : null);
+
+            h.setCandidateVotes(nr.getCandidateVotes() == null
+                    ? null
+                    : objectMapper.convertValue(nr.getCandidateVotes(), Map.class));
+
+            h.setTotalRegisteredVoters(nr.getTotalRegisteredVoters());
+            h.setBallotsCast(nr.getBallotsInBox());
+
+            h.setInvalidBallots(nr.getInvalidBallots());
+            h.setUnmarkedBallots(nr.getUnmarkedBallots());
+            h.setUnusedBallots(nr.getUnusedBallots());
+            h.setRejectedBallots(nr.getRejectedBallots());
+            h.setSpoiledBallots(nr.getSpoiledBallots());
+
+            h.setChangeType(changeType);
+            h.setChangedBy(changedBy);
+            h.setDateChanged(LocalDateTime.now());
+
+            h.setNotes(systemNotes); // auto/system
+            h.setUserNote(cleanUserNote(userNote)); // ✅ user reason/comment
+
+            log.info("NEC_HISTORY_WRITE changeType={} resultId={} systemNotes='{}' userNote='{}'",
+                    changeType, nr.getResultId(), systemNotes, cleanUserNote(userNote));
+
+            necHistoryRepo.save(h);
+
+        } catch (Exception ex) {
+            // ✅ CRITICAL: history must NEVER break recompute/publish
+            log.warn("NEC history write failed (ignored): {}", ex.getMessage());
+        }
+    }
+
 
     @Override
     public NECResultDto get(UUID resultId) {
@@ -244,7 +958,6 @@ public class NECResultServiceImplementation implements NECResultService {
     }
 
 
-
     @Override
     public List<CandidateScopedTotalDto> byDistrictPerCandidate(UUID electionId, UUID countyId) {
         requireElection(electionId);
@@ -306,6 +1019,63 @@ public class NECResultServiceImplementation implements NECResultService {
 
 
 
+    // ------------------------------------------------------------------------
+    // Helpers (same spirit as VoteTally)
+    // ------------------------------------------------------------------------
+
+
+    private int toInt(Object v) {
+        if (v == null) return 0;
+        if (v instanceof Number n) return n.intValue();
+        try { return Integer.parseInt(v.toString()); }
+        catch (Exception e) { return 0; }
+    }
+
+
+    private long sumVotesFromJson(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) return 0L;
+
+        // expected: {"uuid": 123, "uuid2": 456}
+        if (!node.isObject()) {
+            throw new ResponseStatusException(BAD_REQUEST, "candidateVotes must be a JSON object");
+        }
+
+        long sum = 0L;
+        var it = node.fields();
+        while (it.hasNext()) {
+            var e = it.next();
+            JsonNode v = e.getValue();
+            if (v == null || v.isNull()) continue;
+
+            if (v.isNumber()) {
+                sum += v.longValue();
+            } else if (v.isTextual()) {
+                String s = v.asText().trim();
+                if (!s.isEmpty() && s.matches("^\\d+$")) sum += Long.parseLong(s);
+                else throw new ResponseStatusException(BAD_REQUEST, "candidateVotes contains non-numeric value for key=" + e.getKey());
+            } else {
+                throw new ResponseStatusException(BAD_REQUEST, "candidateVotes contains invalid value type for key=" + e.getKey());
+            }
+        }
+        return sum;
+    }
+
+    private JsonNode writeVotes(Map<UUID, Integer> m) {
+        try {
+            ObjectNode obj = OM.createObjectNode();
+            Map<UUID, Integer> safe = (m == null ? Collections.emptyMap() : m);
+
+            for (Map.Entry<UUID, Integer> e : safe.entrySet()) {
+                if (e.getKey() == null) continue;
+                obj.put(e.getKey().toString(), e.getValue() == null ? 0 : e.getValue());
+            }
+            return obj;
+        } catch (Exception e) {
+            throw new ResponseStatusException(BAD_REQUEST, "Invalid candidateVotes", e);
+        }
+    }
+
+
     // --- helpers ---
     private void requireElection(UUID id) {
         if (id == null) throw new ResponseStatusException(BAD_REQUEST, "electionId is required");
@@ -327,45 +1097,95 @@ public class NECResultServiceImplementation implements NECResultService {
 
     // ----------------- LOCAL UTILS -----------------
     private int nz(Integer x) { return x == null ? 0 : x; }
+
     private int coalesce(Integer a, Integer b) { return a != null ? a : (b == null ? 0 : b); }
 
     // re-use the same JSON shape as mapper: { "candidateId": number, ... }
     private static final com.fasterxml.jackson.databind.ObjectMapper OM = new com.fasterxml.jackson.databind.ObjectMapper();
 
-    private long sumVotesFromJson(String json) {
-        if (json == null || json.isBlank()) return 0L;
+
+    private String buildNecResultPayloadHash(NECResult nr) {
         try {
-            Map<java.util.UUID, Integer> m = OM.readValue(
-                    json, new com.fasterxml.jackson.core.type.TypeReference<Map<java.util.UUID, Integer>>() {});
-            return m.values().stream().mapToLong(Integer::longValue).sum();
+            Map<String, Object> payload = new java.util.TreeMap<>();
+
+            payload.put("resultId", String.valueOf(nr.getResultId()));
+            payload.put("electionId", String.valueOf(nr.getElection().getElectionId()));
+            payload.put("contestId", String.valueOf(nr.getContest().getContestId()));
+            payload.put("centerId", String.valueOf(nr.getPollingCenter().getCenterId()));
+
+            payload.put("totalRegisteredVoters", nz(nr.getTotalRegisteredVoters()));
+            payload.put("ballotsCast", nz(nr.getBallotsInBox())); // ballots_cast in DB
+
+            payload.put("invalidBallots", nz(nr.getInvalidBallots()));
+            payload.put("unmarkedBallots", nz(nr.getUnmarkedBallots()));
+            payload.put("rejectedBallots", nz(nr.getRejectedBallots()));
+            payload.put("spoiledBallots", nz(nr.getSpoiledBallots()));
+            payload.put("unusedBallots", nz(nr.getUnusedBallots()));
+
+            // Deterministic candidateVotes ordering
+            Map<String, Integer> votes = new java.util.TreeMap<>();
+            com.fasterxml.jackson.databind.JsonNode node = nr.getCandidateVotes();
+            if (node != null && node.isObject()) {
+                node.fieldNames().forEachRemaining(k -> {
+                    com.fasterxml.jackson.databind.JsonNode v = node.get(k);
+                    if (v == null) return;
+
+                    if (v.isNumber()) votes.put(k, v.asInt());
+                    else if (v.isTextual() && v.asText().matches("^[0-9]+$")) {
+                        votes.put(k, Integer.parseInt(v.asText()));
+                    }
+                });
+            }
+            payload.put("candidateVotes", votes);
+
+            // Publish window matters (optional but consistent)
+            payload.put("publishedAt", nr.getPublishedAt() == null ? null : nr.getPublishedAt().toString());
+            payload.put("publishedUntil", nr.getPublishedUntil() == null ? null : nr.getPublishedUntil().toString());
+
+            String json = objectMapper.writeValueAsString(payload);
+
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return bytesToHex(digest);
+
         } catch (Exception e) {
-            throw new ResponseStatusException(BAD_REQUEST, "Invalid candidateVotes JSON", e);
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to hash NECResult payload: " + e.getMessage()
+            );
         }
     }
-    private String writeVotes(Map<UUID,Integer> m) {
-        try { return OM.writeValueAsString(m == null ? java.util.Collections.emptyMap() : m); }
-        catch (Exception e) { throw new ResponseStatusException(BAD_REQUEST, "Invalid candidateVotes", e); }
+
+
+
+
+    private String sha256Hex(String input) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        byte[] out = md.digest(input.getBytes(StandardCharsets.UTF_8));
+        StringBuilder sb = new StringBuilder(out.length * 2);
+        for (byte b : out) sb.append(String.format("%02x", b));
+        return sb.toString();
     }
 
 
-    // ----------------- VALIDATION HELPERS -----------------
-    /** Create: sum votes from request map; Update: provide sumVotesOverride */
-    private void validateTally(Map<UUID,Integer> votesMap,
-                               int invalid, int unmarked, int rejected, int spoiled,
-                               int unused,            // ✅ NEW
-                               int ballotsInBox, int registered, Integer ballotsIssued) {
-        long sumVotes = (votesMap == null) ? 0L : votesMap.values().stream().mapToLong(Integer::longValue).sum();
-        validateTallyInternal(sumVotes, invalid, unmarked, rejected, spoiled, unused, ballotsInBox, registered, ballotsIssued);
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) sb.append(String.format("%02x", b));
+        return sb.toString();
     }
 
-    private void validateTally(Map<UUID,Integer> votesMap,
-                               int invalid, int unmarked, int rejected, int spoiled,
-                               int unused,            // ✅ NEW
-                               int ballotsInBox, int registered, Integer ballotsIssued, long sumVotesOverride) {
-        long sumVotes = (votesMap == null) ? sumVotesOverride
-                : votesMap.values().stream().mapToLong(Integer::longValue).sum();
-        validateTallyInternal(sumVotes, invalid, unmarked, rejected, spoiled, unused, ballotsInBox, registered, ballotsIssued);
+    private UUID toUuid(Object o) {
+        if (o == null) return null;
+        if (o instanceof UUID) return (UUID) o;
+        if (o instanceof String) return UUID.fromString((String) o);
+        return UUID.fromString(o.toString());
     }
+
+    private static UUID id(Election e) { return e == null ? null : e.getElectionId(); }
+    private static UUID id(Contest c) { return c == null ? null : c.getContestId(); }
+    private static UUID id(PollingCenter pc) { return pc == null ? null : pc.getCenterId(); }
+
+
 
 
     /**
@@ -452,6 +1272,29 @@ public class NECResultServiceImplementation implements NECResultService {
         }
 
     }
+
+
+
+    // ----------------- VALIDATION HELPERS -----------------
+    /** Create: sum votes from request map; Update: provide sumVotesOverride */
+    private void validateTally(Map<UUID,Integer> votesMap,
+                               int invalid, int unmarked, int rejected, int spoiled,
+                               int unused,            // ✅ NEW
+                               int ballotsInBox, int registered, Integer ballotsIssued) {
+        long sumVotes = (votesMap == null) ? 0L : votesMap.values().stream().mapToLong(Integer::longValue).sum();
+        validateTallyInternal(sumVotes, invalid, unmarked, rejected, spoiled, unused, ballotsInBox, registered, ballotsIssued);
+    }
+
+    private void validateTally(Map<UUID,Integer> votesMap,
+                               int invalid, int unmarked, int rejected, int spoiled,
+                               int unused,            // ✅ NEW
+                               int ballotsInBox, int registered, Integer ballotsIssued, long sumVotesOverride) {
+        long sumVotes = (votesMap == null) ? sumVotesOverride
+                : votesMap.values().stream().mapToLong(Integer::longValue).sum();
+        validateTallyInternal(sumVotes, invalid, unmarked, rejected, spoiled, unused, ballotsInBox, registered, ballotsIssued);
+    }
+
+
 
 
 }

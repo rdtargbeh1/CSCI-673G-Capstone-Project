@@ -15,6 +15,7 @@ import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import com.nimbusds.jose.jwk.RSAKey;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 
 @Configuration
 public class LocalJwtConfig {
@@ -75,7 +76,41 @@ public class LocalJwtConfig {
     @Bean
     JwtAuthenticationConverter jwtAuthenticationConverter() {
         var converter = new JwtAuthenticationConverter();
-        // You can plug a JwtGrantedAuthoritiesConverter here if you carry roles in a claim.
+
+        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+            var out = new java.util.HashSet<org.springframework.security.core.GrantedAuthority>();
+
+            // ----- roles claim -----
+            Object rolesObj = jwt.getClaims().get("roles");
+            if (rolesObj instanceof java.util.Collection<?> roles) {
+                for (Object r : roles) {
+                    if (r == null) continue;
+                    String role = String.valueOf(r).trim();
+                    if (role.isEmpty()) continue;
+
+                    // ✅ normalize: allow "NEC_ADMIN" or "ROLE_NEC_ADMIN"
+                    if (!role.startsWith("ROLE_")) role = "ROLE_" + role;
+
+                    out.add(new org.springframework.security.core.authority.SimpleGrantedAuthority(role));
+                }
+            }
+
+            // ----- optional: keep scopes too -----
+            Object scopeObj = jwt.getClaims().get("scope");
+            if (scopeObj instanceof String scopeStr && !scopeStr.isBlank()) {
+                for (String s : scopeStr.split("\\s+")) {
+                    if (!s.isBlank()) {
+                        out.add(new org.springframework.security.core.authority.SimpleGrantedAuthority("SCOPE_" + s));
+                    }
+                }
+            }
+
+            return out;
+        });
+
         return converter;
     }
+
+
+
 }

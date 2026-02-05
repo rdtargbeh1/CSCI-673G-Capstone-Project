@@ -6,6 +6,7 @@ import election.ems_backend.enums.ContestCategory;
 import election.ems_backend.enums.ContestScopeType;
 import election.ems_backend.enums.VoteStatus;
 import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.time.LocalDateTime;
@@ -227,6 +228,25 @@ public final class VoteSubmissionSpecs {
 
             // OPTION B: if VoteSubmission has @ManyToOne Contest contest;
             return cb.equal(root.join("contest", JoinType.INNER).get("contestId"), contestId);
+        };
+    }
+
+
+    public static Specification<VoteSubmission> includeDeleted(boolean includeDeleted) {
+        return (root, query, cb) -> {
+            if (includeDeleted) {
+                // include both active + deleted
+                return cb.conjunction();
+            }
+
+            // ✅ ACTIVE ONLY:
+            // dateDeleted IS NULL AND status <> DELETED
+            Predicate dateIsNull = cb.isNull(root.get("dateDeleted"));
+
+            // status may be present even when dateDeleted is null; keep both safe
+            Predicate notDeletedStatus = cb.notEqual(root.get("status"), VoteStatus.DELETED);
+
+            return cb.and(dateIsNull, notDeletedStatus);
         };
     }
 

@@ -1,6 +1,7 @@
 package election.ems_backend.dto;
 
 import election.ems_backend.entity.Contest;
+import jakarta.persistence.Column;
 import lombok.Builder;
 import lombok.Data;
 
@@ -35,4 +36,9 @@ public class NECResultDto {
 
     private String source;
     private LocalDateTime uploadTime;
+
+    private String resultSignature;
+    private UUID resultSignerKeyId;
+    private String chainHash;
+
 }

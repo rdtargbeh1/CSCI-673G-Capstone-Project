@@ -15,6 +15,7 @@ public class NecResultHistoryDto {
     private UUID historyId;
     private UUID resultId;
     private UUID electionId;
+    private UUID contestId;
     private UUID centerId;
     private Map<String, Integer> candidateVotes;
     private Integer totalRegisteredVoters;
@@ -26,6 +27,7 @@ public class NecResultHistoryDto {
     private Integer spoiledBallots;
     private ChangeType changeType;
     private UUID changedBy;
-    private LocalDateTime changedAt;
+    private LocalDateTime dateChanged;
     private String notes;
+    private String userNote;
 }

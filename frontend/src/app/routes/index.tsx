@@ -25,7 +25,8 @@ import SubmissionsTab from "../../pages/elections/workspace/tabs/submissions/Sub
 import IntegrityTab from "../../pages/elections/workspace/tabs/integrity/IntegrityTab";
 import NecWorkflowTab from "../../pages/elections/workspace/tabs/nec-workflow/shared/NecWorkflowTab";
 import NecResultTab from "../../pages/elections/workspace/tabs/nec-workflow/NecResultTab";
-
+import NecResultStagingPage from "../../pages/elections/workspace/tabs/nec-workflow/NecResultStagingPage";
+import NecResultHistoryPage from "../../pages/elections/workspace/tabs/nec-workflow/NecResultHistoryPage";
 
 
 // For Election Results
@@ -177,10 +178,24 @@ export const router = createBrowserRouter([
           { path: "setup", element: <SetupTab /> },
           { path: "allocation", element: <AllocationTab /> },
           { path: "submissions", element: <SubmissionsTab /> },
-           { path: "integrity", element: <IntegrityTab /> },
-          { path: "nec-workflow", element: <NecWorkflowTab /> },
-          { path: "nec-result", element: <NecResultTab /> },
+          { path: "integrity", element: <IntegrityTab /> },
+          // { path: "nec-workflow", element: <NecWorkflowTab /> },
 
+          //  New Workflow
+          {
+            path: "nec-workflow",
+            element: <NecWorkflowTab />,
+            children: [
+              { index: true, element: <Navigate to="nec-result" replace /> },
+
+              { path: "nec-result", element: <NecResultTab /> },
+              { path: "staging", element: <NecResultStagingPage /> },
+              { path: "history", element: <NecResultHistoryPage /> },
+
+              // ✅ reuse existing Geo page (no duplicate)
+              { path: "geo", element: <NecResultGeoPage /> },
+            ],
+          },
 
           // results
           {

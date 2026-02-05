@@ -6,6 +6,14 @@ import java.util.List;
 import java.util.UUID;
 
 public interface NecResultHistoryService {
+
     List<NecResultHistoryDto> listByResultId(UUID resultId);
+
     List<NecResultHistoryDto> listByElectionId(UUID electionId);
+
+    List<NecResultHistoryDto> listByContest(UUID electionId, UUID contestId);
+
+    List<NecResultHistoryDto> listByScope(UUID electionId, UUID contestId, UUID centerId);
+
+
 }

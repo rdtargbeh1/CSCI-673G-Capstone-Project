@@ -227,6 +227,28 @@ public interface VoteSubmissionRepository
             @Param("orgId") UUID orgId
     );
 
+
+    @Query("""
+            select vs
+            from VoteSubmission vs
+            where vs.organization.orgId = :necOrgId
+              and vs.election.electionId = :electionId
+              and vs.contestId = :contestId
+              and vs.pollingCenter.centerId = :centerId
+              and vs.status = election.ems_backend.enums.VoteStatus.VERIFIED
+              and vs.dateDeleted is null
+            """)
+    List<VoteSubmission> findVerifiedForNecCenter(UUID necOrgId, UUID electionId, UUID contestId, UUID centerId);
+
+    List<VoteSubmission> findAllByOrganization_OrgIdAndElection_ElectionIdAndContestIdAndPollingCenter_CenterIdAndStatusAndDateDeletedIsNull(
+            UUID orgId,
+            UUID electionId,
+            UUID contestId,
+            UUID centerId,
+            VoteStatus status
+    );
+
+
     // ---------------------------------------------------------------------
     // Helpful lookup patterns (kept from your original)
     // ---------------------------------------------------------------------

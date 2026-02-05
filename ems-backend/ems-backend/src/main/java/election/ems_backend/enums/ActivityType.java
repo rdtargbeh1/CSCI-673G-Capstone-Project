@@ -9,6 +9,8 @@ public enum ActivityType {
     PASSWORD_RESET,
     FAILED_LOGIN,
 
+    RESULT_PUBLISHED,
+
     // Generic CRUD
     CREATE,
     READ,
@@ -31,6 +33,7 @@ public enum ActivityType {
     TALLY_UPLOAD,
     VOTE_FLAGGED,
     VOTE_UNFLAGGED,
+    VOTE_UPDATED,
 
     // Observer reports
     OBSERVER_REPORT_CREATE,

@@ -1,9 +1,12 @@
 package election.ems_backend.entity;
 
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UuidGenerator;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -18,7 +21,7 @@ import java.util.UUID;
 @Table(
         name = "nec_result",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uq_nec_election_center", columnNames = {"election_id", "center_id"})
+                @UniqueConstraint(name = "uq_nec_election_contest_center", columnNames = {"election_id", "contest_id", "center_id"})
         },
         indexes = {
                 @Index(name = "idx_nec_result_election", columnList = "election_id"),
@@ -48,9 +51,10 @@ public class NECResult {
             foreignKey = @ForeignKey(name = "fk_nec_center"))
     private PollingCenter pollingCenter;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "candidate_votes", columnDefinition = "jsonb", nullable = false)
-    private String candidateVotes;
-
+    private JsonNode candidateVotes;
+    
     @Column(name = "total_registered_voters", nullable = false)
     private Integer totalRegisteredVoters;
 
@@ -84,6 +88,20 @@ public class NECResult {
     @Column(name = "published_at")
     private LocalDateTime publishedAt;
 
+    @Column(name = "published_until")
+    private LocalDateTime publishedUntil;
+
+    // cryptographic
+    @Column(name = "result_signature")
+    private String resultSignature;
+
+    @Column(name = "result_signer_key_id")
+    private UUID resultSignerKeyId;
+
+    @Column(name = "chain_hash")
+    private String chainHash;
+
+
     @PrePersist
     public void prePersist() {
         if (uploadTime == null) uploadTime = LocalDateTime.now();
@@ -91,8 +109,11 @@ public class NECResult {
         if (unmarkedBallots == null) unmarkedBallots = 0;
         if (rejectedBallots == null) rejectedBallots = 0;
         if (spoiledBallots == null) spoiledBallots = 0;
+        if (unusedBallots == null) unusedBallots = 0;
         if (totalRegisteredVoters == null) totalRegisteredVoters = 0;
+        if (ballotsInBox == null) ballotsInBox = 0;
     }
+
 
 
 }

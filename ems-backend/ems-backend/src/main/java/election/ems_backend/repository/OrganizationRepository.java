@@ -21,12 +21,9 @@ public interface OrganizationRepository extends JpaRepository<Organization, UUID
 
     boolean existsBySubdomainIgnoreCaseAndOrgIdNot(String subdomain, UUID orgId);
 
-//    boolean existsByParty_PartyId(UUID partyId);
-
     boolean existsByOrgIdAndIsActiveTrue(UUID orgId);
 
 
-//    Optional<UUID> findIdBySubdomainIgnoreCaseAndIsActiveTrue(String subdomain);
 
     @Query("select o.orgId from Organization o where lower(o.subdomain) = lower(?1) and o.isActive = true")
     Optional<UUID> findIdBySubdomainIgnoreCaseAndIsActiveTrue(String subdomain);
@@ -47,7 +44,6 @@ public interface OrganizationRepository extends JpaRepository<Organization, UUID
                               Pageable pageable);
 
 
-
-
+    Optional<Organization> findFirstByOrganizationType(OrganizationType organizationType);
 
 }

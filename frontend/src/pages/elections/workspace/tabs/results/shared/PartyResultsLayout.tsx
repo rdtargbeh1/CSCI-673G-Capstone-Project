@@ -82,10 +82,10 @@ export default function PartyResultsLayout() {
             <span className="text-xs font-extrabold text-slate-700">
               Candidates:
             </span>
-            <TabPill to="candidates/election" label="Election" />
             <TabPill to="candidates/counties" label="Counties" />
             <TabPill to="candidates/districts" label="Districts" />
             <TabPill to="candidates/centers" label="Centers" />
+             <TabPill to="candidates/election" label="Election" />
           </div>
 
           {/* Totals RIGHT */}

@@ -1,6 +1,7 @@
 package election.ems_backend.controller;
 
 import election.ems_backend.dto.*;
+import election.ems_backend.nec.NecResultPublishRequest;
 import election.ems_backend.service.NECResultService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +10,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -22,20 +25,28 @@ public class NECResultController {
 
     private final NECResultService service;
 
-    @PostMapping
-    public NECResultDto create(@Valid @RequestBody NECResultCreateRequest req) {
-        return service.create(req);
+
+    @PostMapping("/publish")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','NEC_ADMIN')")
+    public void publish(@RequestParam UUID electionId,
+                        @RequestParam UUID contestId,
+                        @RequestParam UUID centerId,
+                        @RequestBody @Valid NecResultPublishRequest req) {
+        service.publishForCenterContest(electionId, contestId, centerId, req);
     }
 
-    @PutMapping("/{id}")
-    public NECResultDto update(@PathVariable UUID id, @RequestBody NECResultUpdateRequest req) {
-        return service.update(id, req);
+    @PostMapping("/unpublish")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','NEC_ADMIN')")
+    public void unpublish(@RequestParam UUID electionId,
+                          @RequestParam UUID contestId,
+                          @RequestParam UUID centerId,
+                          @RequestParam UUID actorUserId,
+                          @RequestParam(required = false) String reason) {
+        service.unpublishForCenterContest(electionId, contestId, centerId, actorUserId, reason);
     }
 
-    @DeleteMapping("/{id}")
-    public void delete(@PathVariable UUID id) {
-        service.delete(id);
-    }
 
     @GetMapping("/{id}")
     public NECResultDto get(@PathVariable UUID id) {

@@ -35,6 +35,9 @@ public class NecResultHistory {
     @Column(name = "election_id", nullable = false)
     private UUID electionId;
 
+    @Column(name = "contest_id", nullable = false)
+    private UUID contestId;
+
     @Column(name = "center_id", nullable = false)
     private UUID centerId;
 
@@ -71,15 +74,18 @@ public class NecResultHistory {
     @Column(name = "changed_by")
     private UUID changedBy;
 
-    @Column(name = "changed_at")
-    private LocalDateTime changedAt;
+    @Column(name = "date_changed")
+    private LocalDateTime dateChanged;
 
     @Column(name = "notes", columnDefinition = "text")
     private String notes;
 
+    @Column(name = "user_note", columnDefinition = "text")
+    private String userNote;
+
     @PrePersist
     public void prePersist() {
         if (historyId == null) historyId = UUID.randomUUID();
-        if (changedAt == null) changedAt = LocalDateTime.now();
+        if (dateChanged == null) dateChanged = LocalDateTime.now();
     }
 }

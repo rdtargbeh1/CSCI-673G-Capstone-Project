@@ -5,5 +5,6 @@ public enum VoteStatus {
     VERIFIED,
     FLAGGED,
     REJECTED,
+    DELETED,
     DRAFT,
 }

@@ -22,15 +22,32 @@ public class NecResultHistoryServiceImpl implements NecResultHistoryService {
 
     @Override
     public List<NecResultHistoryDto> listByResultId(UUID resultId) {
-        return repository.findByResultIdOrderByChangedAtDesc(resultId).stream()
+        return repository.findByResultIdOrderByDateChangedDesc(resultId).stream()
                 .map(mapper::toDto)
                 .collect(Collectors.toList());
     }
 
     @Override
     public List<NecResultHistoryDto> listByElectionId(UUID electionId) {
-        return repository.findByElectionIdOrderByChangedAtDesc(electionId).stream()
+        return repository.findByElectionIdOrderByDateChangedDesc(electionId).stream()
                 .map(mapper::toDto)
                 .collect(Collectors.toList());
     }
+
+    // ✅ NEW: list all history for election+contest (all centers)
+    @Override
+    public List<NecResultHistoryDto> listByContest(UUID electionId, UUID contestId) {
+        return repository.findByElectionIdAndContestIdOrderByDateChangedDesc(electionId, contestId).stream()
+                .map(mapper::toDto)
+                .collect(Collectors.toList());
+    }
+
+    // ✅ NEW: list history for one exact scope (election+contest+center)
+    @Override
+    public List<NecResultHistoryDto> listByScope(UUID electionId, UUID contestId, UUID centerId) {
+        return repository.findByElectionIdAndContestIdAndCenterIdOrderByDateChangedDesc(electionId, contestId, centerId).stream()
+                .map(mapper::toDto)
+                .collect(Collectors.toList());
+    }
+
 }

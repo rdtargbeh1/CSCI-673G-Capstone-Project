@@ -5,7 +5,9 @@ import election.ems_backend.dto.*;
 import election.ems_backend.enums.ContestCategory;
 import election.ems_backend.enums.ContestScopeType;
 import election.ems_backend.enums.VoteStatus;
+import election.ems_backend.security.AuthorizationService;
 import election.ems_backend.service.VoteSubmissionService;
+import election.ems_backend.utility.VoteSubmissionDeleteRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +16,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -27,7 +30,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class VoteSubmissionController {
 
-
+    private final AuthorizationService authz;
     private final VoteSubmissionService voteSubmissionService;
 
     // JSON create (no files)
@@ -73,14 +76,41 @@ public class VoteSubmissionController {
         return voteSubmissionService.verify(id, req);
     }
 
+
+    @PostMapping("/{id}/amend")
+    public VoteSubmissionDto amend(@PathVariable UUID id, @Valid @RequestBody VoteSubmissionAmendRequest req) {
+        authz.requireAnyInTenantOrPlatformAdmin();
+        return voteSubmissionService.amend(id, req);
+    }
+
+
     @GetMapping("/{id}")
     public VoteSubmissionDto get(@PathVariable UUID id) {
         return voteSubmissionService.get(id);
     }
 
-    @DeleteMapping("/{id}")
-    public void delete(@PathVariable UUID id) {
-        voteSubmissionService.delete(id);
+
+    /**
+     * Delete a vote submission.
+     *
+     * Rules:
+     * - Reason is required
+     * - deletedByUserId must be provided (actor, NOT agent)
+     * - Triggers NEC recompute to keep official results consistent
+     */
+
+    @DeleteMapping("/{submissionId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable UUID submissionId,
+                       @RequestBody @Valid VoteSubmissionDeleteRequest req) {
+
+        authz.requireAny(
+                "NEC_ADMIN",
+                "NEC_VERIFIER",
+                "SYSTEM_ADMIN"
+        );
+
+        voteSubmissionService.delete(submissionId, req);
     }
 
 
@@ -124,13 +154,16 @@ public class VoteSubmissionController {
             @RequestParam(required = false) String q,
 
             // ✅ contest-related filters
-            @RequestParam(required = false) UUID contestId,            // ✅ ADD
+            @RequestParam(required = false) UUID contestId,
             @RequestParam(required = false) ContestCategory category,
             @RequestParam(required = false) ContestScopeType scopeType,
 
             // ✅ submission location filters (county/district/center)
             @RequestParam(required = false) UUID countyId,
             @RequestParam(required = false) UUID districtId,
+
+            // ✅ NEW: soft-delete behavior
+            @RequestParam(defaultValue = "false") boolean includeDeleted,
 
             @PageableDefault(size = 20, sort = "submissionTime", direction = Sort.Direction.DESC)
             Pageable pageable
@@ -148,7 +181,8 @@ public class VoteSubmissionController {
                 scopeType,
                 countyId,
                 districtId,
-                contestId,     // ✅ PASS THROUGH (make service match)
+                contestId,
+                includeDeleted,   // ✅ NEW
                 pageable
         );
     }

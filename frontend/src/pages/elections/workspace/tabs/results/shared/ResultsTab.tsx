@@ -7,7 +7,7 @@
  *
  * Tabs rules:
  * - TENANT: Vote Tally + Party + Compare + (Official only if NEC published)
- * - NEC:    Vote Tally + Official
+ * - NEC:    Vote Tally + Party + Official
  * - SYSTEM: Vote Tally + Official (platform/admin view)
  *
  * SYSTEM requires Organization selection to view tenant-scoped pages elsewhere,
@@ -101,8 +101,10 @@ export default function ResultsTab() {
   // ---- tab visibility rules ----
   const tallyVisible = true;
 
-  // Party + Compare ONLY for TENANT
-  const partyVisible = isTenant;
+  // ✅ Party visible for TENANT + NEC
+  const partyVisible = isTenant || isNec;
+
+  // Compare ONLY for TENANT
   const compareVisible = isTenant;
 
   // Official:
@@ -115,7 +117,7 @@ export default function ResultsTab() {
       [
         { to: "tally", label: "Vote Tally", hidden: !tallyVisible },
 
-        { to: "party", label: "Party", hidden: !partyVisible },
+        { to: "party", label: "Local Results", hidden: !partyVisible },
 
         { to: "official", label: "Official", hidden: !officialVisible },
 

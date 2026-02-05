@@ -11,6 +11,8 @@
 // 3) Evidence column now comes from TallySheet uploads (backend /api/tally-sheets/submission/{submissionId})
 //    - If no tally sheet uploads → show "Missing evidence"
 //    - Missing Evidence tab uses tally-sheet evidence too.
+// ✅ NEW (THIS REQUEST):
+// 4) When FLAGGING a submission, require a REASON via a comment box (modal). Unflag stays as-is.
 
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -147,7 +149,9 @@ type TallySheetDto = {
 
 /** Fetch tally sheets for a submission */
 async function fetchTallySheetsBySubmission(submissionId: string) {
-  const { data } = await apiClient.get(`/tally-sheets/submission/${submissionId}`);
+  const { data } = await apiClient.get(
+    `/tally-sheets/submission/${submissionId}`
+  );
   return (data ?? []) as TallySheetDto[];
 }
 
@@ -174,7 +178,9 @@ export default function SubmissionQueuePage() {
   ].includes((role || "DATA_ENTRY").toUpperCase());
 
   const canVerify =
-    Boolean(currentOrgId) || dashboardMode === "SYSTEM" || dashboardMode === "NEC";
+    Boolean(currentOrgId) ||
+    dashboardMode === "SYSTEM" ||
+    dashboardMode === "NEC";
 
   const canFlag = canVerify;
 
@@ -193,7 +199,9 @@ export default function SubmissionQueuePage() {
 
   useEffect(() => {
     if (!electionId && elections.length) {
-      const sorted = [...elections].sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
+      const sorted = [...elections].sort(
+        (a, b) => (b.year ?? 0) - (a.year ?? 0)
+      );
       setElectionId(sorted[0].electionId);
     }
   }, [elections, electionId]);
@@ -339,7 +347,10 @@ export default function SubmissionQueuePage() {
         electionId,
         page,
         size,
-        status: queue === "ALL" || queue === "MISSING_EVIDENCE" ? undefined : (queue as any),
+        status:
+          queue === "ALL" || queue === "MISSING_EVIDENCE"
+            ? undefined
+            : (queue as any),
         contestId: filterContest || undefined,
         countyId: filterCounty || undefined,
         districtId: filterDistrict || undefined,
@@ -382,7 +393,8 @@ export default function SubmissionQueuePage() {
       if (!q || q.isLoading || q.isError) return;
       const arr = (q.data ?? []) as TallySheetDto[];
       const first = arr[0];
-      const url = String(first?.url ?? first?.fileUrl ?? "").trim() || undefined;
+      const url =
+        String(first?.url ?? first?.fileUrl ?? "").trim() || undefined;
       map.set(id, { count: arr.length, firstUrl: url });
     });
     return map;
@@ -418,7 +430,9 @@ export default function SubmissionQueuePage() {
   };
 
   const refetchList = async () => {
-    await qc.invalidateQueries({ queryKey: ["ops-submission-queue", electionId] });
+    await qc.invalidateQueries({
+      queryKey: ["ops-submission-queue", electionId],
+    });
     // Also refresh tally sheet evidence for current page
     await qc.invalidateQueries({ queryKey: ["tally-sheets"] });
   };
@@ -456,19 +470,27 @@ export default function SubmissionQueuePage() {
 
   const canEditRow = (s: VoteSubmissionDto) => {
     const st = String((s as any).status ?? "").toUpperCase();
-    return canCreate && (st === "PENDING" || st === "REJECTED" || st === "DRAFT");
+    return (
+      canCreate && (st === "PENDING" || st === "REJECTED" || st === "DRAFT")
+    );
   };
 
   const isFlaggedRow = (s: VoteSubmissionDto) =>
     String((s as any).status ?? "").toUpperCase() === "FLAGGED";
 
+  /** ---------------- ✅ Flag Reason Modal (required when flagging) ---------------- */
+  const [openFlagReason, setOpenFlagReason] = useState(false);
+  const [flagTargetId, setFlagTargetId] = useState<string>("");
+  const [flagTargetLabel, setFlagTargetLabel] = useState<string>("");
+  const [flagReason, setFlagReason] = useState<string>("");
+
   /** ---------------- Flag/Unflag ---------------- */
   const flagM = useMutation({
-    mutationFn: async (p: { id: string; flagged: boolean }) => {
+    mutationFn: async (p: { id: string; flagged: boolean; comments?: string }) => {
       return flagSubmission(p.id, {
         actorUserId,
         flagged: p.flagged,
-        comments: p.flagged ? "Flagged in Operations queue" : undefined,
+        comments: p.comments,
       } as any);
     },
     onSuccess: async () => {
@@ -479,7 +501,9 @@ export default function SubmissionQueuePage() {
   /** ---------------- VERIFY ---------------- */
   const [openVerify, setOpenVerify] = useState(false);
   const [verifyId, setVerifyId] = useState<string>("");
-  const [verifyDecision, setVerifyDecision] = useState<"ACCEPT" | "REJECT">("ACCEPT");
+  const [verifyDecision, setVerifyDecision] = useState<"ACCEPT" | "REJECT">(
+    "ACCEPT"
+  );
   const [verifyComment, setVerifyComment] = useState<string>("");
 
   const verifierMeQ = useQuery<UserDto>({
@@ -496,7 +520,8 @@ export default function SubmissionQueuePage() {
   const verifyM = useMutation({
     mutationFn: async (p: { id: string; accept: boolean; comment?: string }) => {
       return verifySubmission(p.id, {
-        verifierUserId: (verifierUser as any)?.userId ?? (user as any)?.userId,
+        verifierUserId:
+          (verifierUser as any)?.userId ?? (user as any)?.userId,
         accept: p.accept,
         comment: p.comment,
       } as any);
@@ -516,7 +541,10 @@ export default function SubmissionQueuePage() {
     enabled: openDrawer && Boolean(drawerContestId),
     queryKey: ["contest-options", "drawer", drawerContestId],
     queryFn: async () =>
-      (await listOptionsByContest({ contestId: drawerContestId, onlyActive: true })) as any,
+      (await listOptionsByContest({
+        contestId: drawerContestId,
+        onlyActive: true,
+      })) as any,
     staleTime: 60_000,
     retry: 1,
   });
@@ -540,7 +568,8 @@ export default function SubmissionQueuePage() {
   }, [contestOptionsQ.data]);
 
   const drawerVotes = useMemo(() => {
-    const cv = ((drawerRow as any)?.candidateVotes ?? {}) as Record<string, number>;
+    const cv = ((drawerRow as any)?.candidateVotes ??
+      {}) as Record<string, number>;
     const entries = Object.entries(cv).map(([k, v]) => ({
       key: k,
       name: candidateNameByKey.get(k) ?? k,
@@ -562,26 +591,96 @@ export default function SubmissionQueuePage() {
             {/* ✅ UPDATED: cards smaller + RIGHT-ALIGNED */}
             <div className="w-full flex justify-end">
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-1.5 w-auto">
-                <StatCard label="All" value={statusCounts.ALL} tone="gray" icon={<FileText className="h-3.5 w-3.5" />} />
-                <StatCard label="Pending" value={statusCounts.PENDING} tone="blue" icon={<AlertTriangle className="h-3.5 w-3.5" />} />
-                <StatCard label="Flagged" value={statusCounts.FLAGGED} tone="orange" icon={<Flag className="h-3.5 w-3.5" />} />
-                <StatCard label="Draft" value={statusCounts.DRAFT} tone="purple" icon={<FileText className="h-3.5 w-3.5" />} />
-                <StatCard label="Verified" value={statusCounts.VERIFIED} tone="green" icon={<CheckCircle2 className="h-3.5 w-3.5" />} />
-                <StatCard label="Rejected" value={statusCounts.REJECTED} tone="red" icon={<X className="h-3.5 w-3.5" />} />
-                <StatCard label="Missing Evidence" value={statusCounts.MISSING_EVIDENCE} tone="amber" icon={<FileText className="h-3.5 w-3.5" />} />
+                <StatCard
+                  label="All"
+                  value={statusCounts.ALL}
+                  tone="gray"
+                  icon={<FileText className="h-3.5 w-3.5" />}
+                />
+                <StatCard
+                  label="Pending"
+                  value={statusCounts.PENDING}
+                  tone="blue"
+                  icon={<AlertTriangle className="h-3.5 w-3.5" />}
+                />
+                <StatCard
+                  label="Flagged"
+                  value={statusCounts.FLAGGED}
+                  tone="orange"
+                  icon={<Flag className="h-3.5 w-3.5" />}
+                />
+                <StatCard
+                  label="Draft"
+                  value={statusCounts.DRAFT}
+                  tone="purple"
+                  icon={<FileText className="h-3.5 w-3.5" />}
+                />
+                <StatCard
+                  label="Verified"
+                  value={statusCounts.VERIFIED}
+                  tone="green"
+                  icon={<CheckCircle2 className="h-3.5 w-3.5" />}
+                />
+                <StatCard
+                  label="Rejected"
+                  value={statusCounts.REJECTED}
+                  tone="red"
+                  icon={<X className="h-3.5 w-3.5" />}
+                />
+                <StatCard
+                  label="Missing Evidence"
+                  value={statusCounts.MISSING_EVIDENCE}
+                  tone="amber"
+                  icon={<FileText className="h-3.5 w-3.5" />}
+                />
               </div>
             </div>
 
             <div className="w-full flex flex-col gap-2">
               <div className="w-full flex justify-end">
                 <div className="flex flex-wrap gap-2 items-center justify-end">
-                  <StatusPill active={queue === "ALL"} label="All" tone="gray" onClick={() => setQueue("ALL")} />
-                  <StatusPill active={queue === "PENDING"} label="Pending" tone="blue" onClick={() => setQueue("PENDING")} />
-                  <StatusPill active={queue === "FLAGGED"} label="Flagged" tone="orange" onClick={() => setQueue("FLAGGED")} />
-                  <StatusPill active={queue === "DRAFT"} label="Draft" tone="purple" onClick={() => setQueue("DRAFT")} />
-                  <StatusPill active={queue === "VERIFIED"} label="Verified" tone="green" onClick={() => setQueue("VERIFIED")} />
-                  <StatusPill active={queue === "REJECTED"} label="Rejected" tone="red" onClick={() => setQueue("REJECTED")} />
-                  <StatusPill active={queue === "MISSING_EVIDENCE"} label="Missing Evidence" tone="amber" onClick={() => setQueue("MISSING_EVIDENCE")} />
+                  <StatusPill
+                    active={queue === "ALL"}
+                    label="All"
+                    tone="gray"
+                    onClick={() => setQueue("ALL")}
+                  />
+                  <StatusPill
+                    active={queue === "PENDING"}
+                    label="Pending"
+                    tone="blue"
+                    onClick={() => setQueue("PENDING")}
+                  />
+                  <StatusPill
+                    active={queue === "FLAGGED"}
+                    label="Flagged"
+                    tone="orange"
+                    onClick={() => setQueue("FLAGGED")}
+                  />
+                  <StatusPill
+                    active={queue === "DRAFT"}
+                    label="Draft"
+                    tone="purple"
+                    onClick={() => setQueue("DRAFT")}
+                  />
+                  <StatusPill
+                    active={queue === "VERIFIED"}
+                    label="Verified"
+                    tone="green"
+                    onClick={() => setQueue("VERIFIED")}
+                  />
+                  <StatusPill
+                    active={queue === "REJECTED"}
+                    label="Rejected"
+                    tone="red"
+                    onClick={() => setQueue("REJECTED")}
+                  />
+                  <StatusPill
+                    active={queue === "MISSING_EVIDENCE"}
+                    label="Missing Evidence"
+                    tone="amber"
+                    onClick={() => setQueue("MISSING_EVIDENCE")}
+                  />
                   <Badge text={`Actor: ${actorName}`} />
                 </div>
               </div>
@@ -728,7 +827,8 @@ export default function SubmissionQueuePage() {
 
               {dashboardMode === "SYSTEM" && !effectiveOrgId ? (
                 <div className="text-xs font-bold text-red-700 text-right">
-                  Select a tenant (organization) to view submissions in Operations.
+                  Select a tenant (organization) to view submissions in
+                  Operations.
                 </div>
               ) : null}
             </div>
@@ -928,12 +1028,24 @@ export default function SubmissionQueuePage() {
                                 return;
                               }
 
+                              const centerName = String(s?.centerName ?? "").trim();
+                              const placeLabel = String(
+                                s?.placeLabel ??
+                                  (s?.placeNumber != null
+                                    ? `Place ${s.placeNumber}`
+                                    : s?.placeCode ?? "")
+                              ).trim();
+                              const lbl = [centerName, placeLabel].filter(Boolean).join(" • ");
+
                               if (flagged) {
                                 if (!confirm("Unflag this submission?")) return;
-                                flagM.mutate({ id, flagged: false });
+                                flagM.mutate({ id, flagged: false, comments: undefined });
                               } else {
-                                if (!confirm("Flag this submission?")) return;
-                                flagM.mutate({ id, flagged: true });
+                                // ✅ NEW: require reason via modal (no confirm)
+                                setFlagTargetId(id);
+                                setFlagTargetLabel(lbl || "Selected submission");
+                                setFlagReason("");
+                                setOpenFlagReason(true);
                               }
                             }}
                             title={flagged ? "Unflag" : "Flag"}
@@ -1021,6 +1133,42 @@ export default function SubmissionQueuePage() {
         </div>
       </Panel>
 
+      {/* ✅ NEW: Flag Reason Modal (required) */}
+      {openFlagReason ? (
+        <FlagReasonModal
+          title="Flag Submission"
+          subtitle={flagTargetLabel ? `Target: ${flagTargetLabel}` : undefined}
+          reason={flagReason}
+          busy={flagM.isPending}
+          error={flagM.isError ? friendlyError(flagM.error) : undefined}
+          onChangeReason={setFlagReason}
+          onClose={() => {
+            if (flagM.isPending) return;
+            setOpenFlagReason(false);
+          }}
+          onSubmit={() => {
+            const clean = String(flagReason ?? "").trim();
+            if (!clean || clean.length > 500 || !flagTargetId) return;
+
+            flagM.mutate(
+              {
+                id: flagTargetId,
+                flagged: true,
+                comments: clean,
+              },
+              {
+                onSuccess: () => {
+                  setOpenFlagReason(false);
+                  setFlagTargetId("");
+                  setFlagTargetLabel("");
+                  setFlagReason("");
+                },
+              }
+            );
+          }}
+        />
+      ) : null}
+
       {/* VERIFY Modal */}
       {openVerify ? (
         <ModalShell
@@ -1103,7 +1251,9 @@ export default function SubmissionQueuePage() {
                     {
                       id: verifyId,
                       accept: verifyDecision === "ACCEPT",
-                      comment: verifyComment?.trim() ? verifyComment.trim() : undefined,
+                      comment: verifyComment?.trim()
+                        ? verifyComment.trim()
+                        : undefined,
                     },
                     { onSuccess: () => setOpenVerify(false) }
                   );
@@ -1131,9 +1281,18 @@ export default function SubmissionQueuePage() {
           ) : (
             <div className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <Info label="Status" value={String((drawerRow as any).status ?? "—")} />
-                <Info label="Agent" value={String((drawerRow as any).agentName ?? "—")} />
-                <Info label="Center" value={String((drawerRow as any).centerName ?? "—")} />
+                <Info
+                  label="Status"
+                  value={String((drawerRow as any).status ?? "—")}
+                />
+                <Info
+                  label="Agent"
+                  value={String((drawerRow as any).agentName ?? "—")}
+                />
+                <Info
+                  label="Center"
+                  value={String((drawerRow as any).centerName ?? "—")}
+                />
                 <Info
                   label="Place"
                   value={String(
@@ -1143,8 +1302,14 @@ export default function SubmissionQueuePage() {
                         : (drawerRow as any).placeCode ?? "—")
                   )}
                 />
-                <Info label="Registered Voters" value={fmtNum((drawerRow as any).registeredVoters)} />
-                <Info label="Ballots Issued" value={fmtNum((drawerRow as any).ballotsIssued)} />
+                <Info
+                  label="Registered Voters"
+                  value={fmtNum((drawerRow as any).registeredVoters)}
+                />
+                <Info
+                  label="Ballots Issued"
+                  value={fmtNum((drawerRow as any).ballotsIssued)}
+                />
 
                 {/* Evidence from tally sheets */}
                 <Info
@@ -1153,7 +1318,11 @@ export default function SubmissionQueuePage() {
                     evidenceLoading
                       ? "Checking…"
                       : hasEvidence(String((drawerRow as any)?.submissionId ?? ""))
-                      ? `Attached (${evidenceMap.get(String((drawerRow as any)?.submissionId ?? ""))?.count ?? 0})`
+                      ? `Attached (${
+                          evidenceMap.get(
+                            String((drawerRow as any)?.submissionId ?? "")
+                          )?.count ?? 0
+                        })`
                       : "Missing evidence"
                   }
                 />
@@ -1162,23 +1331,31 @@ export default function SubmissionQueuePage() {
                   label="Submitted At"
                   value={
                     (drawerRow as any).submissionTime
-                      ? new Date((drawerRow as any).submissionTime).toLocaleString()
+                      ? new Date(
+                          (drawerRow as any).submissionTime
+                        ).toLocaleString()
                       : "—"
                   }
                 />
               </div>
 
               <div className="rounded-xl border p-3">
-                <div className="text-sm font-extrabold mb-2">Candidate Votes</div>
+                <div className="text-sm font-extrabold mb-2">
+                  Candidate Votes
+                </div>
 
                 {contestOptionsQ.isLoading ? (
-                  <div className="text-sm text-slate-600">Loading candidate names…</div>
+                  <div className="text-sm text-slate-600">
+                    Loading candidate names…
+                  </div>
                 ) : contestOptionsQ.isError ? (
                   <div className="text-sm font-bold text-red-700">
                     {friendlyError(contestOptionsQ.error)}
                   </div>
                 ) : !drawerVotes.length ? (
-                  <div className="text-sm text-slate-600">No candidate votes.</div>
+                  <div className="text-sm text-slate-600">
+                    No candidate votes.
+                  </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <div className="rounded-lg border max-h-[520px] sm:max-h-[560px] overflow-y-auto">
@@ -1196,7 +1373,9 @@ export default function SubmissionQueuePage() {
                         <tbody>
                           {drawerVotes.map((r) => (
                             <tr key={r.key} className="border-t">
-                              <td className="p-2 text-sm font-bold">{r.name}</td>
+                              <td className="p-2 text-sm font-bold">
+                                {r.name}
+                              </td>
                               <td className="p-2 text-sm font-extrabold text-right">
                                 {fmtNum(r.votes)}
                               </td>
@@ -1208,7 +1387,8 @@ export default function SubmissionQueuePage() {
 
                     {drawerVotes.length > 15 ? (
                       <div className="mt-2 text-[11px] font-bold text-slate-600">
-                        This contest has {drawerVotes.length} candidates. Scroll to view all.
+                        This contest has {drawerVotes.length} candidates. Scroll
+                        to view all.
                       </div>
                     ) : null}
                   </div>
@@ -1276,46 +1456,90 @@ type Tone = "gray" | "blue" | "orange" | "purple" | "green" | "red" | "amber";
 function toneStyles(t: Tone) {
   switch (t) {
     case "blue":
-      return { icon: "text-blue-600", bg: "bg-blue-50", border: "border-blue-200" };
+      return {
+        icon: "text-blue-600",
+        bg: "bg-blue-50",
+        border: "border-blue-200",
+      };
     case "orange":
-      return { icon: "text-orange-600", bg: "bg-orange-50", border: "border-orange-200" };
+      return {
+        icon: "text-orange-600",
+        bg: "bg-orange-50",
+        border: "border-orange-200",
+      };
     case "purple":
-      return { icon: "text-purple-600", bg: "bg-purple-50", border: "border-purple-200" };
+      return {
+        icon: "text-purple-600",
+        bg: "bg-purple-50",
+        border: "border-purple-200",
+      };
     case "green":
-      return { icon: "text-green-600", bg: "bg-green-50", border: "border-green-200" };
+      return {
+        icon: "text-green-600",
+        bg: "bg-green-50",
+        border: "border-green-200",
+      };
     case "red":
-      return { icon: "text-red-600", bg: "bg-red-50", border: "border-red-200" };
+      return {
+        icon: "text-red-600",
+        bg: "bg-red-50",
+        border: "border-red-200",
+      };
     case "amber":
-      return { icon: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200" };
+      return {
+        icon: "text-amber-700",
+        bg: "bg-amber-50",
+        border: "border-amber-200",
+      };
     default:
-      return { icon: "text-slate-600", bg: "bg-slate-50", border: "border-slate-200" };
+      return {
+        icon: "text-slate-600",
+        bg: "bg-slate-50",
+        border: "border-slate-200",
+      };
   }
 }
 
-function StatCard(props: { label: string; value: number; icon?: React.ReactNode; tone: Tone }) {
+function StatCard(props: {
+  label: string;
+  value: number;
+  icon?: React.ReactNode;
+  tone: Tone;
+}) {
   const ts = toneStyles(props.tone);
   return (
     <div className="rounded-xl border bg-white px-2 py-1.5 flex items-center gap-1.5">
-      <div className={`h-8 w-8 rounded-lg border ${ts.border} ${ts.bg} grid place-items-center`}>
+      <div
+        className={`h-8 w-8 rounded-lg border ${ts.border} ${ts.bg} grid place-items-center`}
+      >
         <span className={ts.icon}>{props.icon}</span>
       </div>
 
       <div className="min-w-0 leading-tight">
-        <div className="text-[10px] font-extrabold text-slate-600 truncate">{props.label}</div>
+        <div className="text-[10px] font-extrabold text-slate-600 truncate">
+          {props.label}
+        </div>
         <div className="text-base font-extrabold leading-4">{props.value}</div>
       </div>
     </div>
   );
 }
 
-function StatusPill(props: { active: boolean; label: string; tone: Tone; onClick: () => void }) {
+function StatusPill(props: {
+  active: boolean;
+  label: string;
+  tone: Tone;
+  onClick: () => void;
+}) {
   const ts = toneStyles(props.tone);
   return (
     <button
       type="button"
       onClick={props.onClick}
       className={`relative h-9 px-3 rounded-xl border text-sm font-extrabold transition ${
-        props.active ? `bg-white border-slate-300 shadow-sm` : `bg-white border-slate-200 hover:bg-slate-50`
+        props.active
+          ? `bg-white border-slate-300 shadow-sm`
+          : `bg-white border-slate-200 hover:bg-slate-50`
       }`}
       title={props.label}
     >
@@ -1323,7 +1547,9 @@ function StatusPill(props: { active: boolean; label: string; tone: Tone; onClick
         <span className={`h-2.5 w-2.5 rounded-full ${ts.icon}`} />
         <span className="text-slate-800">{props.label}</span>
       </span>
-      {props.active ? <span className="absolute left-3 right-3 -bottom-1 h-1 rounded-full bg-blue-600" /> : null}
+      {props.active ? (
+        <span className="absolute left-3 right-3 -bottom-1 h-1 rounded-full bg-blue-600" />
+      ) : null}
     </button>
   );
 }
@@ -1332,13 +1558,20 @@ function Th(props: React.ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
       {...props}
-      className={`p-2 text-[10px] sm:text-[11px] font-extrabold ${props.className ?? ""}`}
+      className={`p-2 text-[10px] sm:text-[11px] font-extrabold ${
+        props.className ?? ""
+      }`}
     />
   );
 }
 
 function Td(props: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td {...props} className={`p-2 align-top text-slate-800 ${props.className ?? ""}`} />;
+  return (
+    <td
+      {...props}
+      className={`p-2 align-top text-slate-800 ${props.className ?? ""}`}
+    />
+  );
 }
 
 function NoteCard(props: { title: string; lines: string[] }) {
@@ -1357,13 +1590,20 @@ function NoteCard(props: { title: string; lines: string[] }) {
 function Info(props: { label: string; value: string }) {
   return (
     <div className="rounded-xl border bg-slate-50 px-3 py-2">
-      <div className="text-[11px] font-extrabold text-slate-600">{props.label}</div>
+      <div className="text-[11px] font-extrabold text-slate-600">
+        {props.label}
+      </div>
       <div className="text-sm font-extrabold text-slate-900">{props.value}</div>
     </div>
   );
 }
 
-function Drawer(props: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode }) {
+function Drawer(props: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-slate-900/40" onClick={props.onClose} />
@@ -1388,10 +1628,16 @@ function Drawer(props: { title: string; subtitle?: string; onClose: () => void; 
             <div className="min-w-0">
               <div className="text-base font-extrabold">{props.title}</div>
               {props.subtitle ? (
-                <div className="text-xs text-slate-500 mt-0.5 truncate">{props.subtitle}</div>
+                <div className="text-xs text-slate-500 mt-0.5 truncate">
+                  {props.subtitle}
+                </div>
               ) : null}
             </div>
-            <button type="button" onClick={props.onClose} className="px-3 py-1.5 rounded-md border bg-white text-sm">
+            <button
+              type="button"
+              onClick={props.onClose}
+              className="px-3 py-1.5 rounded-md border bg-white text-sm"
+            >
               Close
             </button>
           </div>
@@ -1406,7 +1652,9 @@ function Drawer(props: { title: string; subtitle?: string; onClose: () => void; 
 function Field(props: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-[11px] font-extrabold text-slate-600 mb-1">{props.label}</div>
+      <div className="text-[11px] font-extrabold text-slate-600 mb-1">
+        {props.label}
+      </div>
       {props.children}
     </div>
   );
@@ -1428,19 +1676,27 @@ function ModalShell(props: {
       onClick={() => props.onClose()}
     >
       <div
-        className={`w-full ${props.maxWidth ?? "max-w-4xl"} bg-white rounded-xl border border-slate-200 p-3 mx-auto shadow-xl`}
+        className={`w-full ${
+          props.maxWidth ?? "max-w-4xl"
+        } bg-white rounded-xl border border-slate-200 p-3 mx-auto shadow-xl`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-start gap-3">
           <div className="min-w-0">
             <div className="font-extrabold text-base">{props.title}</div>
-            {props.subtitle ? <div className="text-xs text-slate-500 mt-0.5">{props.subtitle}</div> : null}
+            {props.subtitle ? (
+              <div className="text-xs text-slate-500 mt-0.5">
+                {props.subtitle}
+              </div>
+            ) : null}
           </div>
           <button
             type="button"
             onClick={props.onClose}
             disabled={Boolean(props.busy)}
-            className={`px-3 py-1.5 rounded-md border border-slate-200 bg-white text-sm ${props.busy ? "opacity-60" : ""}`}
+            className={`px-3 py-1.5 rounded-md border border-slate-200 bg-white text-sm ${
+              props.busy ? "opacity-60" : ""
+            }`}
           >
             Close
           </button>
@@ -1451,4 +1707,96 @@ function ModalShell(props: {
     </div>
   );
 }
+
+/** ✅ NEW: FlagReasonModal (reason required, max 500) */
+function FlagReasonModal(props: {
+  title: string;
+  subtitle?: string;
+  reason: string;
+  busy?: boolean;
+  error?: string;
+  onChangeReason: (v: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const clean = String(props.reason ?? "");
+  const trimmed = clean.trim();
+  const tooLong = trimmed.length > 500;
+  const canSubmit = Boolean(trimmed) && !tooLong && !props.busy;
+
+  return (
+    <ModalShell
+      title={props.title}
+      subtitle={props.subtitle}
+      onClose={props.onClose}
+      busy={props.busy}
+      maxWidth="max-w-xl"
+    >
+      <div className="grid grid-cols-1 gap-2">
+        <Field label="Reason (required)">
+          <textarea
+            value={props.reason}
+            onChange={(e) => props.onChangeReason(e.target.value)}
+            className="px-2.5 py-1.5 rounded-md border w-full text-sm"
+            rows={4}
+            placeholder="Explain why you are flagging this submission…"
+            disabled={Boolean(props.busy)}
+          />
+          <div
+            className={`mt-1 text-[11px] font-bold ${
+              tooLong ? "text-red-700" : "text-slate-500"
+            }`}
+          >
+            {trimmed.length}/500
+            {tooLong ? " (too long)" : ""}
+          </div>
+        </Field>
+
+        {props.error ? (
+          <div className="mt-1 p-2 rounded-md border border-red-200 bg-red-50 text-red-700 text-sm font-bold">
+            {props.error}
+          </div>
+        ) : null}
+
+        {!trimmed ? (
+          <div className="text-[11px] font-bold text-amber-700">
+            A reason is required to flag a submission.
+          </div>
+        ) : null}
+
+        <div className="mt-2 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={props.onClose}
+            disabled={Boolean(props.busy)}
+            className={`px-3 py-1.5 rounded-md border bg-white text-sm ${
+              props.busy ? "opacity-60" : ""
+            }`}
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={props.onSubmit}
+            disabled={!canSubmit}
+            className={`px-3 py-1.5 rounded-md border text-sm font-extrabold ${
+              canSubmit ? "bg-white" : "bg-slate-50 opacity-60"
+            }`}
+            title={
+              !trimmed
+                ? "Reason is required"
+                : tooLong
+                ? "Reason must be <= 500 chars"
+                : "Flag"
+            }
+          >
+            Flag Submission
+          </button>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
 

@@ -12,8 +12,21 @@ import java.util.UUID;
 
 @Repository
 public interface NecResultHistoryRepository extends JpaRepository<NecResultHistory, UUID> {
-    List<NecResultHistory> findByResultIdOrderByChangedAtDesc(UUID resultId);
-    List<NecResultHistory> findByElectionIdOrderByChangedAtDesc(UUID electionId);
+
+
+    List<NecResultHistory> findByResultIdOrderByDateChangedDesc(UUID resultId);
+
+    List<NecResultHistory> findByElectionIdOrderByDateChangedDesc(UUID electionId);
+
+    // ✅ NEW: Contest scoped history (all centers in contest)
+    List<NecResultHistory> findByElectionIdAndContestIdOrderByDateChangedDesc(UUID electionId, UUID contestId);
+
+    // ✅ NEW: Full scope history (single center+contest)
+    List<NecResultHistory> findByElectionIdAndContestIdAndCenterIdOrderByDateChangedDesc(
+            UUID electionId,
+            UUID contestId,
+            UUID centerId
+    );
 
 
     /**
@@ -21,13 +34,26 @@ public interface NecResultHistoryRepository extends JpaRepository<NecResultHisto
      * Optional "last updated" card in Overview.
      *
      * @param electionId election scope
-     * @return max(changedAt) or null
+     * @return max(dateChanged) or null
      */
     @Query("""
-        select max(h.changedAt)
+        select max(h.dateChanged)
         from NecResultHistory h
         where h.electionId = :electionId
     """)
     Instant findLastChangeAt(@Param("electionId") UUID electionId);
+
+    /**
+     * ✅ NEW: Contest-aware "last updated"
+     */
+    @Query("""
+        select max(h.dateChanged)
+        from NecResultHistory h
+        where h.electionId = :electionId
+          and h.contestId  = :contestId
+    """)
+    Instant findLastChangeAt(@Param("electionId") UUID electionId,
+                             @Param("contestId") UUID contestId);
+
 
 }

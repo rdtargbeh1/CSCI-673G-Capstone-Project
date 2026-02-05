@@ -1,22 +1,6 @@
 
 
-// ✅ FILE: src/pages/elections/workspace/tabs/submissions/SubmissionsTab.tsx
-//
-// ✅ FIXES
-// 1) Adds "ALL" queue so users can see all submissions before filtering.
-// 2) Fixes frontend tally math to match backend:
-//
-//    ballotsInBox = validVotes + invalidBallots + unmarkedBallots + rejectedBallots
-//    invalid(In Box) = invalidBallots + unmarkedBallots + rejectedBallots
-//    spoiledBallots is OUTSIDE the box (do NOT add to invalid)
-//    ballotsIssued = ballotsInBox + unusedBallots + spoiledBallots (when ballotsIssued provided)
-//
-// ✅ UI
-// - Adds Spoiled column
-// - Cast column uses ballotsInBox
-// - Missing Evidence remains a UI-only filter
-//
-// NOTE: No other business logic changed.
+
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -28,6 +12,7 @@ import {
   Pencil,
   X,
   FlagOff,
+  FileEdit,
 } from "lucide-react";
 
 import { useAuthStore } from "../../../../../shared/store/authStore";
@@ -69,6 +54,7 @@ import { fetchMe } from "../../../../../shared/services/userService";
 import type { UserDto } from "../../../../../auth/userTypes";
 
 import SubmissionFormModal from "./SubmissionFormModal";
+import AmendSubmissionModal from "./AmendSubmissionModal";
 
 import {
   fetchOrganizations,
@@ -153,8 +139,25 @@ function hasEvidence(s: any) {
   return cnt > 0 || Boolean(url);
 }
 
-// ✅ queues: add ALL
-type Queue = "ALL" | VoteStatus | "MISSING_EVIDENCE";
+/** robust deleted stamp detection (for display only) */
+function getDeletedStamp(s: any): any {
+  return (
+    (s as any)?.dateDeleted ??
+    (s as any)?.date_deleted ??
+    (s as any)?.deletedDate ??
+    (s as any)?.deleted_date ??
+    (s as any)?.deletedAt ??
+    (s as any)?.deleted_at ??
+    null
+  );
+}
+
+function getStatusUpper(s: any): string {
+  return String((s as any)?.status ?? "").toUpperCase();
+}
+
+// ✅ queues: add ALL + DELETED + MISSING_EVIDENCE
+type Queue = "ALL" | "DELETED" | VoteStatus | "MISSING_EVIDENCE";
 
 /** SYSTEM tenant dropdown type */
 type OrgDto = { orgId: string; orgName: string };
@@ -178,13 +181,13 @@ export default function SubmissionsTab() {
     "AGENT",
   ].includes((role || "DATA_ENTRY").toUpperCase());
 
-  // ✅ Verify must be active for all tenant dashboards (tenant-level entity)
   const canVerify =
-    Boolean(currentOrgId) || dashboardMode === "SYSTEM" || dashboardMode === "NEC";
+    Boolean(currentOrgId) ||
+    dashboardMode === "SYSTEM" ||
+    dashboardMode === "NEC";
 
   const canUnflag = canVerify;
 
-  // ✅ Default to ALL so tenant sees everything first
   const [queue, setQueue] = useState<Queue>("ALL");
 
   /** ---------------- Elections ---------------- */
@@ -199,7 +202,9 @@ export default function SubmissionsTab() {
 
   useEffect(() => {
     if (!electionId && elections.length) {
-      const sorted = [...elections].sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
+      const sorted = [...elections].sort(
+        (a, b) => (b.year ?? 0) - (a.year ?? 0)
+      );
       setElectionId(sorted[0].electionId);
     }
   }, [elections, electionId]);
@@ -246,7 +251,7 @@ export default function SubmissionsTab() {
       ? systemSelectedOrgId || undefined
       : currentOrgId || undefined;
 
-  /** ---------------- Actor (for unflag) ---------------- */
+  /** ---------------- Actor ---------------- */
   const actorMeQ = useQuery<UserDto>({
     enabled: Boolean(effectiveOrgId),
     queryKey: ["users", "me", "actor", effectiveOrgId],
@@ -256,13 +261,15 @@ export default function SubmissionsTab() {
   });
   const actorUser = actorMeQ.data ?? user;
   const actorUserId = (actorUser as any)?.userId ?? (user as any)?.userId ?? "";
+  const actorName = fullName(actorUser);
 
   /** ---------------- Filters ---------------- */
   const [filterContest, setFilterContest] = useState<string>("");
 
   const countiesQ = useQuery<CountyDto[]>({
     queryKey: ["counties", "all"],
-    queryFn: async () => (await fetchCounties({ page: 0, size: 500 })).items as CountyDto[],
+    queryFn: async () =>
+      (await fetchCounties({ page: 0, size: 500 })).items as CountyDto[],
     staleTime: 60_000,
     retry: 1,
   });
@@ -313,10 +320,28 @@ export default function SubmissionsTab() {
 
   useEffect(() => {
     setPage(0);
-  }, [queue, electionId, filterContest, filterCounty, filterDistrict, filterCenter, effectiveOrgId]);
+  }, [
+    queue,
+    electionId,
+    filterContest,
+    filterCounty,
+    filterDistrict,
+    filterCenter,
+    effectiveOrgId,
+  ]);
 
-  // SYSTEM must pick tenant
   const submissionsEnabled = Boolean(electionId) && Boolean(effectiveOrgId);
+
+  // ✅ REAL FIX:
+  // - Deleted tab MUST call backend with includeDeleted=true AND status=DELETED
+  // - All other tabs includeDeleted=false
+  const includeDeleted = queue === "DELETED";
+  const statusParam =
+    queue === "DELETED"
+      ? ("DELETED" as any)
+      : queue === "ALL" || queue === "MISSING_EVIDENCE"
+      ? undefined
+      : (queue as any);
 
   const submissionsQ = useQuery({
     enabled: submissionsEnabled,
@@ -331,6 +356,8 @@ export default function SubmissionsTab() {
       filterCounty,
       filterDistrict,
       filterCenter,
+      includeDeleted,
+      statusParam,
     ],
     queryFn: () =>
       searchSubmissions({
@@ -338,29 +365,35 @@ export default function SubmissionsTab() {
         electionId,
         page,
         size,
-        // ✅ ALL = no status filter
-        // ✅ MISSING_EVIDENCE = no status filter (UI-only)
-        status:
-          queue === "ALL" || queue === "MISSING_EVIDENCE"
-            ? undefined
-            : (queue as any),
-
+        status: statusParam,
+        includeDeleted, // ✅ important
         contestId: filterContest || undefined,
         countyId: filterCounty || undefined,
         districtId: filterDistrict || undefined,
         centerId: filterCenter || undefined,
         placeId: undefined,
-      }),
+      } as any),
     staleTime: 10_000,
     retry: 1,
   });
 
   const rawItems: VoteSubmissionDto[] = (submissionsQ.data?.items ?? []) as any;
 
-  // ✅ UI-only filter for Missing Evidence
+  // ✅ Minimal UI filtering ONLY for Missing Evidence.
+  // Deleted/Active filtering is done by backend now.
   const items: VoteSubmissionDto[] = useMemo(() => {
-    if (queue !== "MISSING_EVIDENCE") return rawItems as any;
-    return (rawItems as any[]).filter((s) => !hasEvidence(s)) as any;
+    let list = (rawItems as any[]) ?? [];
+
+    if (queue === "MISSING_EVIDENCE") {
+      list = list.filter((s) => !hasEvidence(s));
+    }
+
+    // Safety: if backend accidentally returns mixed rows, enforce deleted tab:
+    if (queue === "DELETED") {
+      list = list.filter((s) => getStatusUpper(s) === "DELETED" || getDeletedStamp(s) != null);
+    }
+
+    return list as any;
   }, [rawItems, queue]);
 
   const turnoutAvg = useMemo(
@@ -389,11 +422,23 @@ export default function SubmissionsTab() {
   const [openEdit, setOpenEdit] = useState(false);
   const [editId, setEditId] = useState<string>("");
 
+  /** ---------------- Amend modal ---------------- */
+  const [openAmend, setOpenAmend] = useState(false);
+  const [amendId, setAmendId] = useState<string>("");
+
   /** ---------------- Verify modal ---------------- */
   const [openVerify, setOpenVerify] = useState(false);
   const [verifyId, setVerifyId] = useState<string>("");
-  const [verifyDecision, setVerifyDecision] = useState<"ACCEPT" | "REJECT">("ACCEPT");
+  const [verifyDecision, setVerifyDecision] = useState<"ACCEPT" | "REJECT">(
+    "ACCEPT"
+  );
   const [verifyComment, setVerifyComment] = useState<string>("");
+
+  /** ---------------- ✅ Delete modal ---------------- */
+  const [openDelete, setOpenDelete] = useState(false);
+  const [deleteId, setDeleteId] = useState<string>("");
+  const [deleteReason, setDeleteReason] = useState<string>("");
+  const [deleteLabel, setDeleteLabel] = useState<string>("");
 
   const verifierMeQ = useQuery<UserDto>({
     enabled: openVerify && Boolean(effectiveOrgId),
@@ -419,15 +464,18 @@ export default function SubmissionsTab() {
     },
   });
 
-  /** ---------------- Delete ---------------- */
   const deleteM = useMutation({
-    mutationFn: async (id: string) => deleteSubmission(id),
+    mutationFn: async (p: { id: string; reason: string }) => {
+      return deleteSubmission(p.id, {
+        reason: p.reason,
+        deletedByUserId: actorUserId,
+      } as any);
+    },
     onSuccess: async () => {
       await refetchList();
     },
   });
 
-  /** ---------------- Unflag ---------------- */
   const unflagM = useMutation({
     mutationFn: async (p: { id: string }) => {
       return flagSubmission(p.id, {
@@ -442,12 +490,11 @@ export default function SubmissionsTab() {
   });
 
   const canEditRow = (s: VoteSubmissionDto) => {
-    const st = String((s as any).status ?? "").toUpperCase();
+    const st = getStatusUpper(s);
     return canCreate && (st === "PENDING" || st === "REJECTED" || st === "DRAFT");
   };
 
-  const isFlaggedRow = (s: VoteSubmissionDto) =>
-    String((s as any).status ?? "").toUpperCase() === "FLAGGED";
+  const isFlaggedRow = (s: VoteSubmissionDto) => getStatusUpper(s) === "FLAGGED";
 
   const ActiveMark = ({ on }: { on: boolean }) =>
     on ? (
@@ -464,6 +511,8 @@ export default function SubmissionsTab() {
       />
     ) : null;
 
+  const isDeletedQueue = queue === "DELETED";
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <Panel
@@ -472,9 +521,8 @@ export default function SubmissionsTab() {
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {/* Queue */}
             <div className="flex gap-2 items-center flex-wrap">
-              {/* ✅ NEW: All */}
               <button type="button" onClick={() => setQueue("ALL")} style={btn(queue === "ALL")}>
-                All
+                All (Active)
                 <ActiveMark on={queue === "ALL"} />
               </button>
 
@@ -503,18 +551,19 @@ export default function SubmissionsTab() {
                 <ActiveMark on={queue === "REJECTED"} />
               </button>
 
-              <button
-                type="button"
-                onClick={() => setQueue("MISSING_EVIDENCE")}
-                style={btn(queue === "MISSING_EVIDENCE")}
-              >
+              <button type="button" onClick={() => setQueue("MISSING_EVIDENCE")} style={btn(queue === "MISSING_EVIDENCE")}>
                 Missing Evidence
                 <ActiveMark on={queue === "MISSING_EVIDENCE"} />
               </button>
 
+              <button type="button" onClick={() => setQueue("DELETED")} style={btn(queue === "DELETED")}>
+                Deleted
+                <ActiveMark on={queue === "DELETED"} />
+              </button>
+
               <Badge text={canVerify ? "Verifier Role" : "Submitter Role"} />
 
-              {canCreate && (
+              {canCreate && !isDeletedQueue && (
                 <button
                   type="button"
                   onClick={() => setOpenNew(true)}
@@ -570,7 +619,6 @@ export default function SubmissionsTab() {
                 }}
                 className="px-2.5 py-1.5 rounded-md border bg-white text-sm"
                 disabled={!electionId}
-                title="Filter by contest"
               >
                 <option value="">All contests</option>
                 {contests.map((ct: ContestDto) => (
@@ -657,6 +705,12 @@ export default function SubmissionsTab() {
                 Select a tenant (organization) to view or submit vote submissions.
               </div>
             ) : null}
+
+            {isDeletedQueue ? (
+              <div className="text-[11px] font-bold text-slate-600">
+                Deleted tab calls backend with status=DELETED and includeDeleted=true.
+              </div>
+            ) : null}
           </div>
         }
       >
@@ -715,8 +769,8 @@ export default function SubmissionsTab() {
                 items.map((s) => {
                   const valid = computeValidVotes(s as any);
                   const invalidInBox = computeInvalidInBox(s as any);
-                  const castInBox = computeBallotsInBox(s as any); // ✅ ballotsInBox
-                  const spoiled = Number((s as any).spoiledBallots) || 0; // ✅ separate
+                  const castInBox = computeBallotsInBox(s as any);
+                  const spoiled = Number((s as any).spoiledBallots) || 0;
                   const unused = Number((s as any).unusedBallots) || 0;
 
                   const place =
@@ -726,6 +780,7 @@ export default function SubmissionsTab() {
                       : (s as any).placeCode ?? "—");
 
                   const flagged = isFlaggedRow(s as any);
+                  const deletedStamp = getDeletedStamp(s);
 
                   return (
                     <tr key={(s as any).submissionId} className="border-t">
@@ -742,7 +797,9 @@ export default function SubmissionsTab() {
                       <Td className="text-right font-semibold">
                         {fmtNum((s as any).ballotsIssued)}
                       </Td>
-                      <Td className="truncate">{fmtAllocSource((s as any).allocationSource)}</Td>
+                      <Td className="truncate">
+                        {fmtAllocSource((s as any).allocationSource)}
+                      </Td>
 
                       <Td className="text-right font-semibold">{valid}</Td>
                       <Td className="text-right font-semibold">{invalidInBox}</Td>
@@ -753,7 +810,16 @@ export default function SubmissionsTab() {
                       <Td className="truncate">{(s as any).agentName ?? "—"}</Td>
                       <Td className="truncate">{(s as any).verifiedByName ?? "—"}</Td>
                       <Td className="truncate">{(s as any).contestName ?? "—"}</Td>
-                      <Td>{(s as any).status ?? "—"}</Td>
+
+                      <Td>
+                        {(s as any).status ?? "—"}
+                        {isDeletedQueue && deletedStamp ? (
+                          <div className="text-[11px] font-bold text-slate-500 mt-0.5">
+                            deleted: {String(deletedStamp)}
+                          </div>
+                        ) : null}
+                      </Td>
+
                       <Td>
                         {(s as any).submissionTime
                           ? new Date((s as any).submissionTime).toLocaleString()
@@ -761,92 +827,99 @@ export default function SubmissionsTab() {
                       </Td>
 
                       <Td>
-                        <div className="flex gap-1.5 items-center">
-                          <button
-                            type="button"
-                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border bg-white ${
-                              !canEditRow(s as any) ? "opacity-50" : ""
-                            }`}
-                            disabled={!canEditRow(s as any)}
-                            onClick={() => {
-                              setEditId((s as any).submissionId);
-                              setOpenEdit(true);
-                            }}
-                            title={
-                              flagged
-                                ? "Flagged submissions are not editable. Unflag first."
-                                : "Edit"
-                            }
-                          >
-                            <Pencil size={13} />
-                          </button>
-
-                          {flagged ? (
-                            <button
-                              type="button"
-                              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border bg-white text-slate-800 ${
-                                !canUnflag || unflagM.isPending ? "opacity-50" : ""
-                              }`}
-                              disabled={!canUnflag || unflagM.isPending}
+                        {isDeletedQueue ? (
+                          <div className="text-[11px] text-slate-400 font-bold">—</div>
+                        ) : (
+                          <div className="flex gap-1.5 items-center flex-wrap">
+                            <ActionIconButton
+                              title={
+                                flagged
+                                  ? "Flagged submissions are not editable. Unflag first."
+                                  : "Edit"
+                              }
+                              disabled={!canEditRow(s as any)}
+                              variant="edit"
                               onClick={() => {
-                                if (!canUnflag) return;
-                                const id = (s as any).submissionId;
-                                if (!id) return;
-                                if (
-                                  !confirm(
-                                    "Unflag this submission? It will return to normal workflow."
-                                  )
-                                )
-                                  return;
-                                unflagM.mutate({ id });
+                                setEditId((s as any).submissionId);
+                                setOpenEdit(true);
                               }}
-                              title="Unflag"
                             >
-                              <FlagOff size={13} />
-                              Unflag
-                            </button>
-                          ) : null}
+                              <Pencil size={15} />
+                            </ActionIconButton>
 
-                          <button
-                            type="button"
-                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border bg-white ${
-                              !canVerify || verifyM.isPending ? "opacity-50" : ""
-                            }`}
-                            disabled={!canVerify || verifyM.isPending}
-                            onClick={() => {
-                              setVerifyId((s as any).submissionId);
-                              setVerifyDecision("ACCEPT");
-                              setVerifyComment("");
-                              setOpenVerify(true);
-                            }}
-                            title="Verify"
-                          >
-                            <CheckCircle2 size={13} />
-                            Verify
-                          </button>
+                            <ActionIconButton
+                              title="Amend (NEC)"
+                              disabled={!canVerify}
+                              variant="amend"
+                              onClick={() => {
+                                const id = String((s as any).submissionId ?? "");
+                                if (!id) return;
+                                setAmendId(id);
+                                setOpenAmend(true);
+                              }}
+                            >
+                              <FileEdit size={15} />
+                            </ActionIconButton>
 
-                          <button
-                            type="button"
-                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border bg-white text-red-700 ${
-                              deleteM.isPending ? "opacity-50" : ""
-                            }`}
-                            disabled={deleteM.isPending}
-                            onClick={() => {
-                              if (!confirm("Delete this submission? This action cannot be undone."))
-                                return;
-                              deleteM.mutate((s as any).submissionId);
-                            }}
-                            title="Delete"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
+                            {flagged ? (
+                              <ActionIconButton
+                                title="Unflag"
+                                disabled={!canUnflag || unflagM.isPending}
+                                variant="neutral"
+                                onClick={() => {
+                                  if (!canUnflag) return;
+                                  const id = (s as any).submissionId;
+                                  if (!id) return;
+                                  if (!confirm("Unflag this submission?")) return;
+                                  unflagM.mutate({ id });
+                                }}
+                              >
+                                <FlagOff size={15} />
+                              </ActionIconButton>
+                            ) : null}
 
-                        {unflagM.isError && flagged ? (
-                          <div className="mt-1 text-[11px] font-bold text-red-700">
-                            {friendlyError(unflagM.error)}
+                            <ActionIconButton
+                              title="Verify"
+                              disabled={!canVerify || verifyM.isPending}
+                              variant="verify"
+                              onClick={() => {
+                                setVerifyId((s as any).submissionId);
+                                setVerifyDecision("ACCEPT");
+                                setVerifyComment("");
+                                setOpenVerify(true);
+                              }}
+                            >
+                              <CheckCircle2 size={15} />
+                            </ActionIconButton>
+
+                            <ActionIconButton
+                              title="Delete"
+                              disabled={deleteM.isPending}
+                              variant="danger"
+                              onClick={() => {
+                                const id = String((s as any).submissionId ?? "");
+                                if (!id) return;
+
+                                const centerName = String((s as any).centerName ?? "").trim();
+                                const placeLabel = String(
+                                  (s as any).placeLabel ??
+                                    ((s as any).placeNumber != null
+                                      ? `Place ${(s as any).placeNumber}`
+                                      : (s as any).placeCode ?? "")
+                                ).trim();
+
+                                const lbl = [centerName, placeLabel].filter(Boolean).join(" • ");
+
+                                setDeleteId(id);
+                                setDeleteLabel(lbl || "Selected submission");
+                                setDeleteReason("");
+                                setOpenDelete(true);
+                              }}
+                            >
+                              <Trash2 size={15} />
+                            </ActionIconButton>
                           </div>
-                        ) : null}
+                        )}
                       </Td>
                     </tr>
                   );
@@ -989,14 +1062,58 @@ export default function SubmissionsTab() {
         </ModalShell>
       ) : null}
 
+      {/* ✅ Delete Reason Modal */}
+      {openDelete ? (
+        <DeleteReasonModal
+          title="Delete Submission"
+          subtitle={deleteLabel ? `Target: ${deleteLabel}` : undefined}
+          reason={deleteReason}
+          busy={deleteM.isPending}
+          error={deleteM.isError ? friendlyError(deleteM.error) : undefined}
+          onChangeReason={setDeleteReason}
+          onClose={() => {
+            if (deleteM.isPending) return;
+            setOpenDelete(false);
+          }}
+          onSubmit={() => {
+            const clean = String(deleteReason ?? "").trim();
+            if (!clean || clean.length > 500 || !deleteId) return;
+
+            deleteM.mutate(
+              { id: deleteId, reason: clean },
+              {
+                onSuccess: () => {
+                  setOpenDelete(false);
+                  setDeleteId("");
+                  setDeleteReason("");
+                  setDeleteLabel("");
+                },
+              }
+            );
+          }}
+        />
+      ) : null}
+
+      {/* ✅ Amend Modal */}
+      <AmendSubmissionModal
+        open={openAmend}
+        onClose={() => setOpenAmend(false)}
+        submissionId={amendId}
+        actorUserId={actorUserId}
+        actorName={actorName}
+        onSaved={async () => {
+          await refetchList();
+        }}
+      />
+
       {/* New Submission */}
       <SubmissionFormModal
         mode="create"
         open={openNew}
         onClose={() => setOpenNew(false)}
         effectiveOrgId={effectiveOrgId}
-        dashboardMode={dashboardMode}
-        user={user}
+        dashboardMode={dashboardMode as any}
+        user={user as any}
         agentId={agentId}
         canCreate={canCreate}
         electionId={electionId}
@@ -1014,8 +1131,8 @@ export default function SubmissionsTab() {
         open={openEdit}
         onClose={() => setOpenEdit(false)}
         effectiveOrgId={effectiveOrgId}
-        dashboardMode={dashboardMode}
-        user={user}
+        dashboardMode={dashboardMode as any}
+        user={user as any}
         agentId={agentId}
         canCreate={canCreate}
         electionId={electionId}
@@ -1055,6 +1172,7 @@ function Th(props: React.ThHTMLAttributes<HTMLTableCellElement>) {
 function Td(props: React.TdHTMLAttributes<HTMLTableCellElement>) {
   return <td {...props} className={`p-2 align-top ${props.className ?? ""}`} />;
 }
+
 function Field(props: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -1082,7 +1200,9 @@ function ModalShell(props: {
       onClick={() => props.onClose()}
     >
       <div
-        className={`w-full ${props.maxWidth ?? "max-w-4xl"} bg-white rounded-xl border border-slate-200 p-3 mx-auto shadow-xl`}
+        className={`w-full ${
+          props.maxWidth ?? "max-w-4xl"
+        } bg-white rounded-xl border border-slate-200 p-3 mx-auto shadow-xl`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-start gap-3">
@@ -1109,6 +1229,142 @@ function ModalShell(props: {
         <div className="mt-2">{props.children}</div>
       </div>
     </div>
+  );
+}
+
+/** ✅ DeleteReasonModal (reason required, max 500) */
+function DeleteReasonModal(props: {
+  title: string;
+  subtitle?: string;
+  reason: string;
+  busy?: boolean;
+  error?: string;
+  onChangeReason: (v: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const clean = String(props.reason ?? "");
+  const trimmed = clean.trim();
+  const tooLong = trimmed.length > 500;
+  const canSubmit = Boolean(trimmed) && !tooLong && !props.busy;
+
+  return (
+    <ModalShell
+      title={props.title}
+      subtitle={props.subtitle}
+      onClose={props.onClose}
+      busy={props.busy}
+      maxWidth="max-w-xl"
+    >
+      <div className="grid grid-cols-1 gap-2">
+        <Field label="Reason (required)">
+          <textarea
+            value={props.reason}
+            onChange={(e) => props.onChangeReason(e.target.value)}
+            className="px-2.5 py-1.5 rounded-md border w-full text-sm"
+            rows={4}
+            placeholder="Explain why you are deleting this submission…"
+            disabled={Boolean(props.busy)}
+          />
+          <div
+            className={`mt-1 text-[11px] font-bold ${
+              tooLong ? "text-red-700" : "text-slate-500"
+            }`}
+          >
+            {trimmed.length}/500
+            {tooLong ? " (too long)" : ""}
+          </div>
+        </Field>
+
+        {props.error ? (
+          <div className="mt-1 p-2 rounded-md border border-red-200 bg-red-50 text-red-700 text-sm font-bold">
+            {props.error}
+          </div>
+        ) : null}
+
+        {!trimmed ? (
+          <div className="text-[11px] font-bold text-amber-700">
+            A reason is required to delete a submission.
+          </div>
+        ) : null}
+
+        <div className="mt-2 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={props.onClose}
+            disabled={Boolean(props.busy)}
+            className={`px-3 py-1.5 rounded-md border bg-white text-sm ${
+              props.busy ? "opacity-60" : ""
+            }`}
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={props.onSubmit}
+            disabled={!canSubmit}
+            className={`px-3 py-1.5 rounded-md border text-sm font-extrabold ${
+              canSubmit ? "bg-white" : "bg-slate-50 opacity-60"
+            }`}
+          >
+            Delete Submission
+          </button>
+        </div>
+      </div>
+    </ModalShell>
+  );
+}
+
+/** ---------------- Action icon buttons ---------------- */
+type ActionVariant = "edit" | "amend" | "verify" | "danger" | "neutral";
+
+function actionStyles(variant: ActionVariant, disabled?: boolean) {
+  const base =
+    "inline-flex items-center justify-center rounded-md border h-8 w-8 transition bg-white";
+  const dis = disabled ? " opacity-50 cursor-not-allowed" : " hover:shadow-sm";
+
+  if (variant === "edit") {
+    return base + " border-blue-200" + (disabled ? "" : " hover:bg-blue-50") + dis;
+  }
+  if (variant === "amend") {
+    return base + " border-amber-200" + (disabled ? "" : " hover:bg-amber-50") + dis;
+  }
+  if (variant === "verify") {
+    return base + " border-emerald-200" + (disabled ? "" : " hover:bg-emerald-50") + dis;
+  }
+  if (variant === "danger") {
+    return base + " border-red-200" + (disabled ? "" : " hover:bg-red-50") + dis;
+  }
+  return base + " border-slate-200" + (disabled ? "" : " hover:bg-slate-50") + dis;
+}
+
+function iconColor(variant: ActionVariant) {
+  if (variant === "edit") return "text-blue-700";
+  if (variant === "amend") return "text-amber-700";
+  if (variant === "verify") return "text-emerald-700";
+  if (variant === "danger") return "text-red-700";
+  return "text-slate-700";
+}
+
+function ActionIconButton(props: {
+  title: string;
+  disabled?: boolean;
+  variant: ActionVariant;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={props.title}
+      aria-label={props.title}
+      disabled={props.disabled}
+      onClick={props.onClick}
+      className={actionStyles(props.variant, props.disabled)}
+    >
+      <span className={iconColor(props.variant)}>{props.children}</span>
+    </button>
   );
 }
 

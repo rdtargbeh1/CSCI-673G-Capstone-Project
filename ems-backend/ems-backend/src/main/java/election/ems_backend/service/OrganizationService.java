@@ -25,4 +25,6 @@ public interface OrganizationService {
     Optional<OrganizationDto> getBySubdomain(String subdomain);
 
     OrganizationDto updateBranding(UUID id, OrganizationBrandingUpdateRequest req);
+
+
 }

@@ -16,6 +16,7 @@ public class NecResultHistoryMapper {
         d.setHistoryId(h.getHistoryId());
         d.setResultId(h.getResultId());
         d.setElectionId(h.getElectionId());
+        d.setContestId(h.getContestId());
         d.setCenterId(h.getCenterId());
         d.setCandidateVotes(h.getCandidateVotes());
         d.setTotalRegisteredVoters(h.getTotalRegisteredVoters());
@@ -27,8 +28,9 @@ public class NecResultHistoryMapper {
         d.setSpoiledBallots(h.getSpoiledBallots());
         d.setChangeType(h.getChangeType());
         d.setChangedBy(h.getChangedBy());
-        d.setChangedAt(h.getChangedAt());
+        d.setDateChanged(h.getDateChanged());
         d.setNotes(h.getNotes());
+        d.setUserNote(h.getUserNote());
         return d;
     }
 }

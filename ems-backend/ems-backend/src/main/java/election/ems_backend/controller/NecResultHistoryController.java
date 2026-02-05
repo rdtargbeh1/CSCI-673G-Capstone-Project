@@ -31,11 +31,31 @@ public class NecResultHistoryController {
     }
 
     /**
-     * Get history entries for an election (all centers), newest first.
+     * Get history entries for an election (all contests + all centers), newest first.
      */
     @GetMapping("/election/{electionId}")
     public List<NecResultHistoryDto> getByElection(@PathVariable UUID electionId) {
         return historyService.listByElectionId(electionId);
+    }
+
+    /**
+     * ✅ NEW: Get history entries for a specific election + contest (all centers), newest first.
+     */
+    @GetMapping("/election/{electionId}/contest/{contestId}")
+    public List<NecResultHistoryDto> getByContest(@PathVariable UUID electionId,
+                                                  @PathVariable UUID contestId) {
+        return historyService.listByContest(electionId, contestId);
+    }
+
+    /**
+     * ✅ NEW: Get history entries for a specific election + contest + center, newest first.
+     * This is the most correct scope for your new model.
+     */
+    @GetMapping("/election/{electionId}/contest/{contestId}/center/{centerId}")
+    public List<NecResultHistoryDto> getByScope(@PathVariable UUID electionId,
+                                                @PathVariable UUID contestId,
+                                                @PathVariable UUID centerId) {
+        return historyService.listByScope(electionId, contestId, centerId);
     }
 
 }

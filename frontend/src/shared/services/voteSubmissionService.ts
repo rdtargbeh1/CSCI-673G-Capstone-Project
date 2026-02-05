@@ -1,14 +1,18 @@
 
 
+
 // ✅ FILE: src/shared/services/voteSubmissionService.ts
-// ✅ FIX (multi-tenant header + SYSTEM mode client):
-// - Uses sysClient automatically when dashboardMode === "SYSTEM"
-// - Forces X-Org-Id header from params.orgId / req.orgId when provided (tenant/NEC)
-// - Prevents SYSTEM requests from accidentally carrying tenant header
 //
-// ✅ Existing DTO changes kept:
-// - ballotsCast  -> ballotsInBox
-// - invalidTotal excludes spoiled (spoiled is OUTSIDE box)
+// ✅ Multi-tenant client selection:
+// - Uses sysClient automatically when dashboardMode === "SYSTEM"
+// - Uses apiClient otherwise
+// - Sends X-Org-Id header for TENANT/NEC mode
+// - SYSTEM mode must NOT send X-Org-Id header (orgId goes in query)
+//
+// ✅ Updates:
+// - VoteStatus includes DELETED
+// - searchSubmissions supports includeDeleted (default false)
+// - deleteSubmission uses DELETE /vote-submissions/{id} with body { reason, deletedByUserId }
 
 import { apiClient, sysClient } from "../lib/apiClient";
 import { useAuthStore } from "../store/authStore";
@@ -18,6 +22,7 @@ export type VoteStatus =
   | "VERIFIED"
   | "FLAGGED"
   | "REJECTED"
+  | "DELETED"
   | "DRAFT";
 
 export type VoteSubmissionDto = {
@@ -61,7 +66,6 @@ export type VoteSubmissionDto = {
 
   candidateVotes?: Record<string, number>;
 
-  // --- ballots ---
   ballotsInBox?: number;
 
   invalidBallots?: number;
@@ -70,13 +74,11 @@ export type VoteSubmissionDto = {
   rejectedBallots?: number;
   unusedBallots?: number;
 
-  // --- derived helpers ---
   validVotes?: number;
   invalidTotal?: number;
   turnoutPct?: number;
   invalidPct?: number;
 
-  // --- allocation read-only ---
   registeredVoters?: number;
   ballotsIssued?: number;
   allocationSource?: "PLACE" | "CENTER" | "NONE" | string;
@@ -89,9 +91,11 @@ export type VoteSubmissionDto = {
 
   tallySheetUrl?: string | null;
   tallySheetCount?: number | null;
+
+  // Optional if backend exposes it
+  dateDeleted?: string | null;
 };
 
-// CreateRequest
 export type VoteSubmissionCreateRequest = {
   orgId: string;
   electionId: string;
@@ -147,6 +151,25 @@ export type VoteSubmissionFlagRequest = {
   actorUserId: string;
   flagged: boolean;
   comments?: string;
+};
+
+export type VoteSubmissionAmendRequest = {
+  actorUserId: string;
+  reason: string;
+  candidateVotes?: Record<string, number>;
+  ballotsInBox?: number;
+
+  invalidBallots?: number;
+  unmarkedBallots?: number;
+  rejectedBallots?: number;
+  spoiledBallots?: number;
+  unusedBallots?: number;
+};
+
+/** ✅ DELETE request (backend requires BOTH) */
+export type VoteSubmissionDeleteRequest = {
+  reason: string;
+  deletedByUserId: string;
 };
 
 export type PageResult<T> = {
@@ -225,6 +248,9 @@ export async function searchSubmissions(params: {
   q?: string;
   category?: string;
   scopeType?: string;
+
+  /** ✅ NEW: show deleted records when true */
+  includeDeleted?: boolean;
 }): Promise<PageResult<VoteSubmissionDto>> {
   const client = pickClient();
   const { mode } = getCtx();
@@ -235,8 +261,7 @@ export async function searchSubmissions(params: {
       page: params.page ?? 0,
       size: params.size ?? 20,
 
-      // ✅ SYSTEM needs orgId as query param (no header)
-      // ✅ TENANT/NEC may also accept it; harmless if backend ignores
+      // ✅ SYSTEM needs orgId in query param (no header)
       orgId: mode === "SYSTEM" ? params.orgId : params.orgId,
 
       electionId: params.electionId,
@@ -256,13 +281,14 @@ export async function searchSubmissions(params: {
       q: params.q,
       category: params.category,
       scopeType: params.scopeType,
+
+      includeDeleted: Boolean(params.includeDeleted),
     },
   });
 
   return mapSpringPage<VoteSubmissionDto>(res.data);
 }
 
-/** JSON create (no files) */
 export async function createSubmissionJson(
   req: VoteSubmissionCreateRequest
 ): Promise<VoteSubmissionDto> {
@@ -273,7 +299,6 @@ export async function createSubmissionJson(
   return res.data as VoteSubmissionDto;
 }
 
-/** Multipart create */
 export async function createSubmissionMultipart(params: {
   payload: VoteSubmissionCreateRequest;
   files: File[];
@@ -305,7 +330,6 @@ export async function getSubmission(id: string): Promise<VoteSubmissionDto> {
   return res.data as VoteSubmissionDto;
 }
 
-/** JSON update (no files) */
 export async function updateSubmissionJson(
   id: string,
   req: VoteSubmissionUpdateRequest
@@ -320,7 +344,6 @@ export async function updateSubmissionJson(
   return res.data as VoteSubmissionDto;
 }
 
-/** Multipart update (optional files) */
 export async function updateSubmissionMultipart(params: {
   id: string;
   payload: VoteSubmissionUpdateRequest;
@@ -346,14 +369,26 @@ export async function updateSubmissionMultipart(params: {
   return res.data as VoteSubmissionDto;
 }
 
-export async function deleteSubmission(id: string): Promise<void> {
+/** ✅ DELETE WITH REASON (DELETE /vote-submissions/{id}) */
+export async function deleteSubmission(
+  id: string,
+  req: VoteSubmissionDeleteRequest
+): Promise<void> {
   const client = pickClient();
+
+  const reason = String(req?.reason ?? "").trim();
+  if (!reason) throw new Error("reason is required");
+  if (reason.length > 500) throw new Error("reason must be <= 500 chars");
+
+  const deletedByUserId = String(req?.deletedByUserId ?? "").trim();
+  if (!deletedByUserId) throw new Error("deletedByUserId is required");
+
   await client.delete(`/vote-submissions/${id}`, {
+    data: { reason, deletedByUserId },
     headers: tenantHeaders(null),
   });
 }
 
-/** verify */
 export async function verifySubmission(
   id: string,
   req: VoteSubmissionVerifyRequest
@@ -365,7 +400,6 @@ export async function verifySubmission(
   return res.data as VoteSubmissionDto;
 }
 
-/** flag/unflag */
 export async function flagSubmission(
   id: string,
   req: VoteSubmissionFlagRequest
@@ -390,6 +424,23 @@ export async function flagSubmission(
   return res.data as VoteSubmissionDto;
 }
 
+export async function amendSubmission(
+  id: string,
+  req: VoteSubmissionAmendRequest
+): Promise<VoteSubmissionDto> {
+  if (!req?.actorUserId) throw new Error("actorUserId is required");
+  if (!(req?.reason ?? "").trim()) throw new Error("reason is required");
+
+  const client = pickClient();
+  const payload = normalizeAmendPayload(req);
+
+  const res = await client.post(`/vote-submissions/${id}/amend`, payload, {
+    headers: tenantHeaders(null),
+  });
+
+  return res.data as VoteSubmissionDto;
+}
+
 /* ---------------- helpers ---------------- */
 
 function sumCandidateVotes(v?: Record<string, number>) {
@@ -397,16 +448,34 @@ function sumCandidateVotes(v?: Record<string, number>) {
   return Object.values(v).reduce((a, b) => a + (Number(b) || 0), 0);
 }
 
-/**
- * Ensures ballotsInBox is present whenever candidateVotes is present.
- * - If ballotsInBox already provided -> keep it
- * - Else compute ballotsInBox = sum(candidateVotes)
- *   + invalidBallots + rejectedBallots + unmarkedBallots
- *   (❗spoiled is OUTSIDE box, do NOT include)
- */
 function normalizeUpdatePayload(
   p: VoteSubmissionUpdateRequest
 ): VoteSubmissionUpdateRequest {
+  const hasVotes =
+    !!p.candidateVotes && Object.keys(p.candidateVotes).length > 0;
+
+  if (!hasVotes) return p;
+
+  if (p.ballotsInBox == null) {
+    const invalidTotalInBox =
+      (Number(p.invalidBallots) || 0) +
+      (Number(p.unmarkedBallots) || 0) +
+      (Number(p.rejectedBallots) || 0);
+
+    const computedInBox = sumCandidateVotes(p.candidateVotes) + invalidTotalInBox;
+
+    return {
+      ...p,
+      ballotsInBox: computedInBox,
+    };
+  }
+
+  return p;
+}
+
+function normalizeAmendPayload(
+  p: VoteSubmissionAmendRequest
+): VoteSubmissionAmendRequest {
   const hasVotes =
     !!p.candidateVotes && Object.keys(p.candidateVotes).length > 0;
 

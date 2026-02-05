@@ -4,6 +4,7 @@ import election.ems_backend.dto.*;
 import election.ems_backend.enums.ContestCategory;
 import election.ems_backend.enums.ContestScopeType;
 import election.ems_backend.enums.VoteStatus;
+import election.ems_backend.utility.VoteSubmissionDeleteRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -25,7 +26,7 @@ public interface VoteSubmissionService {
 
     VoteSubmissionDto verify(UUID id, VoteSubmissionVerifyRequest req);
 
-    void delete(UUID id);
+    void delete(UUID submissionId, VoteSubmissionDeleteRequest req);
 
     VoteSubmissionDto submitDraft(UUID id, HttpServletRequest request);
 
@@ -47,11 +48,14 @@ public interface VoteSubmissionService {
             UUID countyId,
             UUID districtId,
             UUID contestId,          // ✅ ADD THIS (contest dropdown filter)
+            boolean includeDeleted,
             Pageable pageable
     );
 
 
     long countVisibleSubmissions();
+
+    VoteSubmissionDto amend(UUID id, VoteSubmissionAmendRequest req);
 
 
 
