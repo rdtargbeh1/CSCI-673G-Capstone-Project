@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -30,6 +32,7 @@ import java.util.UUID;
 @Validated
 public class CountyStatsOfficialController {
 
+
     private static final Logger log = LoggerFactory.getLogger(CountyStatsOfficialController.class);
 
     private final CountyStatsOfficialService service;
@@ -41,7 +44,7 @@ public class CountyStatsOfficialController {
     @GetMapping
     public ResponseEntity<Page<CountyStatsOfficialDto>> list(
             @RequestParam(value = "electionId") UUID electionId,
-            @RequestParam(value = "contestId", required = false) UUID contestId, // ✅ NEW
+            @RequestParam(value = "contestId", required = false) UUID contestId,
             @RequestParam(value = "countyId", required = false) UUID countyId,
             @RequestParam(value = "page", required = false, defaultValue = "0") @Min(0) int page,
             @RequestParam(value = "size", required = false) Integer size,
@@ -52,17 +55,8 @@ public class CountyStatsOfficialController {
         int requestedSize = size == null ? DEFAULT_PAGE_SIZE : size;
         int pageSize = Math.min(Math.max(1, requestedSize), MAX_PAGE_SIZE);
 
-        Sort sortObj = Sort.unsorted();
-        if (sort != null && sort.length > 0) {
-            Sort.Order[] orders = new Sort.Order[sort.length];
-            for (int i = 0; i < sort.length; i++) {
-                String s = sort[i];
-                String[] parts = s.split(",");
-                if (parts.length == 1) orders[i] = Sort.Order.asc(parts[0].trim());
-                else orders[i] = new Sort.Order(Sort.Direction.fromString(parts[1].trim()), parts[0].trim());
-            }
-            sortObj = Sort.by(orders);
-        }
+        // ✅ FIX: robust sort parsing to prevent "sort=asc" / "sort=desc" being treated as a property
+        Sort sortObj = parseSort(sort);
 
         Pageable pageable = PageRequest.of(page, pageSize, sortObj);
 
@@ -75,8 +69,50 @@ public class CountyStatsOfficialController {
         ).increment();
 
         Page<CountyStatsOfficialDto> result =
-                service.listOfficialCounties(electionId, contestId, countyId, pageable); // ✅ NEW
+                service.listOfficialCounties(electionId, contestId, countyId, pageable);
 
         return ResponseEntity.ok(result);
     }
+
+    /**
+     * ✅ Accepts:
+     *   sort=countyName,asc&sort=ballotsCast,desc
+     *
+     * ✅ Also tolerates buggy clients that send:
+     *   sort=countyName&sort=asc
+     * by ignoring stray "asc"/"desc" tokens.
+     */
+    private Sort parseSort(String[] sort) {
+        if (sort == null || sort.length == 0) return Sort.unsorted();
+
+        List<Sort.Order> orders = new ArrayList<>();
+
+        for (String s : sort) {
+            if (s == null) continue;
+
+            String raw = s.trim();
+            if (raw.isEmpty()) continue;
+
+            // ✅ CRITICAL FIX: ignore stray direction tokens (buggy query like sort=asc)
+            if ("asc".equalsIgnoreCase(raw) || "desc".equalsIgnoreCase(raw)) {
+                continue;
+            }
+
+            String[] parts = raw.split(",", -1);
+            String prop = parts[0] == null ? "" : parts[0].trim();
+            if (prop.isEmpty()) continue;
+
+            if (parts.length == 1) {
+                orders.add(Sort.Order.asc(prop));
+            } else {
+                String dirRaw = parts[1] == null ? "" : parts[1].trim();
+                Sort.Direction dir = "desc".equalsIgnoreCase(dirRaw) ? Sort.Direction.DESC : Sort.Direction.ASC;
+                orders.add(new Sort.Order(dir, prop));
+            }
+        }
+
+        return orders.isEmpty() ? Sort.unsorted() : Sort.by(orders);
+    }
+
+
 }

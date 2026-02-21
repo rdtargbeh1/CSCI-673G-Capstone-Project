@@ -205,12 +205,21 @@ public interface AuditLogService {
         return log(orgId, userId, ActivityType.ORG_ENABLE, entity, description);
     }
 
+    default AuditLogDto logMembershipEnable(UUID orgId, UUID userId, String entity, String description) {
+        return log(orgId, userId, ActivityType.MEMBERSHIP_ENABLED, entity, description);
+    }
+
+    default AuditLogDto logMembershipDisable(UUID orgId, UUID userId, String entity, String description) {
+        return log(orgId, userId, ActivityType.MEMBERSHIP_DISABLED, entity, description);
+    }
+
     default AuditLogDto logMembershipAdd(UUID orgId, UUID userId, String entity, String description) {
         return log(orgId, userId, ActivityType.MEMBERSHIP_ADD, entity, description);
     }
 
+
     default AuditLogDto logMembershipRemove(UUID orgId, UUID userId, String entity, String description) {
-        return log(orgId, userId, ActivityType.MEMBERSHIP_REMOVE, entity, description);
+        return log(orgId, userId, ActivityType.MEMBERSHIP_REMOVED, entity, description);
     }
 
     // ------------------------------------------------------

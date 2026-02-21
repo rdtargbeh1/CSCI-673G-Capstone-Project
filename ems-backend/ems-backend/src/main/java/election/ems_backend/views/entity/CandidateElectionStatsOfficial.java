@@ -1,3 +1,4 @@
+
 package election.ems_backend.views.entity;
 
 import jakarta.persistence.Column;
@@ -12,7 +13,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * Read-only mapping of v_candidate_election_stats_official.
+ * Read-only mapping of v_candidate_election_stats_official
  */
 @Entity
 @Table(name = "v_candidate_election_stats_official")
@@ -34,20 +35,40 @@ public class CandidateElectionStatsOfficial {
     private String partyName;
 
     @Column(name = "abbreviation")
-    private String abbreviation;
+    private String partyCode;
 
+    // ✅ SUM() -> BIGINT
     @Column(name = "candidate_votes")
-    private Integer candidateVotes;
+    private Long candidateVotes;
 
     @Column(name = "ballots_cast")
-    private Integer ballotsCast;
+    private Long ballotsCast;
 
     @Column(name = "total_valid_votes")
-    private Integer totalValidVotes;
+    private Long totalValidVotes;
 
     @Column(name = "total_invalid_votes")
-    private Integer totalInvalidVotes;
+    private Long totalInvalidVotes;
 
     @Column(name = "vote_share_pct", precision = 10, scale = 6)
     private BigDecimal voteSharePct;
+
+    // ✅ window outputs
+    @Column(name = "rank_in_election")
+    private Long rankInElection;
+
+    @Column(name = "winner_votes")
+    private Long winnerVotes;
+
+    @Column(name = "winner_vote_share_pct", precision = 10, scale = 6)
+    private BigDecimal winnerVoteSharePct;
+
+    @Column(name = "margin_votes")
+    private Long marginVotes;
+
+    @Column(name = "margin_pct", precision = 10, scale = 6)
+    private BigDecimal marginPct;
+
+    @Column(name = "is_election_winner")
+    private Boolean isElectionWinner;
 }

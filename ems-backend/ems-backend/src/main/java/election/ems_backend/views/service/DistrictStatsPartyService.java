@@ -1,3 +1,5 @@
+
+
 package election.ems_backend.views.service;
 
 import election.ems_backend.views.DistrictStatsPartySpecs;
@@ -29,7 +31,7 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
-public class DistrictStatsPartyService{
+public class DistrictStatsPartyService {
 
     private static final Logger log = LoggerFactory.getLogger(DistrictStatsPartyService.class);
 
@@ -48,12 +50,13 @@ public class DistrictStatsPartyService{
                 .register(meterRegistry);
     }
 
-
     /**
-     * Cacheable: caches pages per org/election/county/district/page/size/sort.
+     * Cacheable: caches pages per org/election/contest/county/district/page/size/sort.
      * Use a small TTL in cache configuration to keep data reasonably fresh.
+     *
+     * NOTE: contestId is OPTIONAL:
+     * - contestId == null => return rows for ALL contests (no contest filter applied)
      */
-
     @Transactional(readOnly = true)
     @Cacheable(
             value = "districtStatsParty",
@@ -68,7 +71,7 @@ public class DistrictStatsPartyService{
     public Page<DistrictStatsPartyDto> listDistrictStats(
             UUID orgId,
             UUID electionId,
-            UUID contestId,  // ✅ NEW
+            UUID contestId,   // ✅ OPTIONAL now
             UUID countyId,
             UUID districtId,
             Pageable pageable
@@ -81,7 +84,7 @@ public class DistrictStatsPartyService{
 
         if (orgId == null) throw new IllegalArgumentException("orgId is required");
         if (electionId == null) throw new IllegalArgumentException("electionId is required");
-        if (contestId == null) throw new IllegalArgumentException("contestId is required");
+        // ✅ contestId is OPTIONAL (no validation)
 
         electionValidationService.ensureExists(electionId);
 
@@ -91,13 +94,15 @@ public class DistrictStatsPartyService{
         Specification<DistrictStatsParty> spec = Specification
                 .where(DistrictStatsPartySpecs.orgEquals(orgId))
                 .and(DistrictStatsPartySpecs.electionEquals(electionId))
-                .and(DistrictStatsPartySpecs.contestEquals(contestId))   // ✅ NEW
+                // ✅ contest filter applied ONLY if contestId != null
+                .and(DistrictStatsPartySpecs.contestEquals(contestId))
                 .and(DistrictStatsPartySpecs.countyEquals(countyId))
                 .and(DistrictStatsPartySpecs.districtEquals(districtId));
 
         Page<DistrictStatsParty> page = repo.findAll(spec, pageable);
 
         Page<DistrictStatsPartyDto> dtoPage = page.map(mapper::toDto);
+
         log.debug("listDistrictStats returning {} elements (totalElements={})",
                 dtoPage.getNumberOfElements(), dtoPage.getTotalElements());
 
@@ -105,5 +110,4 @@ public class DistrictStatsPartyService{
 
         return dtoPage;
     }
-
 }

@@ -1,3 +1,4 @@
+
 package election.ems_backend.views.mapper;
 
 import election.ems_backend.views.dto.ElectionStatsPartyDto;
@@ -8,23 +9,28 @@ public class ElectionStatsPartyMapper {
     public ElectionStatsPartyDto toDto(ElectionStatsParty e) {
         if (e == null) return null;
 
-        return ElectionStatsPartyDto.builder()
-                .orgId(e.getId() != null ? e.getId().getOrgId() : null)
-                .electionId(e.getId() != null ? e.getId().getElectionId() : null)
-                .contestId(e.getId() != null ? e.getId().getContestId() : null)
+        ElectionStatsPartyDto d = new ElectionStatsPartyDto();
 
-                .registeredVoters(e.getRegisteredVoters())
-                .ballotsCast(e.getBallotsCast())
-                .validVotes(e.getValidVotes())
-                .invalidTotal(e.getInvalidTotal())
+        if (e.getId() != null) {
+            d.setOrgId(e.getId().getOrgId());
+            d.setElectionId(e.getId().getElectionId());
+            d.setContestId(e.getId().getContestId());
+        }
 
-                .turnoutPct(e.getTurnoutPct())
-                .invalidPct(e.getInvalidPct())
+        d.setRegisteredVoters(e.getRegisteredVoters());
+        d.setBallotsCast(e.getBallotsCast());
+        d.setValidVotes(e.getValidVotes());
+        d.setInvalidTotal(e.getInvalidTotal());
 
-                // ✅ NEW
-                .centersReported(e.getCentersReported())
-                .centersTotal(e.getCentersTotal())
-                .reportingPct(e.getReportingPct())
-                .build();
+        d.setTurnoutPct(e.getTurnoutPct());
+        d.setInvalidPct(e.getInvalidPct());
+
+        d.setCentersReported(e.getCentersReported());
+        d.setCentersTotal(e.getCentersTotal());
+        d.setReportingPct(e.getReportingPct());
+
+        d.setCentersStarted(e.getCentersStarted());
+
+        return d;
     }
 }

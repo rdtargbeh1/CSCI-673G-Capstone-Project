@@ -89,6 +89,9 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     private final TallySheetRepository tallySheetRepository;
     private final AuditLogService auditLogService;
     private final NECResultRepository necResultRepository;
+    private final VoteSubmissionContestService voteSubmissionContestService;
+    private final VoteSubmissionContestRepository voteSubmissionContestRepository;
+    private  final VoteSubmissionRankingRepository voteSubmissionRankingRepository;
 
     private final NECResultService necResultService;
     private final VoteSubmissionMapper mapper;
@@ -295,6 +298,11 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
 
         VoteSubmission saved = voteSubmissionRepository.save(s);
 
+        // ✅ Normalize only for non-draft submissions
+        if (!isDraft) {
+            voteSubmissionContestService.normalizeSubmission(saved.getSubmissionId());
+        }
+
         if (files != null && !files.isEmpty()) {
             attachFilesToSubmission(org, saved, agent, files);
         }
@@ -360,6 +368,9 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         String placeDisplay = (p.getLabel() != null && !p.getLabel().isBlank())
                 ? p.getLabel()
                 : "Place " + p.getPlaceNumber();
+
+
+
 
         notify(
                 org.getOrgId(), agent.getUserId(),
@@ -497,6 +508,11 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
 
                 VoteSubmission saved = voteSubmissionRepository.save(s);
 
+                // ✅ Normalize only for non-draft submissions
+                if (!isDraft) {
+                    voteSubmissionContestService.normalizeSubmission(saved.getSubmissionId());
+                }
+
                 if (files != null && !files.isEmpty()) {
                     attachFilesToSubmission(saved.getOrganization(), saved, saved.getAgent(), files);
                 }
@@ -583,10 +599,10 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     public VoteSubmissionDto verify(UUID id, VoteSubmissionVerifyRequest req) {
 
         VoteSubmission s = voteSubmissionRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Submission not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found"));
 
         if (s.getStatus() != VoteStatus.PENDING && s.getStatus() != VoteStatus.FLAGGED) {
-            throw new ResponseStatusException(BAD_REQUEST, "Submission already processed");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submission already processed");
         }
 
         validateCandidateVotes(
@@ -598,7 +614,10 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         );
 
         SystemUser verifier = userRepo.findById(req.getVerifierUserId())
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Verifier not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Verifier not found"));
+
+        // ✅ FREEZE: If NECResult is published for this scope, block verification/rejection
+        assertNecResultNotPublishedOrThrow(s, "verified or rejected");
 
         boolean accept = Boolean.TRUE.equals(req.getAccept());
         s.setStatus(accept ? VoteStatus.VERIFIED : VoteStatus.REJECTED);
@@ -624,19 +643,17 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         );
 
         try {
-            if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
-                org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                        new org.springframework.transaction.support.TransactionSynchronization() {
-                            @Override
-                            public void afterCommit() {
-                                try {
-                                    eventPublisher.publishEvent(recomputeEvent);
-                                } catch (Exception ex) {
-                                    log.warn("Failed to publish RecomputeEvent after commit: {}", ex.getMessage());
-                                }
-                            }
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        try {
+                            eventPublisher.publishEvent(recomputeEvent);
+                        } catch (Exception ex) {
+                            log.warn("Failed to publish RecomputeEvent after commit: {}", ex.getMessage());
                         }
-                );
+                    }
+                });
             } else {
                 eventPublisher.publishEvent(recomputeEvent);
             }
@@ -647,11 +664,8 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         // ---------------------------------------------------------------------
         // ✅ NECResult recompute (DIRECT, NO EVENTS)
         // RULE:
-        // - If NEC submission + NEC verifier:
-        //   - VERIFIED  -> recompute (populate/update)
-        //   - REJECTED  -> recompute (this will DELETE nec_result if verifiedCount becomes 0)
+        // - Only NEC submission + NEC verifier triggers recompute
         // ---------------------------------------------------------------------
-
         OrganizationType submissionType =
                 (saved.getOrganization() != null ? saved.getOrganization().getOrganizationType() : null);
 
@@ -667,9 +681,9 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                     saved.getStatus(), saved.getSubmissionId(), verifier.getUserId());
 
             // ✅ IMPORTANT:
-            // - VERIFIED  => will upsert nec_result
-            // - REJECTED  => recomputeForCenterContest() sees verifiedCount==0 and deletes ENTIRE nec_result row
-            // ✅ NEW: pass submission comment into history.user_note (no other logic changes)
+            // - VERIFIED => upsert nec_result
+            // - REJECTED => may delete nec_result if verifiedCount becomes 0
+            // ✅ Notes -> history.user_note
             necResultService.recomputeFromSubmissionWithNotes(
                     saved.getSubmissionId(),
                     verifier.getUserId(),
@@ -733,39 +747,42 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     @Transactional
     public VoteSubmissionDto amend(UUID id, VoteSubmissionAmendRequest req) {
 
-        if (req == null) throw new ResponseStatusException(BAD_REQUEST, "Request body is required");
-        if (req.getActorUserId() == null) throw new ResponseStatusException(BAD_REQUEST, "actorUserId is required");
+        if (req == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
+        if (req.getActorUserId() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "actorUserId is required");
         if (req.getReason() == null || req.getReason().isBlank())
-            throw new ResponseStatusException(BAD_REQUEST, "reason is required");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "reason is required");
 
         VoteSubmission s = voteSubmissionRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Submission not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found"));
+
+        // ✅ FREEZE: block amend if NECResult already published
+        assertNecResultNotPublishedOrThrow(s, "amended");
 
         // ✅ Only NEC admins should do this (enforce via AuthorizationService elsewhere)
         SystemUser actor = userRepo.findById(req.getActorUserId())
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Actor not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Actor not found"));
 
         // ✅ Allow amending VERIFIED / REJECTED / PENDING
         if (s.getStatus() != VoteStatus.VERIFIED &&
                 s.getStatus() != VoteStatus.REJECTED &&
                 s.getStatus() != VoteStatus.PENDING) {
-            throw new ResponseStatusException(BAD_REQUEST, "Only VERIFIED/REJECTED/PENDING submissions can be amended");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only VERIFIED/REJECTED/PENDING submissions can be amended");
         }
 
         PollingPlace place = s.getPollingPlace();
-        if (place == null) throw new ResponseStatusException(BAD_REQUEST, "Submission missing polling place");
+        if (place == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submission missing polling place");
 
         var alloc = placeAllocationRepo
                 .findByElection_ElectionIdAndPollingPlace_PlaceId(
                         s.getElection().getElectionId(),
                         place.getPlaceId()
                 )
-                .orElseThrow(() -> new ResponseStatusException(BAD_REQUEST, "Polling place not allocated for this election"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Polling place not allocated for this election"));
 
         // Merge candidate votes
         Map<String, Integer> mergedVotes = mergeCandidateVotes(s.getCandidateVotes(), req.getCandidateVotes());
         if (mergedVotes.size() > MAX_CANDIDATE_KEYS) {
-            throw new ResponseStatusException(BAD_REQUEST, "Too many candidate entries");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Too many candidate entries");
         }
 
         int cast   = (req.getBallotsInBox() != null) ? req.getBallotsInBox() : nzInt(s.getBallotsInBox());
@@ -814,6 +831,9 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         // Flush so recompute sees updated values
         VoteSubmission saved = voteSubmissionRepository.saveAndFlush(s);
 
+        // ✅ Normalize (amend changes vote content)
+        voteSubmissionContestService.normalizeSubmission(saved.getSubmissionId());
+
         // ---- Ledger / signing (unchanged) ----
         String payloadHash = buildSubmissionPayloadHash(saved);
         Map<String, Object> ledgerRes = jdbc.queryForMap(
@@ -853,12 +873,14 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
             eventPublisher.publishEvent(recomputeEvent);
         }
 
-        // Trigger NEC recompute (clears derived rows because status is now PENDING)
-        necResultService.recomputeFromSubmissionWithNotes(
-                saved.getSubmissionId(),
-                actor.getUserId(),
-                saved.getComments()
-        );
+        // ✅ Trigger NEC recompute ONLY for NEC submissions
+        if (saved.getOrganization() != null && saved.getOrganization().getOrganizationType() == OrganizationType.NEC) {
+            necResultService.recomputeFromSubmissionWithNotes(
+                    saved.getSubmissionId(),
+                    actor.getUserId(),
+                    saved.getComments()
+            );
+        }
 
         auditLogService.log(
                 saved.getOrganization().getOrgId(),
@@ -870,6 +892,91 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         );
 
         return mapper.toDTO(saved);
+    }
+
+
+    @Override
+    @Transactional
+    public void delete(UUID submissionId, VoteSubmissionDeleteRequest req) {
+
+        if (submissionId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "submissionId is required");
+        }
+        if (req == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "request body is required");
+        }
+        if (req.getDeletedByUserId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "deletedByUserId is required");
+        }
+        if (req.getReason() == null || req.getReason().trim().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "reason is required");
+        }
+
+        final UUID deletedByUserId = req.getDeletedByUserId();
+        final String cleanReason = req.getReason().trim();
+
+        VoteSubmission s = voteSubmissionRepository.findById(submissionId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found"));
+
+        // ✅ FREEZE: block delete if NECResult already published
+        assertNecResultNotPublishedOrThrow(s, "deleted");
+
+        UUID orgId = s.getOrganization() != null ? s.getOrganization().getOrgId() : null;
+        if (orgId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submission missing orgId");
+
+        UUID electionId = s.getElection() != null ? s.getElection().getElectionId() : null;
+        if (electionId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submission missing electionId");
+
+        UUID contestId = s.getContestId();
+        if (contestId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submission missing contestId");
+
+        // centerId resolution (keep your existing logic)
+        UUID centerId = null;
+        if (s.getPollingCenter() != null) centerId = s.getPollingCenter().getCenterId();
+        if (centerId == null && s.getPollingPlace() != null
+                && s.getPollingPlace().getPollingCenter() != null) {
+            centerId = s.getPollingPlace().getPollingCenter().getCenterId();
+        }
+        if (centerId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submission missing centerId");
+
+        // ✅ idempotent delete
+        if (s.getDateDeleted() != null || s.getStatus() == VoteStatus.DELETED) {
+            return;
+        }
+
+        // ✅ mark deleted (LocalDateTime required)
+        s.setStatus(VoteStatus.DELETED);
+        s.setDateDeleted(LocalDateTime.now());
+
+        // ✅ OVERRIDE comments (do NOT append)
+        s.setComments(buildStatusComment(VoteStatus.DELETED, deletedByUserId, cleanReason));
+
+        voteSubmissionRepository.save(s);
+        voteSubmissionRepository.flush();
+
+        // ✅ Cleanup normalized rows for this submission
+        voteSubmissionContestRepository.deleteBySubmissionId(submissionId);
+        voteSubmissionRankingRepository.deleteBySubmissionId(submissionId);
+
+
+        // ✅ recompute official results immediately
+        // NOTE: recompute will ALSO hard-block inside NECResultServiceImpl if published (safety net)
+        necResultService.recomputeForCenterContestWithNotes(
+                orgId,
+                electionId,
+                contestId,
+                centerId,
+                deletedByUserId,
+                "DELETE_SUBMISSION: submissionId=" + s.getSubmissionId() + " | reason=" + cleanReason
+        );
+
+        // ✅ audit log (use your working method)
+        auditLogService.logDelete(
+                orgId,
+                deletedByUserId,
+                "VoteSubmission",
+                "Deleted submission: " + s.getSubmissionId() + " | reason: " + cleanReason
+        );
     }
 
 
@@ -1038,86 +1145,62 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     }
 
 
-    // ------------------------------------------------------------------------
-    // Delete / Get / Search (search updated to allow contestId)
-    // ------------------------------------------------------------------------
-
-
-    @Override
-    @Transactional
-    public void delete(UUID submissionId, VoteSubmissionDeleteRequest req) {
-
-        if (submissionId == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "submissionId is required");
-        }
-        if (req == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "request body is required");
-        }
-        if (req.getDeletedByUserId() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "deletedByUserId is required");
-        }
-        if (req.getReason() == null || req.getReason().trim().isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "reason is required");
-        }
-
-        final UUID deletedByUserId = req.getDeletedByUserId();
-        final String cleanReason = req.getReason().trim();
-
-        VoteSubmission s = voteSubmissionRepository.findById(submissionId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found"));
-
-        UUID orgId = s.getOrganization() != null ? s.getOrganization().getOrgId() : null;
-        if (orgId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submission missing orgId");
-
-        UUID electionId = s.getElection() != null ? s.getElection().getElectionId() : null;
-        if (electionId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submission missing electionId");
-
-        UUID contestId = s.getContestId();
-        if (contestId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submission missing contestId");
-
-        // centerId resolution (keep your existing logic)
+    private UUID resolveCenterIdOrThrow(VoteSubmission s) {
         UUID centerId = null;
-        if (s.getPollingCenter() != null) centerId = s.getPollingCenter().getCenterId();
-        if (centerId == null && s.getPollingPlace() != null
+
+        if (s.getPollingCenter() != null) {
+            centerId = s.getPollingCenter().getCenterId();
+        }
+
+        if (centerId == null
+                && s.getPollingPlace() != null
                 && s.getPollingPlace().getPollingCenter() != null) {
             centerId = s.getPollingPlace().getPollingCenter().getCenterId();
         }
-        if (centerId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submission missing centerId");
 
-        // ✅ idempotent delete
-        if (s.getDateDeleted() != null || s.getStatus() == VoteStatus.DELETED) {
+        if (centerId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Submission missing centerId (center_id/place->center)");
+        }
+
+        return centerId;
+    }
+
+    /**
+     * ✅ FREEZE RULE (Policy):
+     * If NECResult is already published for this submission’s (election,contest,center),
+     * then NEC submissions cannot be verified/rejected, amended, or deleted until unpublish.
+     */
+    private void assertNecResultNotPublishedOrThrow(VoteSubmission s, String action) {
+        if (s == null) return;
+
+        // ✅ Only freeze NEC submissions (official truth source)
+        if (s.getOrganization() == null || s.getOrganization().getOrganizationType() != OrganizationType.NEC) {
             return;
         }
 
-        // ✅ mark deleted (LocalDateTime required)
-        s.setStatus(VoteStatus.DELETED);
-        s.setDateDeleted(LocalDateTime.now());
+        UUID electionId = (s.getElection() != null ? s.getElection().getElectionId() : null);
+        UUID contestId  = s.getContestId();
 
-        // ✅ OVERRIDE comments (do NOT append)
-        // Comments should reflect current status clearly
-        s.setComments(buildStatusComment(VoteStatus.DELETED, deletedByUserId, cleanReason));
+        UUID centerId = null;
+        if (s.getPollingCenter() != null) centerId = s.getPollingCenter().getCenterId();
+        if (centerId == null
+                && s.getPollingPlace() != null
+                && s.getPollingPlace().getPollingCenter() != null) {
+            centerId = s.getPollingPlace().getPollingCenter().getCenterId();
+        }
 
-        voteSubmissionRepository.save(s);
-        voteSubmissionRepository.flush();
+        if (electionId == null || contestId == null || centerId == null) return;
 
-        // ✅ recompute official results immediately (use your working signature)
-        necResultService.recomputeForCenterContestWithNotes(
-                orgId,
-                electionId,
-                contestId,
-                centerId,
-                deletedByUserId,
-                "DELETE_SUBMISSION: submissionId=" + s.getSubmissionId() + " | reason=" + cleanReason
-        );
-
-        // ✅ audit log (use your working method)
-        auditLogService.logDelete(
-                orgId,
-                deletedByUserId,
-                "VoteSubmission",
-                "Deleted submission: " + s.getSubmissionId() + " | reason: " + cleanReason
-        );
+        if (necResultService.isPublishedForCenterContest(electionId, contestId, centerId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "This submission cannot be " + action
+                            + " because the official result is already PUBLISHED for this center/contest. Unpublish first."
+            );
+        }
     }
+
 
 
 

@@ -44,7 +44,7 @@ public class CandidateDistrictStatsPartyController {
     public ResponseEntity<Page<CandidateDistrictStatsPartyDto>> list(
             @RequestParam(value = "orgId", required = false) UUID orgIdParam,
             @RequestParam(value = "electionId") UUID electionId,
-            @RequestParam(value = "contestId") UUID contestId, // ✅ NEW (required)
+            @RequestParam(value = "contestId", required = false) UUID contestId, // ✅ OPTIONAL
             @RequestParam(value = "countyId", required = false) UUID countyId,
             @RequestParam(value = "districtId", required = false) UUID districtId,
             @RequestParam(value = "candidateId", required = false) UUID candidateId,
@@ -54,7 +54,7 @@ public class CandidateDistrictStatsPartyController {
             @RequestParam(value = "sort", required = false) String[] sort
     ) {
         if (electionId == null) return ResponseEntity.badRequest().build();
-        if (contestId == null) return ResponseEntity.badRequest().build(); // ✅ NEW
+        // ❌ contestId is now allowed to be null
 
         UUID derivedOrgId = SecurityUtils.getOrgIdFromContext();
         UUID effectiveOrgId = orgIdParam;
@@ -75,16 +75,10 @@ public class CandidateDistrictStatsPartyController {
         if (sort != null && sort.length > 0) {
             Sort.Order[] orders = new Sort.Order[sort.length];
             for (int i = 0; i < sort.length; i++) {
-                String s = sort[i];
-                String[] parts = s.split(",");
-                if (parts.length == 1) {
-                    orders[i] = Sort.Order.asc(parts[0].trim());
-                } else {
-                    orders[i] = new Sort.Order(
-                            Sort.Direction.fromString(parts[1].trim()),
-                            parts[0].trim()
-                    );
-                }
+                String[] parts = sort[i].split(",");
+                orders[i] = (parts.length == 1)
+                        ? Sort.Order.asc(parts[0].trim())
+                        : new Sort.Order(Sort.Direction.fromString(parts[1].trim()), parts[0].trim());
             }
             sortObj = Sort.by(orders);
         }
@@ -101,7 +95,7 @@ public class CandidateDistrictStatsPartyController {
                 service.listCandidateDistrictStats(
                         effectiveOrgId,
                         electionId,
-                        contestId,   // ✅ NEW
+                        contestId,   // ✅ nullable
                         countyId,
                         districtId,
                         candidateId,

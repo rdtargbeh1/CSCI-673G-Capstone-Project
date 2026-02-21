@@ -1,6 +1,6 @@
+
 package election.ems_backend.views.service;
 
-import election.ems_backend.utility.SecurityUtils;
 import election.ems_backend.views.ElectionStatsOfficialSpecs;
 import election.ems_backend.views.dto.ElectionStatsOfficialDto;
 import election.ems_backend.views.entity.ElectionStatsOfficial;
@@ -23,9 +23,11 @@ import java.util.UUID;
  * Production-ready service for v_election_stats_official.
  *
  * - Validates election existence
- * - Applies tenant GUCs if caller has org context (so RLS policies behave)
  * - Caches responses for short TTL
  * - Emits metrics and logs
+ *
+ * NOTE: contestId is OPTIONAL:
+ * - contestId == null => return rows for ALL contests (no contest filter applied)
  */
 @Service
 @RequiredArgsConstructor
@@ -35,29 +37,33 @@ public class ElectionStatsOfficialService {
 
     private final ElectionStatsOfficialRepository repo;
     private final ElectionValidationService electionValidationService;
-    private final TenantGucService tenantGucService;
     private final MeterRegistry meterRegistry;
     private final ElectionStatsOfficialMapper mapper = new ElectionStatsOfficialMapper();
-
 
     @Transactional(readOnly = true)
     @Cacheable(
             value = "electionStatsOfficial",
             key = "T(java.lang.String).valueOf(#electionId)"
-                    + " + ':' + (#contestId==null?'':#contestId)" // ✅ NEW
+                    + " + ':' + (#contestId==null?'':#contestId)"
                     + " + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort"
     )
     public Page<ElectionStatsOfficialDto> listElectionStats(
             UUID electionId,
-            UUID contestId,   // ✅ NEW
+            UUID contestId,   // ✅ OPTIONAL now
             Pageable pageable
     ) {
+        log.debug("listElectionStats (official) called electionId={} contestId={} page={} size={}",
+                electionId, contestId, pageable.getPageNumber(), pageable.getPageSize());
+
         if (electionId == null) throw new IllegalArgumentException("electionId is required");
+        // ✅ contestId is OPTIONAL
+
         electionValidationService.ensureExists(electionId);
 
         Specification<ElectionStatsOfficial> spec = Specification
                 .where(ElectionStatsOfficialSpecs.electionEquals(electionId))
-                .and(ElectionStatsOfficialSpecs.contestEquals(contestId)); // ✅ NEW
+                // ✅ contest filter applied ONLY if contestId != null
+                .and(ElectionStatsOfficialSpecs.contestEquals(contestId));
 
         Page<ElectionStatsOfficial> page = repo.findAll(spec, pageable);
 
@@ -65,5 +71,4 @@ public class ElectionStatsOfficialService {
 
         return page.map(mapper::toDto);
     }
-
 }

@@ -26,6 +26,11 @@ public interface NECResultRepository extends JpaRepository<NECResult, UUID>, Jpa
             UUID centerId
     );
 
+    boolean existsByElection_ElectionIdAndContest_ContestIdAndPollingCenter_CenterIdAndIsPublishedTrue(
+            UUID electionId,
+            UUID contestId,
+            UUID centerId
+    );
 
     // Scalar sums
     @Query(value = """
@@ -131,8 +136,6 @@ public interface NECResultRepository extends JpaRepository<NECResult, UUID>, Jpa
 
 
 
-
-
     // Daily per-candidate (upload_time::date)
     @Query(value = """
     WITH kv AS (
@@ -155,6 +158,18 @@ public interface NECResultRepository extends JpaRepository<NECResult, UUID>, Jpa
     ORDER BY day ASC, votes DESC
     """, nativeQuery = true)
     List<Object[]> dailyByCandidate(@Param("electionId") UUID electionId);
+
+
+    @Query("""
+        select (count(r) > 0)
+        from NECResult r
+        where r.election.electionId = :electionId
+          and (:contestId is null or r.contest.contestId = :contestId)
+          and r.isPublished = true
+    """)
+    boolean existsPublished(@Param("electionId") UUID electionId,
+                            @Param("contestId") UUID contestId);
+
 
 
     @Modifying

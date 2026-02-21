@@ -1,3 +1,4 @@
+
 package election.ems_backend.views.service;
 
 import election.ems_backend.views.ElectionStatsPartySpecs;
@@ -25,6 +26,9 @@ import java.util.UUID;
  * - Applies tenant GUCs before repository queries so RLS applies.
  * - Cacheable for short TTL to reduce load.
  * - Emits metrics and logs.
+ *
+ * NOTE: contestId is OPTIONAL:
+ * - contestId == null => return rows for ALL contests (no contest filter applied)
  */
 @Service
 @RequiredArgsConstructor
@@ -38,7 +42,6 @@ public class ElectionStatsPartyService {
     private final MeterRegistry meterRegistry;
     private final ElectionStatsPartyMapper mapper = new ElectionStatsPartyMapper();
 
-
     @Transactional(readOnly = true)
     @Cacheable(
             value = "electionStatsParty",
@@ -49,7 +52,7 @@ public class ElectionStatsPartyService {
     public Page<ElectionStatsPartyDto> listElectionStats(
             UUID orgId,
             UUID electionId,
-            UUID contestId,   // ✅ NEW
+            UUID contestId,   // ✅ OPTIONAL now
             Pageable pageable
     ) {
         log.debug("listElectionStats called orgId={} electionId={} contestId={} page={} size={}",
@@ -57,6 +60,7 @@ public class ElectionStatsPartyService {
 
         if (orgId == null) throw new IllegalArgumentException("orgId is required");
         if (electionId == null) throw new IllegalArgumentException("electionId is required");
+        // ✅ contestId is OPTIONAL (no validation)
 
         electionValidationService.ensureExists(electionId);
 
@@ -65,7 +69,8 @@ public class ElectionStatsPartyService {
         Specification<ElectionStatsParty> spec = Specification
                 .where(ElectionStatsPartySpecs.orgEquals(orgId))
                 .and(ElectionStatsPartySpecs.electionEquals(electionId))
-                .and(ElectionStatsPartySpecs.contestEquals(contestId)); // ✅ NEW
+                // ✅ contest filter applied ONLY if contestId != null
+                .and(ElectionStatsPartySpecs.contestEquals(contestId));
 
         Page<ElectionStatsParty> page = repo.findAll(spec, pageable);
 
@@ -73,6 +78,4 @@ public class ElectionStatsPartyService {
 
         return page.map(mapper::toDto);
     }
-
-
 }

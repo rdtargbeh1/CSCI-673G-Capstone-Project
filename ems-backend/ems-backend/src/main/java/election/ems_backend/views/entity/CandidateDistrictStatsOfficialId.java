@@ -1,6 +1,7 @@
 package election.ems_backend.views.entity;
 
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
@@ -17,9 +18,17 @@ import java.util.UUID;
 @AllArgsConstructor
 @EqualsAndHashCode
 public class CandidateDistrictStatsOfficialId implements Serializable {
+
+    @Column(name = "election_id")
     private UUID electionId;
+
+    @Column(name = "contest_id")
     private UUID contestId;
+
+    @Column(name = "district_id")
     private UUID districtId;
+
+    @Column(name = "candidate_id")
     private UUID candidateId;
 
     public UUID getElectionId() { return electionId; }

@@ -1,6 +1,7 @@
 package election.ems_backend.entity;
 
-
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.*;
 import lombok.*;
@@ -9,6 +10,8 @@ import org.hibernate.annotations.UuidGenerator;
 import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.UUID;
 
 @Getter
@@ -16,7 +19,6 @@ import java.util.UUID;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-
 @Entity
 @Table(
         name = "nec_result",
@@ -29,6 +31,7 @@ import java.util.UUID;
                 @Index(name = "idx_nec_result_upload_time", columnList = "upload_time")
         }
 )
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class NECResult {
 
     @Id
@@ -54,7 +57,7 @@ public class NECResult {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "candidate_votes", columnDefinition = "jsonb", nullable = false)
     private JsonNode candidateVotes;
-    
+
     @Column(name = "total_registered_voters", nullable = false)
     private Integer totalRegisteredVoters;
 
@@ -82,6 +85,8 @@ public class NECResult {
     @Column(name = "upload_time")
     private LocalDateTime uploadTime = LocalDateTime.now();
 
+    // ✅ Keep DB column name is_published, but force JSON field to "isPublished"
+    @JsonProperty("isPublished")
     @Column(name = "is_published", nullable = false)
     private boolean isPublished = false;
 
@@ -101,6 +106,71 @@ public class NECResult {
     @Column(name = "chain_hash")
     private String chainHash;
 
+    /**
+     * ✅ Computed Valid Votes:
+     * Sum(candidateVotes) and expose as JSON field "validVotes"
+     *
+     * This fixes frontend "Valid Votes = 0" when admin endpoint returns raw rows.
+     */
+    @JsonProperty("validVotes")
+    public int getValidVotes() {
+        return sumVotes(candidateVotes);
+    }
+
+    private static int sumVotes(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) return 0;
+
+        int total = 0;
+
+        // Most common: {"candId": 10, "candId2": 5}
+        if (node.isObject()) {
+            Iterator<Map.Entry<String, JsonNode>> it = node.fields();
+            while (it.hasNext()) {
+                Map.Entry<String, JsonNode> e = it.next();
+                total += safeInt(e.getValue());
+            }
+            return total;
+        }
+
+        // Safety: [[candId,10], ...] OR [{candidateId:..., votes:...}, ...]
+        if (node.isArray()) {
+            for (JsonNode item : node) {
+                if (item == null || item.isNull()) continue;
+
+                if (item.isArray() && item.size() >= 2) {
+                    total += safeInt(item.get(1));
+                    continue;
+                }
+
+                if (item.isObject()) {
+                    JsonNode vv =
+                            item.get("votes") != null ? item.get("votes") :
+                                    item.get("totalVotes") != null ? item.get("totalVotes") :
+                                            item.get("voteTotal") != null ? item.get("voteTotal") :
+                                                    item.get("count");
+                    total += safeInt(vv);
+                }
+            }
+            return total;
+        }
+
+        // Scalar fallback
+        return safeInt(node);
+    }
+
+    private static int safeInt(JsonNode v) {
+        if (v == null || v.isNull() || v.isMissingNode()) return 0;
+        if (v.isInt() || v.isLong()) return v.asInt(0);
+        if (v.isNumber()) return (int) Math.round(v.asDouble(0));
+        if (v.isTextual()) {
+            try {
+                return Integer.parseInt(v.asText().trim());
+            } catch (Exception ignore) {
+                return 0;
+            }
+        }
+        return 0;
+    }
 
     @PrePersist
     public void prePersist() {
@@ -115,5 +185,5 @@ public class NECResult {
     }
 
 
-
 }
+

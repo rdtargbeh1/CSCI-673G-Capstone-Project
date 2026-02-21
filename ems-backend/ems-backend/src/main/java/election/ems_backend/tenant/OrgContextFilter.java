@@ -4,6 +4,9 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -20,11 +23,18 @@ public class OrgContextFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         try {
-            String v = request.getHeader(HEADER_ORG_ID);
-            if (v != null && !v.isBlank()) {
-                try { OrgContext.set(UUID.fromString(v.trim())); }
-                catch (IllegalArgumentException ignored) {}
+            // ✅ Only trust X-Org-Id when authenticated (prevents unauthenticated tenant spoofing)
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            boolean authenticated = auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken);
+
+            if (authenticated) {
+                String v = request.getHeader(HEADER_ORG_ID);
+                if (v != null && !v.isBlank()) {
+                    try { OrgContext.set(UUID.fromString(v.trim())); }
+                    catch (IllegalArgumentException ignored) {}
+                }
             }
+
             filterChain.doFilter(request, response);
         } finally {
             OrgContext.clear();
@@ -33,6 +43,9 @@ public class OrgContextFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return request.getRequestURI().startsWith("/actuator");
+        String uri = request.getRequestURI();
+        return uri != null && uri.startsWith("/actuator");
     }
 }
+
+

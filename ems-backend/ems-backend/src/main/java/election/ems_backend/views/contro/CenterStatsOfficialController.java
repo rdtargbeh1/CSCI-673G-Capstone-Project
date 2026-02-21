@@ -1,3 +1,4 @@
+
 package election.ems_backend.views.contro;
 
 import election.ems_backend.views.dto.CenterStatsOfficialDto;
@@ -41,7 +42,7 @@ public class CenterStatsOfficialController {
     @GetMapping
     public ResponseEntity<Page<CenterStatsOfficialDto>> list(
             @RequestParam(value = "electionId") UUID electionId,
-            @RequestParam(value="contestId", required=false) UUID contestId,
+            @RequestParam(value = "contestId", required = false) UUID contestId, // ✅ OPTIONAL
             @RequestParam(value = "countyId", required = false) UUID countyId,
             @RequestParam(value = "districtId", required = false) UUID districtId,
             @RequestParam(value = "centerId", required = false) UUID centerId,
@@ -71,12 +72,15 @@ public class CenterStatsOfficialController {
 
         Pageable pageable = PageRequest.of(page, pageSize, sortObj);
 
-        log.debug("Controller list official centers electionId={} countyId={} districtId={} centerId={} page={} size={} sort={}",
-                electionId, countyId, districtId, centerId, page, pageSize, sortObj);
+        log.debug("Controller list official centers electionId={} contestId={} countyId={} districtId={} centerId={} page={} size={} sort={}",
+                electionId, contestId, countyId, districtId, centerId, page, pageSize, sortObj);
 
-        meterRegistry.counter("api.stats.official.controller.requests", "endpoint", "/api/stats/official/centers").increment();
+        meterRegistry.counter("api.stats.official.controller.requests", "endpoint", "/api/stats/official/centers")
+                .increment();
 
-        Page<CenterStatsOfficialDto> result = service.listOfficialCenters(electionId, contestId,countyId, districtId, centerId, pageable);
+        Page<CenterStatsOfficialDto> result =
+                service.listOfficialCenters(electionId, contestId, countyId, districtId, centerId, pageable);
+
         return ResponseEntity.ok(result);
     }
 }

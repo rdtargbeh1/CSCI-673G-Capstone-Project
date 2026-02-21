@@ -1,3 +1,5 @@
+
+
 package election.ems_backend.mapper;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -18,24 +20,12 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Unified mapper for NEC result-related entities and DTOs.
- *
- * Notes:
- * - Candidate votes JSON is stored in the DB as jsonb. We normalize in Java to Map<String,Integer>
- *   where candidate id keys are stringified (UUID.toString()) to avoid mapping issues with JSON keys.
- * - Methods accept generic Map<?,Integer> when converting from external requests to be forgiving.
- */
 @Component
 public class NECResultMapper {
 
     private static final ObjectMapper M = new ObjectMapper();
     private static final TypeReference<Map<String, Integer>> TR = new TypeReference<>() {};
 
-
-    // -------------------------
-    // NECResult (authoritative) <-> DTO
-    // -------------------------
     public NECResultDto toDTO(NECResult r) {
         if (r == null) return null;
 
@@ -46,7 +36,6 @@ public class NECResultMapper {
                 .electionId(r.getElection() != null ? r.getElection().getElectionId() : null)
                 .electionName(r.getElection() != null ? r.getElection().getElectionName() : null)
 
-                // ✅ DTO field name is "contest" (UUID)
                 .contest(r.getContest() != null ? r.getContest().getContestId() : null)
                 .contestName(r.getContest() != null ? r.getContest().getContestName() : null)
 
@@ -69,17 +58,12 @@ public class NECResultMapper {
                 .build();
     }
 
-    /**
-     * Build entity from create request.
-     * Accepts candidateVotes as Map with keys that can be UUID or String.
-     */
     public NECResult toEntity(NECResultCreateRequest req, Election e, PollingCenter c) {
         NECResult r = new NECResult();
         r.setElection(e);
-        r.setContest(null); // contest is set by service if your entity has it; safe default
+        r.setContest(null);
         r.setPollingCenter(c);
 
-        // ✅ JsonNode for jsonb
         r.setCandidateVotes(write(req.getCandidateVotes()));
 
         r.setTotalRegisteredVoters(nz(req.getTotalRegisteredVoters()));
@@ -107,9 +91,6 @@ public class NECResultMapper {
         if (req.getSource() != null) r.setSource(req.getSource());
     }
 
-    // -------------------------
-    // NecResultStaging <-> DTO
-    // -------------------------
     public NecResultStagingDto toDto(NecResultStaging s) {
         if (s == null) return null;
 
@@ -144,20 +125,15 @@ public class NECResultMapper {
     }
 
     // -------------------------
-    // JSON helpers - JsonNode <-> Map<String,Integer>
+    // JSON helpers
     // -------------------------
 
-    /**
-     * Convert Map<?,Integer> -> JsonNode object for jsonb persistence.
-     * Keys are stringified (UUID.toString()) because JSON object keys must be strings.
-     */
     private static JsonNode write(Map<?, Integer> map) {
         ObjectNode obj = M.createObjectNode();
         if (map == null || map.isEmpty()) return obj;
 
         for (Map.Entry<?, Integer> e : map.entrySet()) {
             if (e.getKey() == null) continue;
-
             String key = e.getKey().toString();
             int val = (e.getValue() == null ? 0 : e.getValue());
             obj.put(key, val);
@@ -166,25 +142,119 @@ public class NECResultMapper {
     }
 
     /**
-     * Convert JsonNode (stored jsonb) -> Map<String,Integer> for DTO output.
+     * ✅ FIXED FOR REAL WORLD STORAGE SHAPES:
+     * Supports:
+     * 1) {"candId":10}
+     * 2) {"candidateVotes": {"candId":10}}   (nested wrapper)
+     * 3) [{"candidateId":"candId","votes":10}, ...]
+     * 4) [["candId",10],["cand2",5]]
+     * 5) text JSON: "{\"candId\":10}"
      */
     public static Map<String, Integer> parseToMapString(JsonNode node) {
         if (node == null || node.isNull() || node.isMissingNode()) return Collections.emptyMap();
-        if (!node.isObject()) return Collections.emptyMap();
 
-        try {
-            Map<String, Integer> raw = M.convertValue(node, TR);
-            if (raw == null || raw.isEmpty()) return Collections.emptyMap();
+        JsonNode n = node;
 
-            // normalize null values to 0
-            Map<String, Integer> out = new HashMap<>();
-            for (Map.Entry<String, Integer> e : raw.entrySet()) {
-                out.put(e.getKey(), e.getValue() == null ? 0 : e.getValue());
+        // 5) text JSON
+        if (n.isTextual()) {
+            String raw = n.asText();
+            if (raw == null) return Collections.emptyMap();
+            String s = raw.trim();
+            if (s.isEmpty()) return Collections.emptyMap();
+            try {
+                n = M.readTree(s);
+            } catch (Exception ignored) {
+                return Collections.emptyMap();
             }
-            return out;
-        } catch (IllegalArgumentException ex) {
-            throw new IllegalStateException("Bad candidateVotes json", ex);
         }
+
+        // 2) wrapper object: {"candidateVotes": {...}} or {"votes": {...}}
+        if (n.isObject()) {
+            JsonNode maybeWrapped = n.get("candidateVotes");
+            if (maybeWrapped == null) maybeWrapped = n.get("votes");
+            if (maybeWrapped != null && !maybeWrapped.isNull() && !maybeWrapped.isMissingNode()) {
+                // recurse once
+                return parseToMapString(maybeWrapped);
+            }
+
+            // 1) direct object map
+            try {
+                Map<String, Integer> raw = M.convertValue(n, TR);
+                if (raw == null || raw.isEmpty()) return Collections.emptyMap();
+
+                Map<String, Integer> out = new HashMap<>();
+                for (Map.Entry<String, Integer> e : raw.entrySet()) {
+                    out.put(e.getKey(), e.getValue() == null ? 0 : e.getValue());
+                }
+                return out;
+            } catch (IllegalArgumentException ex) {
+                // fall through to empty
+                return Collections.emptyMap();
+            }
+        }
+
+        // 3/4) arrays
+        if (n.isArray()) {
+            Map<String, Integer> out = new HashMap<>();
+
+            for (JsonNode item : n) {
+                if (item == null || item.isNull() || item.isMissingNode()) continue;
+
+                // 4) pair list: ["candId", 10]
+                if (item.isArray() && item.size() >= 2) {
+                    String key = text(item.get(0));
+                    int val = intVal(item.get(1));
+                    if (key != null && !key.isBlank()) out.put(key.trim(), val);
+                    continue;
+                }
+
+                // 3) object list: {candidateId/electId/optionId : "...", votes : 10}
+                if (item.isObject()) {
+                    String key = firstText(item, "candidateId", "electId", "optionId", "id", "key");
+                    int val = firstInt(item, "votes", "totalVotes", "voteTotal", "count", "value", "total");
+                    if (key != null && !key.isBlank()) out.put(key.trim(), val);
+                }
+            }
+
+            return out.isEmpty() ? Collections.emptyMap() : out;
+        }
+
+        return Collections.emptyMap();
+    }
+
+    private static String firstText(JsonNode obj, String... fields) {
+        for (String f : fields) {
+            JsonNode v = obj.get(f);
+            String s = text(v);
+            if (s != null && !s.isBlank()) return s;
+        }
+        return null;
+    }
+
+    private static int firstInt(JsonNode obj, String... fields) {
+        for (String f : fields) {
+            JsonNode v = obj.get(f);
+            if (v == null || v.isNull()) continue;
+            if (v.isNumber()) return v.asInt(0);
+            if (v.isTextual()) {
+                try { return Integer.parseInt(v.asText().trim()); } catch (Exception ignored) {}
+            }
+        }
+        return 0;
+    }
+
+    private static String text(JsonNode v) {
+        if (v == null || v.isNull()) return null;
+        return v.asText(null);
+    }
+
+    private static int intVal(JsonNode v) {
+        if (v == null || v.isNull()) return 0;
+        if (v.isNumber()) return v.asInt(0);
+        if (v.isTextual()) {
+            try { return Integer.parseInt(v.asText().trim()); } catch (Exception ignored) {}
+        }
+        return 0;
     }
 
     private static int nz(Integer x) {
@@ -193,4 +263,3 @@ public class NECResultMapper {
 
 
 }
-

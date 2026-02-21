@@ -28,6 +28,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class CandidateCenterStatsPartyService {
 
+
     private static final Logger log = LoggerFactory.getLogger(CandidateCenterStatsPartyService.class);
 
     private final CandidateCenterStatsPartyRepository repo;
@@ -35,7 +36,6 @@ public class CandidateCenterStatsPartyService {
     private final TenantGucService tenantGucService;
     private final MeterRegistry meterRegistry;
     private final CandidateCenterStatsPartyMapper mapper = new CandidateCenterStatsPartyMapper();
-
 
     @Transactional(readOnly = true)
     @Cacheable(
@@ -52,11 +52,10 @@ public class CandidateCenterStatsPartyService {
                             + " + ':' + #pageable.pageSize"
                             + " + ':' + #pageable.sort"
     )
-
     public Page<CandidateCenterStatsPartyDto> listCandidateCenterStats(
             UUID orgId,
             UUID electionId,
-            UUID contestId,   // ✅ NEW
+            UUID contestId,   // ✅ nullable = All contests
             UUID countyId,
             UUID districtId,
             UUID centerId,
@@ -76,7 +75,7 @@ public class CandidateCenterStatsPartyService {
         Specification<CandidateCenterStatsParty> spec = Specification
                 .where(CandidateCenterStatsPartySpecs.orgEquals(orgId))
                 .and(CandidateCenterStatsPartySpecs.electionEquals(electionId))
-                .and(CandidateCenterStatsPartySpecs.contestEquals(contestId))  // ✅ NEW
+                .and(CandidateCenterStatsPartySpecs.contestEquals(contestId))  // ✅ null-safe filter
                 .and(CandidateCenterStatsPartySpecs.countyEquals(countyId))
                 .and(CandidateCenterStatsPartySpecs.districtEquals(districtId))
                 .and(CandidateCenterStatsPartySpecs.centerEquals(centerId))
@@ -88,6 +87,69 @@ public class CandidateCenterStatsPartyService {
         meterRegistry.gauge("api.stats.candidate_center.result_size", page.getContent(), c -> (double) c.size());
         return page.map(mapper::toDto);
     }
+
+
+
+//    private static final Logger log = LoggerFactory.getLogger(CandidateCenterStatsPartyService.class);
+//
+//    private final CandidateCenterStatsPartyRepository repo;
+//    private final ElectionValidationService electionValidationService;
+//    private final TenantGucService tenantGucService;
+//    private final MeterRegistry meterRegistry;
+//    private final CandidateCenterStatsPartyMapper mapper = new CandidateCenterStatsPartyMapper();
+//
+//
+//    @Transactional(readOnly = true)
+//    @Cacheable(
+//            value = "candidateCenterStatsParty",
+//            key =
+//                    "T(java.lang.String).valueOf(#orgId) + ':' + #electionId"
+//                            + " + ':' + (#contestId==null?'':#contestId)"
+//                            + " + ':' + (#countyId==null?'':#countyId)"
+//                            + " + ':' + (#districtId==null?'':#districtId)"
+//                            + " + ':' + (#centerId==null?'':#centerId)"
+//                            + " + ':' + (#candidateId==null?'':#candidateId)"
+//                            + " + ':' + (#partyId==null?'':#partyId)"
+//                            + " + ':' + #pageable.pageNumber"
+//                            + " + ':' + #pageable.pageSize"
+//                            + " + ':' + #pageable.sort"
+//    )
+//
+//    public Page<CandidateCenterStatsPartyDto> listCandidateCenterStats(
+//            UUID orgId,
+//            UUID electionId,
+//            UUID contestId,   // ✅ NEW
+//            UUID countyId,
+//            UUID districtId,
+//            UUID centerId,
+//            UUID candidateId,
+//            UUID partyId,
+//            Pageable pageable
+//    ) {
+//        log.debug("listCandidateCenterStats called orgId={} electionId={} contestId={} countyId={} districtId={} centerId={} candidateId={} partyId={} page={} size={}",
+//                orgId, electionId, contestId, countyId, districtId, centerId, candidateId, partyId,
+//                pageable.getPageNumber(), pageable.getPageSize());
+//
+//        if (orgId == null) throw new IllegalArgumentException("orgId is required");
+//        electionValidationService.ensureExists(electionId);
+//
+//        tenantGucService.applyForTransaction(orgId, false, false);
+//
+//        Specification<CandidateCenterStatsParty> spec = Specification
+//                .where(CandidateCenterStatsPartySpecs.orgEquals(orgId))
+//                .and(CandidateCenterStatsPartySpecs.electionEquals(electionId))
+//                .and(CandidateCenterStatsPartySpecs.contestEquals(contestId))  // ✅ NEW
+//                .and(CandidateCenterStatsPartySpecs.countyEquals(countyId))
+//                .and(CandidateCenterStatsPartySpecs.districtEquals(districtId))
+//                .and(CandidateCenterStatsPartySpecs.centerEquals(centerId))
+//                .and(CandidateCenterStatsPartySpecs.candidateEquals(candidateId))
+//                .and(CandidateCenterStatsPartySpecs.partyEquals(partyId));
+//
+//        Page<CandidateCenterStatsParty> page = repo.findAll(spec, pageable);
+//
+//        meterRegistry.gauge("api.stats.candidate_center.result_size", page.getContent(), c -> (double) c.size());
+//        return page.map(mapper::toDto);
+//    }
 
 
 

@@ -1,3 +1,4 @@
+
 package election.ems_backend.views.entity;
 
 import jakarta.persistence.Column;
@@ -12,7 +13,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * Read-only mapping of v_candidate_center_stats_official.
+ * Read-only mapping of v_candidate_center_stats_official
  */
 @Entity
 @Table(name = "v_candidate_center_stats_official")
@@ -51,24 +52,48 @@ public class CandidateCenterStatsOfficial {
     @Column(name = "party_name")
     private String partyName;
 
-    @Column(name = "party_code")
+    // view column is "abbreviation"
+    @Column(name = "abbreviation")
     private String partyCode;
 
+    // ✅ BIGINT
     @Column(name = "candidate_votes")
-    private Integer candidateVotes;
+    private Long candidateVotes;
 
     @Column(name = "registered_voters")
-    private Integer registeredVoters;
+    private Long registeredVoters;
 
     @Column(name = "ballots_cast")
-    private Integer ballotsCast;
+    private Long ballotsCast;
 
     @Column(name = "center_valid_votes")
-    private Integer centerValidVotes;
+    private Long centerValidVotes;
 
     @Column(name = "center_invalid_total")
-    private Integer centerInvalidTotal;
+    private Long centerInvalidTotal;
 
     @Column(name = "vote_share_pct", precision = 10, scale = 6)
     private BigDecimal voteSharePct;
+
+    // ✅ window outputs
+    @Column(name = "rank_in_center")
+    private Long rankInCenter;
+
+    @Column(name = "winner_votes")
+    private Long winnerVotes;
+
+    @Column(name = "winner_vote_share_pct", precision = 10, scale = 6)
+    private BigDecimal winnerVoteSharePct;
+
+    @Column(name = "margin_votes")
+    private Long marginVotes;
+
+    @Column(name = "margin_pct", precision = 10, scale = 6)
+    private BigDecimal marginPct;
+
+    @Column(name = "is_center_winner")
+    private Boolean isCenterWinner;
+
+    @Column(name = "rank_center_in_district_for_candidate")
+    private Long rankCenterInDistrictForCandidate;
 }

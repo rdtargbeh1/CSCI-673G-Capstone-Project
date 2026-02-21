@@ -1,24 +1,36 @@
 package election.ems_backend.tenant;
 
-
 import java.util.Optional;
 import java.util.UUID;
 
 public final class TenantContext {
-    private static final ThreadLocal<TenantContext> CTX = new ThreadLocal<>();
+
+    // ✅ Optional upgrade: InheritableThreadLocal helps child threads inherit context
+    // (Still use TaskDecorator for pooled async if needed later)
+    private static final ThreadLocal<TenantContext> CTX = new InheritableThreadLocal<>();
 
     private final UUID userId;         // nullable
     private final UUID orgId;          // nullable
     private final boolean isSystemAdmin;
 
-    private TenantContext(UUID userId, UUID orgId, boolean systemAdmin) {
+    // ✅ Optional: store NEC admin flag for cleaner downstream checks / RLS variable consistency
+    private final boolean isNecAdmin;
+
+    private TenantContext(UUID userId, UUID orgId, boolean systemAdmin, boolean necAdmin) {
         this.userId = userId;
         this.orgId = orgId;
         this.isSystemAdmin = systemAdmin;
+        this.isNecAdmin = necAdmin;
     }
 
+    // ✅ Keep existing setter EXACTLY (backward compatible)
     public static void set(UUID userId, UUID orgId, boolean systemAdmin) {
-        CTX.set(new TenantContext(userId, orgId, systemAdmin));
+        CTX.set(new TenantContext(userId, orgId, systemAdmin, false));
+    }
+
+    // ✅ New overload (optional to use)
+    public static void set(UUID userId, UUID orgId, boolean systemAdmin, boolean necAdmin) {
+        CTX.set(new TenantContext(userId, orgId, systemAdmin, necAdmin));
     }
 
     public static TenantContext get() { return CTX.get(); }
@@ -28,17 +40,16 @@ public final class TenantContext {
     public Optional<UUID> orgId() { return Optional.ofNullable(orgId); }
     public boolean isSystemAdmin() { return isSystemAdmin; }
 
+    // ✅ New accessor (safe default=false via old set())
+    public boolean isNecAdmin() { return isNecAdmin; }
 
     // ---------- New helpers ----------
 
-    /** Returns current orgId or null if not set. */
     public static UUID getCurrentOrgIdOrNull() {
         TenantContext ctx = CTX.get();
         return (ctx == null) ? null : ctx.orgId;
     }
 
-
-    /** Returns current orgId or throws IllegalStateException if missing. */
     public static UUID requireCurrentOrgId() {
         TenantContext ctx = CTX.get();
         if (ctx == null || ctx.orgId == null) {
@@ -47,7 +58,6 @@ public final class TenantContext {
         return ctx.orgId;
     }
 
-    /** Returns current userId or throws IllegalStateException if missing. */
     public static UUID requireCurrentUserId() {
         TenantContext ctx = CTX.get();
         if (ctx == null || ctx.userId == null) {
@@ -56,19 +66,21 @@ public final class TenantContext {
         return ctx.userId;
     }
 
-
-    /** ✅ Returns current userId or null if not set. */
     public static UUID getCurrentUserIdOrNull() {
         TenantContext ctx = CTX.get();
         return (ctx == null) ? null : ctx.userId;
     }
 
-    /** ✅ Static system-admin check (safe default=false). */
     public static boolean isSystemAdminContext() {
         TenantContext ctx = CTX.get();
         return ctx != null && ctx.isSystemAdmin;
     }
 
-
+    // ✅ Optional convenience
+    public static boolean isNecAdminContext() {
+        TenantContext ctx = CTX.get();
+        return ctx != null && ctx.isNecAdmin;
+    }
 }
+
 

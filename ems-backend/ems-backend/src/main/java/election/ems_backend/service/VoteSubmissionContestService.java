@@ -1,9 +1,9 @@
 package election.ems_backend.service;
 
-import election.ems_backend.dto.VoteSubmissionContestBulkRequest;
-import election.ems_backend.dto.VoteSubmissionContestCreateRequest;
-import election.ems_backend.dto.VoteSubmissionContestDto;
-import election.ems_backend.dto.VoteSubmissionContestUpdateRequest;
+import election.ems_backend.dto.*;
+import election.ems_backend.repository.VoteSubmissionContestRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 import java.util.UUID;
@@ -12,6 +12,7 @@ import java.util.UUID;
         * Service to normalize submissions into submission_contest_vote rows.
  */
 public interface VoteSubmissionContestService {
+
     /**
      * Normalize a single submission into submission_contest_vote rows.
      * This is idempotent: it deletes any existing normalized rows for the submission before inserting.
@@ -27,23 +28,19 @@ public interface VoteSubmissionContestService {
      */
     int normalizeVerifiedSubmissionsForElection(UUID electionId);
 
-    ///
-    VoteSubmissionContestDto createOrUpdate(VoteSubmissionContestCreateRequest req);
-
-    VoteSubmissionContestDto update(UUID scvId, VoteSubmissionContestUpdateRequest req);
 
     VoteSubmissionContestDto get(UUID scvId);
 
-    List<VoteSubmissionContestDto> listBySubmission(UUID submissionId);
+    Page<VoteSubmissionContestRepository.SubmissionContestRowView> search(
+            UUID orgId,
+            UUID electionId,
+            UUID countyId,
+            UUID districtId,
+            UUID centerId,
+            UUID contestId,
+            UUID candidateId,
+            Pageable pageable
+    );
 
-    List<VoteSubmissionContestDto> listBySubmissionAndContest(UUID submissionId, UUID contestId);
-
-    void delete(UUID scvId);
-
-    /**
-     * Replace all votes for this submission+contest (atomic user experience).
-     * Common pattern: user submits contest selections once.
-     */
-    List<VoteSubmissionContestDto> replaceContestVotes(VoteSubmissionContestBulkRequest req);
 
 }

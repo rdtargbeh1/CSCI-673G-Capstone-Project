@@ -1,6 +1,5 @@
 package election.ems_backend.security;
 
-
 import election.ems_backend.entity.OrgMembership;
 import election.ems_backend.entity.SystemUser;
 import election.ems_backend.repository.OrgMembershipRepository;
@@ -8,7 +7,6 @@ import election.ems_backend.repository.OrganizationRepository;
 import election.ems_backend.repository.SystemUserRepository;
 import election.ems_backend.tenant.TenantContext;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
@@ -21,13 +19,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
-
 /**
  * Production implementation:
  *  - Reads the current tenant from TenantContext (populated by TenantFilter)
  *  - Reads current user id from CurrentUserProvider (SecurityContext/JWT)
  *  - Verifies membership is enabled for this tenant
- *  - Performs role checks (case-insensitive)
+ *  - Performs role checks (case-insensitive, ROLE_ prefix tolerant)
  *
  * Bean name is "authz" so you can use it from SpEL:
  *   @PreAuthorize("@authz.hasAny('ADMIN','MODERATOR')")
@@ -37,15 +34,11 @@ import java.util.*;
 @Transactional(readOnly = true)
 public class AuthorizationServiceImpl implements AuthorizationService {
 
-    @Autowired
-    private OrgMembershipRepository memberships;
-    @Autowired
-    private CurrentUserProvider currentUser;
-    @Autowired
-    private SystemUserRepository systemUserRepository;
-    @Autowired
-    private OrganizationRepository organizationRepository;
-
+    // ✅ Make injection consistent: constructor injection via @RequiredArgsConstructor
+    private final OrgMembershipRepository memberships;
+    private final CurrentUserProvider currentUser;
+    private final SystemUserRepository systemUserRepository;
+    private final OrganizationRepository organizationRepository;
 
 
     @Override
@@ -57,11 +50,13 @@ public class AuthorizationServiceImpl implements AuthorizationService {
 
         // 1) Platform SYSTEM_ADMIN: synthetic membership (no real org_membership row required)
         if (ctx.isSystemAdmin()) {
-            return OrgMembership.systemAdmin(
-                    ctx.userId().orElse(null),
-                    ctx.orgId().orElse(null)
-            );
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken || !isPlatformAdmin(auth)) {
+                throw new AccessDeniedException("Authentication required");
+            }
+            return OrgMembership.systemAdmin(ctx.userId().orElse(null), ctx.orgId().orElse(null));
         }
+
 
         // 2) Tenant must be present
         UUID orgId = ctx.orgId()
@@ -78,20 +73,17 @@ public class AuthorizationServiceImpl implements AuthorizationService {
         }
 
         if (userId == null) {
-            // Fallback: inspect SecurityContext directly
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
             if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken) {
                 throw new AccessDeniedException("Authentication required");
             }
 
-            // Try to infer identifier (username/email) from Authentication
             String identifier = null;
 
             Object principal = auth.getPrincipal();
             if (principal instanceof org.springframework.security.core.userdetails.UserDetails ud) {
                 identifier = ud.getUsername();
             } else if (principal instanceof Jwt jwt) {
-                // Prefer explicit claims if present
                 Object u = jwt.getClaims().get("userName");
                 if (u instanceof String s && !s.isBlank()) {
                     identifier = s;
@@ -100,7 +92,7 @@ public class AuthorizationServiceImpl implements AuthorizationService {
                     if (email instanceof String s && !s.isBlank()) {
                         identifier = s;
                     } else {
-                        identifier = auth.getName(); // fallback: subject / name
+                        identifier = auth.getName();
                     }
                 }
             } else {
@@ -111,10 +103,8 @@ public class AuthorizationServiceImpl implements AuthorizationService {
                 throw new AccessDeniedException("Authentication required");
             }
 
-            // Make identifier effectively final for lambdas
             final String idFinal = identifier;
 
-            // Lookup SystemUser by username first, then by email
             SystemUser user = systemUserRepository.findByUserNameIgnoreCase(idFinal)
                     .orElseGet(() ->
                             systemUserRepository.findByEmailIgnoreCase(idFinal)
@@ -129,20 +119,21 @@ public class AuthorizationServiceImpl implements AuthorizationService {
                 .orElseThrow(() -> new AccessDeniedException("Not a member of this organization or membership disabled"));
     }
 
-
     @Override
     public OrgMembership requireAny(String... roleNames) {
         OrgMembership m = requireMembership();
         if (m.isSystemAdmin()) return m;
         if (roleNames == null || roleNames.length == 0) return m;
 
-        String have = m.getRoleName();
+        String have = normalizeRoleToken(m.getRoleName());
         for (String want : roleNames) {
-            if (want != null && want.equalsIgnoreCase(have)) return m;
+            if (want == null) continue;
+            if (normalizeRoleToken(want).equals(have)) return m;
         }
-        throw new AccessDeniedException("Insufficient role: requires any of " + Arrays.toString(roleNames));
-    }
 
+        // ✅ avoid leaking the full role list in error messages
+        throw new AccessDeniedException("Insufficient role");
+    }
 
     @Override
     public boolean hasAny(String... roleNames) {
@@ -158,113 +149,36 @@ public class AuthorizationServiceImpl implements AuthorizationService {
     public Set<String> currentRoles() {
         try {
             OrgMembership m = requireMembership();
-            return m.isSystemAdmin() ? Set.of("SYSTEM_ADMIN") : Set.of(m.getRoleName());
+            return m.isSystemAdmin() ? Set.of("SYSTEM_ADMIN") : Set.of(normalizeRoleToken(m.getRoleName()));
         } catch (AccessDeniedException e) {
             return Set.of();
         }
     }
 
-
-    // 🔹 NEW: platform-level admin guard (no tenant required)
     @Override
     public void requirePlatformAdmin() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
 
-        // 1) Must be authenticated
         if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken) {
             throw new AuthenticationCredentialsNotFoundException("Authentication required");
         }
-        boolean isAdmin = false;
 
-        Object principal = auth.getPrincipal();
-
-        // ---- Case 1: JwtAuthenticationToken (most common with resource server) ----
-        if (auth instanceof org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken jwtAuth) {
-            Jwt jwt = jwtAuth.getToken();
-            // (a) Prefer the JWT claim: isSystemAdmin
-            Object claimVal = jwt.getClaims().get("isSystemAdmin");
-            if (claimVal instanceof Boolean b) {
-                isAdmin = b;
-            } else if (claimVal instanceof String s) {
-                isAdmin = Boolean.parseBoolean(s);
-            }
-            // (b) Fallback: check authorities that end with SYSTEM_ADMIN (ROLE_SYSTEM_ADMIN, SYSTEM_ADMIN, etc.)
-            if (!isAdmin) {
-                isAdmin = jwtAuth.getAuthorities().stream()
-                        .map(GrantedAuthority::getAuthority)
-                        .anyMatch(a -> a != null && a.toUpperCase().endsWith("SYSTEM_ADMIN"));
-            }
-        }
-        // ---- Case 2: principal itself is a Jwt ----
-        else if (principal instanceof Jwt jwt) {
-            Object claimVal = jwt.getClaims().get("isSystemAdmin");
-            if (claimVal instanceof Boolean b) {
-                isAdmin = b;
-            } else if (claimVal instanceof String s) {
-                isAdmin = Boolean.parseBoolean(s);
-            }
-            if (!isAdmin) {
-                isAdmin = auth.getAuthorities().stream()
-                        .map(GrantedAuthority::getAuthority)
-                        .anyMatch(a -> a != null && a.toUpperCase().endsWith("SYSTEM_ADMIN"));
-            }
-        }
-        // ---- Case 3: Anything else (local dev, username/password, etc.) ----
-        else {
-            isAdmin = auth.getAuthorities().stream()
-                    .map(GrantedAuthority::getAuthority)
-                    .anyMatch(a -> a != null && a.toUpperCase().endsWith("SYSTEM_ADMIN"));
-        }
-        if (!isAdmin) {
+        if (!isPlatformAdmin(auth)) {
             throw new AccessDeniedException("Platform admin required");
         }
     }
 
-
     @Override
     public void requireAnyInTenantOrPlatformAdmin(String... roleNames) {
-        // First: if caller is platform/system admin based on authentication, allow immediately.
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
         if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken)) {
-            boolean isSystemAdmin = false;
-
-            // Check JWT claim & authorities
-            Object principal = auth.getPrincipal();
-            if (auth instanceof org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken jwtAuth) {
-                Jwt jwt = jwtAuth.getToken();
-                Object claimVal = jwt.getClaims().get("isSystemAdmin");
-                if (claimVal instanceof Boolean b) isSystemAdmin = b;
-                else if (claimVal instanceof String s) isSystemAdmin = Boolean.parseBoolean(s);
-
-                if (!isSystemAdmin) {
-                    isSystemAdmin = jwtAuth.getAuthorities().stream()
-                            .map(GrantedAuthority::getAuthority)
-                            .anyMatch(a -> a != null && a.toUpperCase().endsWith("SYSTEM_ADMIN"));
-                }
-            } else {
-                if (principal instanceof Jwt jwt) {
-                    Object claimVal = jwt.getClaims().get("isSystemAdmin");
-                    if (claimVal instanceof Boolean b) isSystemAdmin = b;
-                    else if (claimVal instanceof String s) isSystemAdmin = Boolean.parseBoolean(s);
-                }
-
-                if (!isSystemAdmin) {
-                    isSystemAdmin = auth.getAuthorities().stream()
-                            .map(GrantedAuthority::getAuthority)
-                            .anyMatch(a -> a != null && a.toUpperCase().endsWith("SYSTEM_ADMIN"));
-                }
-            }
-
-            if (isSystemAdmin) {
-                // platform admin — allow
-                return;
-            }
+            if (isPlatformAdmin(auth)) return; // ✅ single source of truth
         }
 
-        // Not platform admin — fall back to tenant-scoped check which will validate membership.
+        // Not platform admin — fall back to tenant-scoped check which validates membership.
         requireAny(roleNames);
     }
-
 
     @Override
     public OrgMembership requireNecAdminOrPlatformAdmin() {
@@ -273,27 +187,7 @@ public class AuthorizationServiceImpl implements AuthorizationService {
 
         // ✅ 1) SYSTEM_ADMIN (global override) — no tenant required
         if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken)) {
-
-            // A) If authorities are present (some setups)
-            boolean isSystemAdminByAuthorities = auth.getAuthorities() != null
-                    && auth.getAuthorities().stream()
-                    .map(GrantedAuthority::getAuthority)
-                    .filter(Objects::nonNull)
-                    .map(String::toUpperCase)
-                    .anyMatch(a -> a.endsWith("SYSTEM_ADMIN"));
-
-            // B) If JWT has roles/claims but authorities list is empty (your current logs)
-            boolean isSystemAdminByJwt = false;
-            if (auth.getPrincipal() instanceof org.springframework.security.oauth2.jwt.Jwt jwt) {
-                isSystemAdminByJwt = isSystemAdminFromJwt(jwt);
-            }
-
-            // C) If principal is JwtAuthenticationToken (common)
-            if (!isSystemAdminByJwt && auth instanceof org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken jwtAuth) {
-                isSystemAdminByJwt = isSystemAdminFromJwt(jwtAuth.getToken());
-            }
-
-            if (isSystemAdminByAuthorities || isSystemAdminByJwt) {
+            if (isPlatformAdmin(auth)) {
                 TenantContext ctx = TenantContext.get();
                 UUID userId = (ctx != null ? ctx.userId().orElse(null) : null);
                 UUID orgId  = (ctx != null ? ctx.orgId().orElse(null) : null);
@@ -302,45 +196,73 @@ public class AuthorizationServiceImpl implements AuthorizationService {
         }
 
         // ✅ 2) Otherwise: require NEC_ADMIN membership (tenant-scoped)
-        OrgMembership m = requireMembership(); // must succeed for tenant-scoped
+        OrgMembership m = requireMembership();
 
-        if ("NEC_ADMIN".equalsIgnoreCase(m.getRoleName())) {
+        if (normalizeRoleToken(m.getRoleName()).equals("NEC_ADMIN")) {
             return m;
         }
 
         throw new AccessDeniedException("NEC Admin or System Admin required");
     }
 
+
+
+    // ---------------- private helpers ----------------
+
+    /** Single source of truth: determine platform/system admin from JWT claims or authorities. */
+    private boolean isPlatformAdmin(Authentication auth) {
+        if (auth == null || !auth.isAuthenticated() ||
+                auth instanceof org.springframework.security.authentication.AnonymousAuthenticationToken) {
+            return false;
+        }
+
+        // A) Authorities (EXACT match only; ROLE_ prefix tolerated)
+        if (auth.getAuthorities() != null) {
+            boolean byAuthorities = auth.getAuthorities().stream()
+                    .map(GrantedAuthority::getAuthority)
+                    .filter(Objects::nonNull)
+                    .map(this::normalizeRoleToken)      // strips ROLE_, uppercases
+                    .anyMatch(r -> r.equals("SYSTEM_ADMIN"));
+
+            if (byAuthorities) return true;
+        }
+
+        // B) JWT claims (covers your case where authorities list may be empty)
+        if (auth instanceof org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken jwtAuth) {
+            return isSystemAdminFromJwt(jwtAuth.getToken());
+        }
+        if (auth.getPrincipal() instanceof org.springframework.security.oauth2.jwt.Jwt jwt) {
+            return isSystemAdminFromJwt(jwt);
+        }
+
+        return false;
+    }
+
+
     /**
-     * ✅ Robust SYSTEM_ADMIN detection from JWT claims.
-     * Adjust claim keys here to match your token.
+     * Strict SYSTEM_ADMIN detection from JWT claims.
+     * Supports the same claim keys as before, but avoids substring/endsWith bridges.
      */
     private boolean isSystemAdminFromJwt(org.springframework.security.oauth2.jwt.Jwt jwt) {
         if (jwt == null) return false;
 
-        // Most common claim patterns:
-        // - globalRoleName: "SYSTEM_ADMIN"
-        // - roles: ["SYSTEM_ADMIN", ...]
-        // - authorities: ["ROLE_SYSTEM_ADMIN", ...]
-        // - scope/scp: "SYSTEM_ADMIN ..." or ["SYSTEM_ADMIN", ...]
-
+        // 1) explicit global role name
         String globalRoleName = asString(jwt.getClaim("globalRoleName"));
         if ("SYSTEM_ADMIN".equalsIgnoreCase(globalRoleName)) return true;
 
-        // sometimes boolean flag
-        Boolean isSystemAdminFlag = jwt.getClaim("isSystemAdmin");
-        if (Boolean.TRUE.equals(isSystemAdminFlag)) return true;
+        // 2) explicit boolean/string flag
+        Object isFlag = jwt.getClaim("isSystemAdmin");
+        if (isFlag instanceof Boolean b && b) return true;
+        if (isFlag instanceof String s && Boolean.parseBoolean(s)) return true;
 
-        // arrays: roles / authorities / permissions
+        // 3) exact role tokens in common claim keys
         if (containsRole(jwt.getClaim("roles"), "SYSTEM_ADMIN")) return true;
         if (containsRole(jwt.getClaim("authorities"), "SYSTEM_ADMIN")) return true;
         if (containsRole(jwt.getClaim("permissions"), "SYSTEM_ADMIN")) return true;
-
-        // scopes: "scope" or "scp"
         if (containsRole(jwt.getClaim("scope"), "SYSTEM_ADMIN")) return true;
         if (containsRole(jwt.getClaim("scp"), "SYSTEM_ADMIN")) return true;
 
-        // fallback: check for something like "ROLE_SYSTEM_ADMIN"
+        // keep compatibility: allow ROLE_SYSTEM_ADMIN as exact token
         if (containsRole(jwt.getClaim("roles"), "ROLE_SYSTEM_ADMIN")) return true;
         if (containsRole(jwt.getClaim("authorities"), "ROLE_SYSTEM_ADMIN")) return true;
 
@@ -351,38 +273,68 @@ public class AuthorizationServiceImpl implements AuthorizationService {
         return (v == null) ? null : String.valueOf(v);
     }
 
+    /**
+     * Checks whether a claim contains the expected role as an EXACT token.
+     *
+     * Supported claim formats:
+     *  - String: "A B C" or "A,B,C"
+     *  - Collection: ["A","B","C"]
+     *
+     * This avoids unsafe substring matches like "NOT_SYSTEM_ADMIN".
+     */
     private boolean containsRole(Object claimValue, String expected) {
         if (claimValue == null || expected == null) return false;
 
-        String exp = expected.toUpperCase();
+        String exp = normalizeRoleToken(expected);
 
-        // Claim is a String like "SYSTEM_ADMIN NEC_ADMIN"
+        // claim is a String (common for scope): split into tokens
         if (claimValue instanceof String s) {
-            String up = s.toUpperCase();
-            return up.contains(exp);
+            for (String tok : splitTokens(s)) {
+                if (normalizeRoleToken(tok).equals(exp)) return true;
+            }
+            return false;
         }
 
-        // Claim is a List/array
+        // claim is a list/array
         if (claimValue instanceof Collection<?> c) {
             for (Object o : c) {
                 if (o == null) continue;
-                String up = String.valueOf(o).toUpperCase();
-                if (up.equals(exp) || up.endsWith(exp)) return true;
+                if (normalizeRoleToken(String.valueOf(o)).equals(exp)) return true;
             }
         }
 
         return false;
     }
 
-
-
-    /* ---------------- helpers ---------------- */
-
-    private static String safe(String s) {
-        return s == null ? "" : s;
+    /**
+     * Normalize any role/authority token into a comparable role name:
+     * - trim
+     * - uppercase
+     * - remove ROLE_ prefix
+     *
+     * Examples:
+     *  "ROLE_SYSTEM_ADMIN" -> "SYSTEM_ADMIN"
+     *  "system_admin"      -> "SYSTEM_ADMIN"
+     */
+    private String normalizeRoleToken(String role) {
+        if (role == null) return "";
+        String r = role.trim().toUpperCase(Locale.ROOT);
+        if (r.startsWith("ROLE_")) r = r.substring("ROLE_".length());
+        return r;
     }
 
-    private static boolean equalsIgnoreCaseNonNull(String a, String b) {
-        return b != null && a.equalsIgnoreCase(b);
+
+    /** Split common string role formats: whitespace and commas. */
+    private List<String> splitTokens(String s) {
+        if (s == null || s.isBlank()) return java.util.List.of();
+        return java.util.Arrays.stream(s.split("[,\\s]+"))
+                .map(String::trim)
+                .filter(t -> !t.isEmpty())
+                .toList();
     }
+
+
 }
+
+
+

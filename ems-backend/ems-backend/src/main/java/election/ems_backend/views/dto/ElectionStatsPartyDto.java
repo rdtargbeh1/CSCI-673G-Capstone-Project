@@ -1,31 +1,26 @@
+
 package election.ems_backend.views.dto;
 
-
-import lombok.*;
+import lombok.Data;
 
 import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * DTO returned to the frontend for election-level party stats.
+ * DTO for election-level party statistics.
+ *
+ * Maps to view: public.v_election_stats_party
  */
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
+@Data
 public class ElectionStatsPartyDto {
 
     private UUID orgId;
     private UUID electionId;
     private UUID contestId;
 
-    // ✅ FULL election basis
+    // totals (BIGINT)
     private Long registeredVoters;
-
-    // ✅ reported so far (VERIFIED)
     private Long ballotsCast;
-
     private Long validVotes;
     private Long invalidTotal;
 
@@ -33,8 +28,11 @@ public class ElectionStatsPartyDto {
     private BigDecimal turnoutPct;
     private BigDecimal invalidPct;
 
-    // ✅ reporting coverage
+    // reporting
     private Long centersReported;
     private Long centersTotal;
     private BigDecimal reportingPct;
+
+    // progress signal
+    private Long centersStarted;
 }

@@ -1,3 +1,4 @@
+
 package election.ems_backend.views.mapper;
 
 import election.ems_backend.views.dto.CandidateDistrictStatsPartyDto;
@@ -20,18 +21,31 @@ public class CandidateDistrictStatsPartyMapper {
 
         d.setCountyId(e.getCountyId());
         d.setCountyName(e.getCountyName());
+
         d.setDistrictName(e.getDistrictName());
+
         d.setCandidateName(e.getCandidateName());
+
         d.setPartyId(e.getPartyId());
         d.setPartyName(e.getPartyName());
-        d.setAbbreviation(e.getAbbreviation());
+        d.setPartyCode(e.getPartyCode());
+
+        // totals
         d.setCandidateVotes(e.getCandidateVotes());
         d.setBallotsCast(e.getBallotsCast());
         d.setTotalValidVotes(e.getTotalValidVotes());
         d.setTotalInvalidVotes(e.getTotalInvalidVotes());
+
         d.setVoteSharePct(e.getVoteSharePct());
+
+        // rankings / outcomes
+        d.setRankInDistrict(e.getRankInDistrict());
+        d.setWinnerVotes(e.getWinnerVotes());
+        d.setWinnerVoteSharePct(e.getWinnerVoteSharePct());
+        d.setMarginVotes(e.getMarginVotes());
+        d.setMarginPct(e.getMarginPct());
+        d.setIsDistrictWinner(e.getIsDistrictWinner());
 
         return d;
     }
-
 }

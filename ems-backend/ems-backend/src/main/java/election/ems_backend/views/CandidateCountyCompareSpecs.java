@@ -45,9 +45,10 @@ public final class CandidateCountyCompareSpecs {
     public static Specification<CandidateCountyCompare> orgEquals(UUID orgId) {
         return (root, query, cb) -> {
             if (orgId == null) return null;
-            return cb.equal(root.get("orgId"), orgId);
+            return cb.equal(root.get("id").get("orgId"), orgId);
         };
     }
+
 
     public static Specification<CandidateCountyCompare> partyEquals(UUID partyId) {
         return (root, query, cb) -> {

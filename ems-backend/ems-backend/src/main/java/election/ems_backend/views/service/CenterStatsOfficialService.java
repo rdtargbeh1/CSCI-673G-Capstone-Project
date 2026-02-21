@@ -1,3 +1,4 @@
+
 package election.ems_backend.views.service;
 
 import election.ems_backend.utility.SecurityUtils;
@@ -27,6 +28,9 @@ import java.util.UUID;
  *
  * Important RLS note: Ensure your DB RLS policy for nec_result allows published
  * rows to be visible to non-NEC orgs (i.e., policies likely use (is_published = true) OR (current org is NEC)).
+ *
+ * NOTE: contestId is OPTIONAL:
+ * - contestId == null => return rows for ALL contests (no contest filter applied)
  */
 @Service
 @RequiredArgsConstructor
@@ -39,26 +43,29 @@ public class CenterStatsOfficialService {
     private final MeterRegistry meterRegistry;
     private final CenterStatsOfficialMapper mapper = new CenterStatsOfficialMapper();
 
-
-
     @Transactional(readOnly = true)
     @Cacheable(
-            value="centerStatsOfficial",
-            key="T(java.lang.String).valueOf(#electionId)"
+            value = "centerStatsOfficial",
+            key = "T(java.lang.String).valueOf(#electionId)"
                     + " + ':' + (#contestId==null?'':#contestId)"
                     + " + ':' + (#countyId==null?'':#countyId)"
                     + " + ':' + (#districtId==null?'':#districtId)"
                     + " + ':' + (#centerId==null?'':#centerId)"
                     + " + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort"
     )
-    public Page<CenterStatsOfficialDto> listOfficialCenters(UUID electionId,  UUID contestId,
-                                                            UUID countyId, UUID districtId,
-                                                            UUID centerId, Pageable pageable) {
+    public Page<CenterStatsOfficialDto> listOfficialCenters(
+            UUID electionId,
+            UUID contestId,   // ✅ OPTIONAL now
+            UUID countyId,
+            UUID districtId,
+            UUID centerId,
+            Pageable pageable
+    ) {
         log.debug("listOfficialCenters called electionId={} contestId={} countyId={} districtId={} centerId={} page={} size={}",
                 electionId, contestId, countyId, districtId, centerId, pageable.getPageNumber(), pageable.getPageSize());
 
         if (electionId == null) throw new IllegalArgumentException("electionId is required");
-        if (contestId == null) throw new IllegalArgumentException("contestId is required");
+        // ✅ contestId is OPTIONAL (no validation)
 
         // Derive orgId from security context (if present) and apply tenant GUCs for the transaction.
         UUID derivedOrgId = SecurityUtils.getOrgIdFromContext();
@@ -73,6 +80,7 @@ public class CenterStatsOfficialService {
 
         Specification<CenterStatsOfficial> spec = Specification
                 .where(CenterStatsOfficialSpecs.electionEquals(electionId))
+                // ✅ contest filter applied ONLY if contestId != null (spec must return null when contestId is null)
                 .and(CenterStatsOfficialSpecs.contestEquals(contestId))
                 .and(CenterStatsOfficialSpecs.countyEquals(countyId))
                 .and(CenterStatsOfficialSpecs.districtEquals(districtId))
@@ -84,7 +92,4 @@ public class CenterStatsOfficialService {
 
         return page.map(mapper::toDto);
     }
-
-
-
 }

@@ -1,3 +1,4 @@
+
 package election.ems_backend.views.contro;
 
 import election.ems_backend.views.dto.DistrictStatsOfficialDto;
@@ -41,7 +42,7 @@ public class DistrictStatsOfficialController {
     @GetMapping
     public ResponseEntity<Page<DistrictStatsOfficialDto>> list(
             @RequestParam(value = "electionId") UUID electionId,
-            @RequestParam(value = "contestId", required = false) UUID contestId, // ✅ NEW
+            @RequestParam(value = "contestId", required = false) UUID contestId, // ✅ OPTIONAL
             @RequestParam(value = "countyId", required = false) UUID countyId,
             @RequestParam(value = "districtId", required = false) UUID districtId,
             @RequestParam(value = "page", required = false, defaultValue = "0") @Min(0) int page,
@@ -74,9 +75,8 @@ public class DistrictStatsOfficialController {
                 "endpoint", "/api/stats/official/districts").increment();
 
         Page<DistrictStatsOfficialDto> result =
-                service.listOfficialDistricts(electionId, contestId, countyId, districtId, pageable); // ✅ NEW
+                service.listOfficialDistricts(electionId, contestId, countyId, districtId, pageable);
 
         return ResponseEntity.ok(result);
     }
-
 }

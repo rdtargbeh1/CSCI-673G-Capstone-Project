@@ -1,3 +1,4 @@
+
 package election.ems_backend.views.entity;
 
 import jakarta.persistence.Column;
@@ -11,7 +12,7 @@ import org.hibernate.annotations.Immutable;
 import java.math.BigDecimal;
 
 /**
- * Read-only mapping of v_county_stats_official.
+ * Read-only JPA mapping of the database view v_county_stats_official.
  */
 @Entity
 @Table(name = "v_county_stats_official")
@@ -26,21 +27,50 @@ public class CountyStatsOfficial {
     @Column(name = "county_name")
     private String countyName;
 
+    // bigint
     @Column(name = "registered_voters")
-    private Integer registeredVoters;
+    private Long registeredVoters;
 
     @Column(name = "ballots_cast")
-    private Integer ballotsCast;
+    private Long ballotsCast;
 
     @Column(name = "valid_votes")
-    private Integer validVotes;
+    private Long validVotes;
 
     @Column(name = "invalid_total")
-    private Integer invalidTotal;
+    private Long invalidTotal;
 
+    // fn_pct numeric
     @Column(name = "turnout_pct", precision = 10, scale = 6)
     private BigDecimal turnoutPct;
 
     @Column(name = "invalid_pct", precision = 10, scale = 6)
     private BigDecimal invalidPct;
+
+    // center reporting
+    @Column(name = "centers_reported")
+    private Long centersReported;
+
+    @Column(name = "centers_total")
+    private Long centersTotal;
+
+    @Column(name = "reporting_pct", precision = 10, scale = 6)
+    private BigDecimal reportingPct;
+
+    // district rollups
+    @Column(name = "districts_reported")
+    private Long districtsReported;
+
+    @Column(name = "districts_total")
+    private Long districtsTotal;
+
+    @Column(name = "districts_completed")
+    private Long districtsCompleted;
+
+    @Column(name = "districts_started")
+    private Long districtsStarted;
+
+    // progress
+    @Column(name = "centers_started")
+    private Long centersStarted;
 }

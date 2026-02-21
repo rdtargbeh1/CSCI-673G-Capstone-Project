@@ -1,3 +1,4 @@
+
 package election.ems_backend.views.contro;
 
 import election.ems_backend.utility.SecurityUtils;
@@ -42,7 +43,7 @@ public class CountyStatsPartyController {
     public ResponseEntity<Page<CountyStatsPartyDto>> list(
             @RequestParam(value = "orgId", required = false) UUID orgIdParam,
             @RequestParam(value = "electionId") UUID electionId,
-            @RequestParam(value = "contestId", required = false) UUID contestId, // ✅ NEW
+            @RequestParam(value = "contestId", required = false) UUID contestId, // ✅ OPTIONAL
             @RequestParam(value = "countyId", required = false) UUID countyId,
             @RequestParam(value = "page", required = false, defaultValue = "0") @Min(0) int page,
             @RequestParam(value = "size", required = false) Integer size,

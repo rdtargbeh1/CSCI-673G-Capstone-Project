@@ -1,5 +1,6 @@
 package election.ems_backend.security;
 
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -12,15 +13,14 @@ import java.util.UUID;
  * (authorization services, auditing helpers, etc.).
  *
  * Resolution order (production):
- *  1) Jwt principal -> claims: "userId" (preferred), then "sub"
+ *  1) Jwt principal -> claims: "userId" (preferred), then "user_id", "uid", then "sub"
  *  2) Custom principal via getUserId() (UUID or String UUID)
- *  3) Principal is a Map of claims -> "userId" then "sub"
+ *  3) Principal is a Map of claims -> same keys
  *  4) Fallback: Authentication.getName() parsed as UUID
  *
  * Returns null if not authenticated or if no UUID can be derived.
  */
 public interface CurrentUserProvider {
-
 
     UUID currentUserId();
 
@@ -32,9 +32,10 @@ public interface CurrentUserProvider {
             @Override
             public UUID currentUserId() {
                 Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-                if (auth == null || !auth.isAuthenticated()) return null;
+                if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken) return null;
 
                 Object principal = auth.getPrincipal();
+                if (principal == null) return null;
 
                 // 1) Fast path: principal is a Jwt (OAuth2 Resource Server)
                 UUID id = fromJwtPrincipal(principal);
@@ -57,25 +58,29 @@ public interface CurrentUserProvider {
             @Override
             public boolean isAuthenticated() {
                 Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-                if (auth == null || !auth.isAuthenticated()) return false;
+                if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken) return false;
                 String name = auth.getName();
-                return name != null && !"anonymousUser".equals(name);
+                return name != null && !name.isBlank() && !"anonymousUser".equals(name);
             }
 
             /* ---------------- helpers ---------------- */
 
             private UUID fromJwtPrincipal(Object principal) {
                 if (principal instanceof Jwt jwt) {
-                    // Prefer explicit "userId"; then "sub"
-                    Object v = jwt.getClaim("userId");
-                    if (v instanceof String s) {
-                        UUID u = parseUuidOrNull(s);
-                        if (u != null) return u;
-                    }
-                    Object sub = jwt.getClaim("sub");
-                    if (sub instanceof String s) {
-                        return parseUuidOrNull(s);
-                    }
+                    // Prefer explicit user id claims first
+                    UUID u;
+
+                    u = claimUuid(jwt, "userId");
+                    if (u != null) return u;
+
+                    u = claimUuid(jwt, "user_id");
+                    if (u != null) return u;
+
+                    u = claimUuid(jwt, "uid");
+                    if (u != null) return u;
+
+                    // Then subject
+                    return parseUuidOrNull(jwt.getSubject());
                 } else {
                     // Avoid a hard Jwt dep if principal exposes getClaims() reflectively
                     try {
@@ -89,8 +94,13 @@ public interface CurrentUserProvider {
                 return null;
             }
 
+            private UUID claimUuid(Jwt jwt, String key) {
+                Object v = jwt.getClaims().get(key);
+                if (v instanceof String s) return parseUuidOrNull(s);
+                return null;
+            }
+
             private UUID fromCustomPrincipal(Object principal) {
-                if (principal == null) return null;
                 try {
                     var m = principal.getClass().getMethod("getUserId");
                     Object v = m.invoke(principal);
@@ -100,9 +110,10 @@ public interface CurrentUserProvider {
                 return null;
             }
 
-            @SuppressWarnings("unchecked")
             private UUID fromClaimsMap(Map<?, ?> claims) {
                 Object v = claims.get("userId");
+                if (v == null) v = claims.get("user_id");
+                if (v == null) v = claims.get("uid");
                 if (v == null) v = claims.get("sub");
                 if (v instanceof String s) return parseUuidOrNull(s);
                 return null;
@@ -114,5 +125,8 @@ public interface CurrentUserProvider {
             }
         };
     }
+
+
 }
+
 

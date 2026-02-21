@@ -1,3 +1,4 @@
+
 package election.ems_backend.views.entity;
 
 import jakarta.persistence.Column;
@@ -11,7 +12,7 @@ import org.hibernate.annotations.Immutable;
 import java.math.BigDecimal;
 
 /**
- * Read-only JPA mapping of the database view v_election_stats_party.
+ * Read-only JPA mapping for v_election_stats_party.
  */
 @Entity
 @Table(name = "v_election_stats_party")
@@ -23,11 +24,12 @@ public class ElectionStatsParty {
     @EmbeddedId
     private ElectionStatsPartyId id;
 
+    // BIGINT aggregates
     @Column(name = "registered_voters")
-    private Long registeredVoters; // ✅ FULL election basis
+    private Long registeredVoters;
 
     @Column(name = "ballots_cast")
-    private Long ballotsCast; // ✅ reported so far (VERIFIED)
+    private Long ballotsCast;
 
     @Column(name = "valid_votes")
     private Long validVotes;
@@ -35,13 +37,14 @@ public class ElectionStatsParty {
     @Column(name = "invalid_total")
     private Long invalidTotal;
 
+    // percentages
     @Column(name = "turnout_pct", precision = 10, scale = 6)
-    private BigDecimal turnoutPct; // ✅ ballots_cast / full registered_voters
+    private BigDecimal turnoutPct;
 
     @Column(name = "invalid_pct", precision = 10, scale = 6)
-    private BigDecimal invalidPct; // ✅ invalid_total / ballots_cast (reported)
+    private BigDecimal invalidPct;
 
-    // ✅ reporting coverage
+    // reporting
     @Column(name = "centers_reported")
     private Long centersReported;
 
@@ -50,4 +53,8 @@ public class ElectionStatsParty {
 
     @Column(name = "reporting_pct", precision = 10, scale = 6)
     private BigDecimal reportingPct;
+
+    // progress signal
+    @Column(name = "centers_started")
+    private Long centersStarted;
 }

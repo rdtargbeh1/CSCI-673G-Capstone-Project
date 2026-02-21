@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -25,14 +26,18 @@ import java.util.UUID;
 @Transactional
 public class UserSessionService {
 
+
     private final UserSessionRepository repo;
     private final SystemUserRepository userRepo;
     private final OrganizationRepository orgRepo;
     private final UserSessionMapper mapper = new UserSessionMapper();
 
+
+
     public UserSessionDto create(UserSessionCreateRequest req) {
         SystemUser user = userRepo.findById(req.getUserId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
         Organization org = req.getOrgId() != null
                 ? orgRepo.findById(req.getOrgId()).orElse(null)
                 : null;
@@ -42,16 +47,40 @@ public class UserSessionService {
         return mapper.toDTO(repo.save(s));
     }
 
+    /**
+     * ✅ NEW: used by AuthController on login to create a session row.
+     * Returns the created sessionId.
+     */
+    @Transactional
+    public UUID createLoginSession(UUID userId, UUID orgId, LocalDateTime expiresAt) {
+        SystemUser user = userRepo.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        Organization org = (orgId != null)
+                ? orgRepo.findById(orgId).orElse(null)
+                : null;
+
+        UserSession s = new UserSession();
+        // ✅ do NOT set sessionId
+        s.setUser(user);
+        s.setOrganization(org);
+        s.setRevoked(false);
+        s.setDateCreated(LocalDateTime.now());
+        s.setExpiresDate(expiresAt);
+
+        UserSession saved = repo.save(s); // INSERT
+        return saved.getSessionId();
+    }
+
+
     @Transactional(readOnly = true)
     public List<UserSessionDto> getUserSessions(UUID userId) {
-        return repo.findByUser_UserId(userId)
-                .stream().map(mapper::toDTO).toList();
+        return repo.findByUser_UserId(userId).stream().map(mapper::toDTO).toList();
     }
 
     @Transactional(readOnly = true)
     public List<UserSessionDto> getActiveSessions(UUID userId) {
-        return repo.findActiveSessions(userId)
-                .stream().map(mapper::toDTO).toList();
+        return repo.findActiveSessions(userId).stream().map(mapper::toDTO).toList();
     }
 
     public void revoke(UUID sessionId) {
@@ -61,4 +90,6 @@ public class UserSessionService {
     public void revokeAll(UUID userId) {
         repo.revokeAllByUserId(userId);
     }
+
+
 }

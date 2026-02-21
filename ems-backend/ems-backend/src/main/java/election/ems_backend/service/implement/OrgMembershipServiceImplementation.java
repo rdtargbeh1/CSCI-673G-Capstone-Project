@@ -67,6 +67,9 @@ public class OrgMembershipServiceImplementation implements OrgMembershipService 
 
     @Override
     public OrgMembershipDto addMemberInTenant(MembershipCreateRequest req) {
+
+        authz.requireAny("ADMIN", "TENANT_ADMIN", "NEC_ADMIN");
+
         UUID orgId = requireTenant();
         Organization org = orgs.findById(orgId)
                 .orElseThrow(() -> new NoSuchElementException("Organization not found"));
@@ -107,7 +110,7 @@ public class OrgMembershipServiceImplementation implements OrgMembershipService 
     @Override
     public void setRoleInTenant(UUID userId, String roleName) {
         // Only tenant ADMIN or platform admin may change membership roles
-        authz.requireAny("ADMIN", "PARTY_ADMIN");
+        authz.requireAny("ADMIN", "TENANT_ADMIN", "NEC_ADMIN");
 
         UUID orgId = requireTenant();
 
@@ -159,7 +162,7 @@ public class OrgMembershipServiceImplementation implements OrgMembershipService 
     @Override
     public void setEnabledInTenant(UUID userId, boolean enabled) {
         // Only tenant ADMIN or platform admin may enable/disable membership
-        authz.requireAnyInTenantOrPlatformAdmin("PARTY_ADMIN","SYSTEM_ADMIN","NEC_ADMIN");
+        authz.requireAnyInTenantOrPlatformAdmin("TENANT_ADMIN","NEC_ADMIN");
 
         UUID orgId = requireTenant();
         OrgMembership m = orgMembershipRepository.findByOrganization_OrgIdAndUser_UserId(orgId, userId)
@@ -170,16 +173,18 @@ public class OrgMembershipServiceImplementation implements OrgMembershipService 
         // Audit
         try {
             UUID actor = currentUserProvider.currentUserId();
+            String activityType = enabled ? "MEMBERSHIP_ENABLED" : "MEMBERSHIP_DISABLED";
             String desc = "Set membership enabled=" + enabled + " for user=" + userId;
             jdbc.update("INSERT INTO audit_log (log_id, org_id, user_id, activity_type, entity_affected, action_description) VALUES (gen_random_uuid(), ?, ?, ?, ?, ?)",
-                    new Object[]{ orgId, actor, "MEMBERSHIP_SET_ENABLED", "org_membership", desc });
+                    new Object[]{ orgId, actor, activityType, "org_membership", desc });
         } catch (Exception ignored) {}
+
     }
 
     @Override
     public void removeMemberInTenant(UUID userId) {
         // Only tenant ADMIN or system admin may remove members
-        authz.requireAnyInTenantOrPlatformAdmin("PARTY_ADMIN","SYSTEM_ADMIN","NEC_ADMIN");
+        authz.requireAnyInTenantOrPlatformAdmin("TENANT_ADMIN", "NEC_ADMIN");
 
         UUID orgId = requireTenant();
         OrgMembership m = orgMembershipRepository.findByOrganization_OrgIdAndUser_UserId(orgId, userId)
@@ -201,8 +206,10 @@ public class OrgMembershipServiceImplementation implements OrgMembershipService 
             UUID actor = currentUserProvider.currentUserId();
             String desc = "Removed membership: user=" + userId;
             jdbc.update("INSERT INTO audit_log (log_id, org_id, user_id, activity_type, entity_affected, action_description) VALUES (gen_random_uuid(), ?, ?, ?, ?, ?)",
-                    new Object[]{ orgId, actor, "MEMBERSHIP_REMOVE", "org_membership", desc });
+                    new Object[]{ orgId, actor, "MEMBERSHIP_REMOVED", "org_membership", desc });
         } catch (Exception ignored) {}
+
+
     }
 
 

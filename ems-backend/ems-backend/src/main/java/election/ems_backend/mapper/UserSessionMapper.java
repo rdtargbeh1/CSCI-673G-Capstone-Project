@@ -22,6 +22,15 @@ public class UserSessionMapper {
         return UserSessionDto.builder()
                 .sessionId(s.getSessionId())
                 .userId(s.getUser().getUserId())
+                .userFullName(
+                        s.getUser().getFirstName() + " " + s.getUser().getLastName()
+                )
+
+                .orgId(s.getOrganization() != null ? s.getOrganization().getOrgId() : null)
+                .orgName(
+                        s.getOrganization() != null ? s.getOrganization().getOrgName() : null
+                )
+
                 .orgId(s.getOrganization() != null ? s.getOrganization().getOrgId() : null)
                 .dateCreated(s.getDateCreated())
                 .expiresDate(s.getExpiresDate())

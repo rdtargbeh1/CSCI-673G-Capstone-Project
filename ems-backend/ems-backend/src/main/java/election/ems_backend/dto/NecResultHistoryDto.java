@@ -27,6 +27,7 @@ public class NecResultHistoryDto {
     private Integer spoiledBallots;
     private ChangeType changeType;
     private UUID changedBy;
+    private String changedByUserName;
     private LocalDateTime dateChanged;
     private String notes;
     private String userNote;

@@ -62,6 +62,8 @@ public class NECResultServiceImplementation implements NECResultService {
 
 
 
+
+
     // ✅ FINAL CODE (AS REQUESTED)
 
     // =========================
@@ -215,9 +217,11 @@ public class NECResultServiceImplementation implements NECResultService {
         return changed;
     }
 
+
+
     // =========================
-    // UNPUBLISH (CANONICAL)
-    // =========================
+// UNPUBLISH (CANONICAL)
+// =========================
     @Override
     @Transactional
     public NECResult unpublishForCenterContest(UUID electionId,
@@ -251,11 +255,21 @@ public class NECResultServiceImplementation implements NECResultService {
 
         logLedgerAndSignNecResult("NEC_RESULT_UNPUBLISH", nr, actorUserId, payloadHash);
 
+        // ✅ classify change type using your enum
+        final String userNote = (reason == null ? null : reason.trim());
+        final boolean isExpired = userNote != null && userNote.equalsIgnoreCase("AUTO_EXPIRED");
+
+        final ChangeType changeType = isExpired
+                ? ChangeType.UNPUBLISHED_EXPIRED
+                : ChangeType.UNPUBLISHED_MANUAL;
+
+        // ✅ IMPORTANT: call the 5-arg overload so userNote is saved
         writeHistory(
                 nr,
-                ChangeType.UNPUBLISHED_MANUAL,
+                changeType,
                 actorUserId,
-                "UNPUBLISHED: reason=" + (reason == null ? "N/A" : reason) + ", at=" + now
+                "UNPUBLISHED: reason=" + (userNote == null ? "N/A" : userNote) + ", at=" + now,
+                userNote
         );
 
         UUID necOrgId = resolveNecOrgIdOrThrow();
@@ -267,11 +281,13 @@ public class NECResultServiceImplementation implements NECResultService {
                         + ", electionId=" + electionId
                         + ", contestId=" + contestId
                         + ", centerId=" + centerId
-                        + ", reason=" + (reason == null ? "N/A" : reason)
+                        + ", reason=" + (userNote == null ? "N/A" : userNote)
         );
 
         return nr;
     }
+
+
 
     // =========================
     // BATCH UNPUBLISH (ELECTION)
@@ -433,6 +449,23 @@ public class NECResultServiceImplementation implements NECResultService {
     }
 
 
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isElectionPublished(UUID electionId, UUID contestId) {
+        return resultRepo.existsPublished(electionId, contestId);
+    }
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isPublishedForCenterContest(UUID electionId, UUID contestId, UUID centerId) {
+        if (electionId == null || contestId == null || centerId == null) return false;
+
+        return resultRepo.existsByElection_ElectionIdAndContest_ContestIdAndPollingCenter_CenterIdAndIsPublishedTrue(
+                electionId, contestId, centerId
+        );
+    }
+
 
     // ---------------------------------------------------------------------
 // ✅ small helper (keep near recompute methods)
@@ -544,6 +577,19 @@ public class NECResultServiceImplementation implements NECResultService {
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Contest not found"));
         PollingCenter center = centerRepo.findById(centerId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Polling center not found"));
+
+
+        // ✅ HARD FREEZE: Never recompute if already published
+        // Published official result must remain immutable until unpublished.
+        if (resultRepo.existsByElection_ElectionIdAndContest_ContestIdAndPollingCenter_CenterIdAndIsPublishedTrue(
+                electionId, contestId, centerId
+        )) {
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "Cannot recompute NECResult: official result is already published for this contest/center. Unpublish first."
+            );
+        }
+
 
         // 1) Count NEC-verified submissions for this scope (same logic)
         Long verifiedCount = jdbc.queryForObject("""
@@ -769,7 +815,10 @@ public class NECResultServiceImplementation implements NECResultService {
         nr.setSource("AUTO_FROM_VERIFIED_NEC_SUBMISSIONS");
         nr.setUploadTime(LocalDateTime.now());
         nr.setPublished(false);
+//        nr.setIsPublished(false);
         nr.setPublishedAt(null);
+        nr.setPublishedUntil(null);
+
 
         nr = resultRepo.save(nr);
 

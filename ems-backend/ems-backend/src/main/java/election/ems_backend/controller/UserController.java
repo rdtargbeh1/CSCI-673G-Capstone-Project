@@ -31,7 +31,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 @RestController
-//@RequestMapping("/api/system/users")
 @RequestMapping("/api/user")
 @RequiredArgsConstructor
 @Validated
@@ -126,7 +125,7 @@ public class UserController {
     @PostMapping("/{userId}/password")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void changePassword(@PathVariable UUID userId, @Valid @RequestBody ChangePasswordRequest req) {
-        authz.requireAny("PARTY_ADMIN", "ADMIN", "SYSTEM_ADMIN");
+//        authz.requireAny("PARTY_ADMIN", "ADMIN", "SYSTEM_ADMIN");
         systemUserService.changePassword(userId, req);
     }
 

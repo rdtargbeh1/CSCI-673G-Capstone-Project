@@ -35,6 +35,8 @@ public interface NECResultService {
 
     List<CandidateDailyTotalDto> dailyByCandidate(UUID electionId);
 
+    boolean isPublishedForCenterContest(UUID electionId, UUID contestId, UUID centerId);
+
     void recomputeForCenterContest(UUID necOrgId,
                                    UUID electionId,
                                    UUID contestId,
@@ -43,6 +45,8 @@ public interface NECResultService {
 
     void recomputeFromSubmission(UUID submissionId, UUID recomputedByUserId);
 
+
+    boolean isElectionPublished(UUID electionId, UUID contestId);
 
     void recomputeForCenterContestWithNotes(UUID necOrgId,
                                             UUID electionId,
@@ -83,5 +87,6 @@ public interface NECResultService {
     int autoUnpublishExpired(LocalDateTime nowUtcOrLocal);
 
     int unpublishElection(UUID electionId, UUID actorUserId, String reason);
+
 
 }

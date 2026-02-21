@@ -1,10 +1,9 @@
 package election.ems_backend.controller;
 
-import election.ems_backend.entity.NECResult;
+import election.ems_backend.dto.NECResultDto;
 import election.ems_backend.nec.NecResultPublishRequest;
 import election.ems_backend.repository.NECResultRepository;
 import election.ems_backend.service.NECResultService;
-import jakarta.transaction.Transactional;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -21,7 +20,6 @@ public class NecAdminController {
 
     private final NECResultRepository necResultRepository;
     private final NECResultService necResultService;
-
 
     @GetMapping("/results/{electionId}")
     @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','NEC_ADMIN')")
@@ -55,7 +53,6 @@ public class NecAdminController {
                 .body("Unpublished NEC results for election " + electionId
                         + " (changedCount=" + changed + ", reason=" + (reason == null ? "N/A" : reason) + ")");
     }
-
 
 
 

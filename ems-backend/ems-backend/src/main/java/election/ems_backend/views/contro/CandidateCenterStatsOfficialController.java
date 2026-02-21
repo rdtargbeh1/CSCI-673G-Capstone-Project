@@ -38,11 +38,10 @@ public class CandidateCenterStatsOfficialController {
     private static final int MAX_PAGE_SIZE = 500;
     private static final int DEFAULT_PAGE_SIZE = 20;
 
-
     @GetMapping
     public ResponseEntity<Page<CandidateCenterStatsOfficialDto>> list(
             @RequestParam(value = "electionId") UUID electionId,
-            @RequestParam(value = "contestId") UUID contestId,  // ✅ NEW (make it required)
+            @RequestParam(value = "contestId", required = false) UUID contestId,  // ✅ OPTIONAL NOW
             @RequestParam(value = "countyId", required = false) UUID countyId,
             @RequestParam(value = "districtId", required = false) UUID districtId,
             @RequestParam(value = "centerId", required = false) UUID centerId,
@@ -52,7 +51,7 @@ public class CandidateCenterStatsOfficialController {
             @RequestParam(value = "size", required = false) Integer size,
             @RequestParam(value = "sort", required = false) String[] sort
     ) {
-        if (electionId == null || contestId == null) return ResponseEntity.badRequest().build();
+        if (electionId == null) return ResponseEntity.badRequest().build(); // ✅ contestId no longer required
 
         int requestedSize = size == null ? DEFAULT_PAGE_SIZE : size;
         int pageSize = Math.min(Math.max(1, requestedSize), MAX_PAGE_SIZE);
@@ -61,8 +60,7 @@ public class CandidateCenterStatsOfficialController {
         if (sort != null && sort.length > 0) {
             Sort.Order[] orders = new Sort.Order[sort.length];
             for (int i = 0; i < sort.length; i++) {
-                String s = sort[i];
-                String[] parts = s.split(",");
+                String[] parts = sort[i].split(",");
                 if (parts.length == 1) {
                     orders[i] = Sort.Order.asc(parts[0].trim());
                 } else {
@@ -87,7 +85,7 @@ public class CandidateCenterStatsOfficialController {
         Page<CandidateCenterStatsOfficialDto> result =
                 service.listCandidateCenterOfficialStats(
                         electionId,
-                        contestId,
+                        contestId,     // ✅ nullable
                         countyId,
                         districtId,
                         centerId,
@@ -98,7 +96,5 @@ public class CandidateCenterStatsOfficialController {
 
         return ResponseEntity.ok(result);
     }
-
-
 
 }

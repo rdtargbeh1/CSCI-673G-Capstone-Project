@@ -1,3 +1,4 @@
+
 package election.ems_backend.views.entity;
 
 import jakarta.persistence.Column;
@@ -12,7 +13,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
- * Read-only mapping of v_district_stats_official.
+ * Read-only JPA mapping of the database view v_district_stats_official.
  */
 @Entity
 @Table(name = "v_district_stats_official")
@@ -33,21 +34,37 @@ public class DistrictStatsOfficial {
     @Column(name = "county_name")
     private String countyName;
 
+    // bigint
     @Column(name = "registered_voters")
-    private Integer registeredVoters;
+    private Long registeredVoters;
 
     @Column(name = "ballots_cast")
-    private Integer ballotsCast;
+    private Long ballotsCast;
 
     @Column(name = "valid_votes")
-    private Integer validVotes;
+    private Long validVotes;
 
     @Column(name = "invalid_total")
-    private Integer invalidTotal;
+    private Long invalidTotal;
 
+    // fn_pct numeric
     @Column(name = "turnout_pct", precision = 10, scale = 6)
     private BigDecimal turnoutPct;
 
     @Column(name = "invalid_pct", precision = 10, scale = 6)
     private BigDecimal invalidPct;
+
+    // reporting
+    @Column(name = "centers_reported")
+    private Long centersReported;
+
+    @Column(name = "centers_total")
+    private Long centersTotal;
+
+    @Column(name = "reporting_pct", precision = 10, scale = 6)
+    private BigDecimal reportingPct;
+
+    // progress
+    @Column(name = "centers_started")
+    private Long centersStarted;
 }

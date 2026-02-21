@@ -10,7 +10,9 @@ import java.util.UUID;
  */
 @Data
 public class NecResultGeoDto {
-    private Long resultId;
+
+    private UUID resultId; // ✅ match entity
+
     private UUID electionId;
     private UUID contestId;
 
@@ -24,17 +26,20 @@ public class NecResultGeoDto {
     private UUID countyId;
     private String countyName;
 
-    private String candidateVotes; // JSON string
+    private String candidateVotes;
 
     private Integer totalRegisteredVoters;
     private Integer ballotsCast;
     private Integer invalidBallots;
-    private Integer blankBallots;
+
+    private Integer unmarkedBallots; // ✅ was blankBallots
     private Integer rejectedBallots;
     private Integer spoiledBallots;
 
+    private Integer unusedBallots;   // ✅ NEW
     private Integer ballotsIssued;
 
     private String source;
     private OffsetDateTime uploadTime;
+
 }

@@ -1,10 +1,12 @@
 package election.ems_backend.dto;
 
-import lombok.Data;
+import lombok.*;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+
+@Builder
 @Data
 public class UserSessionCreateRequest {
     private UUID userId;

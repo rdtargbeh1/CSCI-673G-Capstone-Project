@@ -1,3 +1,4 @@
+
 package election.ems_backend.views.service;
 
 import election.ems_backend.utility.SecurityUtils;
@@ -22,9 +23,10 @@ import java.util.UUID;
 /**
  * Service for v_district_stats_official.
  * Returns only aggregated official (published) NEC stats.
+ *
+ * NOTE: contestId is OPTIONAL:
+ * - contestId == null => return rows for ALL contests (no contest filter applied)
  */
-
-
 @Service
 @RequiredArgsConstructor
 public class DistrictStatsOfficialService {
@@ -37,20 +39,18 @@ public class DistrictStatsOfficialService {
     private final MeterRegistry meterRegistry;
     private final DistrictStatsOfficialMapper mapper = new DistrictStatsOfficialMapper();
 
-
-
     @Transactional(readOnly = true)
     @Cacheable(
             value = "districtStatsOfficial",
             key = "T(java.lang.String).valueOf(#electionId)"
-                    + " + ':' + (#contestId==null?'':#contestId)"   // ✅ NEW
+                    + " + ':' + (#contestId==null?'':#contestId)"
                     + " + ':' + (#countyId==null?'':#countyId)"
                     + " + ':' + (#districtId==null?'':#districtId)"
                     + " + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort"
     )
     public Page<DistrictStatsOfficialDto> listOfficialDistricts(
             UUID electionId,
-            UUID contestId,   // ✅ NEW
+            UUID contestId,   // ✅ OPTIONAL now
             UUID countyId,
             UUID districtId,
             Pageable pageable
@@ -59,6 +59,7 @@ public class DistrictStatsOfficialService {
                 electionId, contestId, countyId, districtId, pageable.getPageNumber(), pageable.getPageSize());
 
         if (electionId == null) throw new IllegalArgumentException("electionId is required");
+
         electionValidationService.ensureExists(electionId);
 
         // Keep your existing tenant scoping behavior (if applicable in your deployment).
@@ -66,12 +67,14 @@ public class DistrictStatsOfficialService {
         if (derivedOrgId != null) {
             tenantGucService.applyForTransaction(derivedOrgId, false, false);
         } else {
+            // explicit cast so compiler picks the UUID overload if you have overloaded methods
             tenantGucService.applyForTransaction((UUID) null, false, false);
         }
 
         Specification<DistrictStatsOfficial> spec = Specification
                 .where(DistrictStatsOfficialSpecs.electionEquals(electionId))
-                .and(DistrictStatsOfficialSpecs.contestEquals(contestId)) // ✅ NEW
+                // ✅ contest filter applied ONLY if contestId != null (spec must return null when contestId is null)
+                .and(DistrictStatsOfficialSpecs.contestEquals(contestId))
                 .and(DistrictStatsOfficialSpecs.countyEquals(countyId))
                 .and(DistrictStatsOfficialSpecs.districtEquals(districtId));
 
@@ -81,6 +84,4 @@ public class DistrictStatsOfficialService {
 
         return page.map(mapper::toDto);
     }
-
-
 }

@@ -1,3 +1,4 @@
+
 package election.ems_backend.views.contro;
 
 import election.ems_backend.utility.SecurityUtils;
@@ -44,7 +45,7 @@ public class ElectionStatsPartyController {
     public ResponseEntity<Page<ElectionStatsPartyDto>> list(
             @RequestParam(value = "orgId", required = false) UUID orgIdParam,
             @RequestParam(value = "electionId") UUID electionId,
-            @RequestParam(value = "contestId", required = false) UUID contestId, // ✅ NEW
+            @RequestParam(value = "contestId", required = false) UUID contestId, // ✅ OPTIONAL
             @RequestParam(value = "page", required = false, defaultValue = "0") @Min(0) int page,
             @RequestParam(value = "size", required = false) Integer size,
             @RequestParam(value = "sort", required = false) String[] sort
@@ -83,10 +84,11 @@ public class ElectionStatsPartyController {
         log.debug("Controller list elections orgId={} electionId={} contestId={} page={} size={} sort={}",
                 effectiveOrgId, electionId, contestId, page, pageSize, sortObj);
 
-        meterRegistry.counter("api.stats.election.controller.requests", "endpoint", "/api/stats/party/elections").increment();
+        meterRegistry.counter("api.stats.election.controller.requests", "endpoint", "/api/stats/party/elections")
+                .increment();
 
         Page<ElectionStatsPartyDto> result =
-                service.listElectionStats(effectiveOrgId, electionId, contestId, pageable); // ✅ NEW
+                service.listElectionStats(effectiveOrgId, electionId, contestId, pageable); // contestId may be null ✅
 
         return ResponseEntity.ok(result);
     }

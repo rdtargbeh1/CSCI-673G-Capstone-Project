@@ -41,7 +41,7 @@ public class NotificationController {
     }
 
     @GetMapping("/unread-count/{userId}")
-    public long unreadCount(@RequestParam UUID userId) {
+    public long unreadCount(@PathVariable UUID userId) {
         return service.unreadCount(userId);
     }
 

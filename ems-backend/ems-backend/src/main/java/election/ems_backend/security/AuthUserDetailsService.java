@@ -17,15 +17,21 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class AuthUserDetailsService implements UserDetailsService {
 
+
     private final SystemUserRepository users;
     private static final Logger log = LoggerFactory.getLogger(AuthUserDetailsService.class);
-
-
-
 
     @Override
     public UserDetails loadUserByUsername(String userNameOrEmail) throws UsernameNotFoundException {
         log.info("Auth lookup for [{}]", userNameOrEmail);
+
+        // 🚫 Block SYSTEM service account from interactive authentication (global)
+        if (userNameOrEmail != null && "SYSTEM".equalsIgnoreCase(userNameOrEmail.trim())) {
+            log.warn("Login blocked for SYSTEM service account");
+            throw new org.springframework.security.authentication.BadCredentialsException(
+                    "SYSTEM account cannot login"
+            );
+        }
 
         SystemUser u = users.findByEmailIgnoreCase(userNameOrEmail)
                 .or(() -> users.findByUserNameIgnoreCase(userNameOrEmail))
@@ -36,7 +42,6 @@ public class AuthUserDetailsService implements UserDetailsService {
 
         log.info("Found user {}, id={}", u.getEmail(), u.getUserId());
 
-        // Extract role name from UserRole → RoleName enum
         String roleName = (u.getRole() != null && u.getRole().getRoleName() != null)
                 ? u.getRole().getRoleName().name()
                 : "USER";
@@ -50,7 +55,6 @@ public class AuthUserDetailsService implements UserDetailsService {
                 .disabled(!u.isActive())
                 .build();
     }
-
 
 
 

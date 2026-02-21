@@ -1,3 +1,4 @@
+
 package election.ems_backend.views.dto;
 
 import lombok.Data;
@@ -10,6 +11,7 @@ import java.util.UUID;
  */
 @Data
 public class CandidateCenterStatsPartyDto {
+
     private UUID orgId;
     private UUID electionId;
     private UUID contestId;
@@ -29,12 +31,23 @@ public class CandidateCenterStatsPartyDto {
 
     private UUID partyId;
     private String partyName;
-    private String partyCode;
+    private String partyCode; // maps to "abbreviation"
 
-    private Integer candidateVotes;
-    private Integer registeredVoters;
-    private Integer ballotsCast;
-    private Integer centerValidVotes;
-    private Integer centerInvalidTotal;
+    // ✅ BIGINT in view (SUM/COUNT outputs)
+    private Long candidateVotes;
+    private Long registeredVoters;
+    private Long ballotsCast;
+    private Long centerValidVotes;
+    private Long centerInvalidTotal;
+
     private BigDecimal voteSharePct;
+
+    // ✅ Outcomes/insights (ROW_NUMBER/MAX arithmetic -> bigint / numeric)
+    private Long rankInCenter;
+    private Long winnerVotes;
+    private BigDecimal winnerVoteSharePct;
+    private Long marginVotes;
+    private BigDecimal marginPct;
+    private Boolean isCenterWinner;
+    private Long rankCenterInDistrictForCandidate;
 }

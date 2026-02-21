@@ -1,3 +1,5 @@
+
+
 package election.ems_backend.views.entity;
 
 import jakarta.persistence.Column;
@@ -14,10 +16,11 @@ import java.util.UUID;
 /**
  * Read-only JPA mapping for the DB view: v_center_stats_party
  *
- * Notes:
- * - The view is read-only; annotate with @Immutable.
- * - Use an @EmbeddedId for the composite (org_id, election_id, center_id).
- * - Field names match the view columns; types chosen to map SQL -> Java reasonably.
+ * Composite key: (org_id, election_id, contest_id, center_id)
+ *
+ * IMPORTANT:
+ * - The SQL view casts most numeric aggregates to BIGINT -> map as Long in Java.
+ * - Percent fields (turnout_pct, invalid_pct, places_reporting_pct) map to BigDecimal.
  */
 @Entity
 @Table(name = "v_center_stats_party")
@@ -48,16 +51,19 @@ public class CenterStatsParty {
     private String countyName;
 
     @Column(name = "registered_voters")
-    private Integer registeredVoters;
+    private Long registeredVoters;
+
+    @Column(name = "ballots_issued")
+    private Long ballotsIssued;
 
     @Column(name = "ballots_cast")
-    private Integer ballotsCast;
+    private Long ballotsCast;
 
     @Column(name = "valid_votes")
-    private Integer validVotes;
+    private Long validVotes;
 
     @Column(name = "invalid_total")
-    private Integer invalidTotal;
+    private Long invalidTotal;
 
     @Column(name = "turnout_pct", precision = 10, scale = 6)
     private BigDecimal turnoutPct;
@@ -65,6 +71,27 @@ public class CenterStatsParty {
     @Column(name = "invalid_pct", precision = 10, scale = 6)
     private BigDecimal invalidPct;
 
+    // ✅ place-coverage (center completeness)
+    @Column(name = "places_total")
+    private Long placesTotal;
+
+    @Column(name = "places_reported")
+    private Long placesReported;
+
+    @Column(name = "places_reporting_pct", precision = 10, scale = 6)
+    private BigDecimal placesReportingPct;
+
+    @Column(name = "has_place_allocation")
+    private Long hasPlaceAllocation;
+
+    @Column(name = "center_started")
+    private Long centerStarted;
+
+    @Column(name = "center_partial")
+    private Long centerPartial;
+
+    @Column(name = "center_completed")
+    private Long centerCompleted;
 
     @Override
     public String toString() {
@@ -77,11 +104,19 @@ public class CenterStatsParty {
                 ", countyId=" + countyId +
                 ", countyName='" + countyName + '\'' +
                 ", registeredVoters=" + registeredVoters +
+                ", ballotsIssued=" + ballotsIssued +
                 ", ballotsCast=" + ballotsCast +
                 ", validVotes=" + validVotes +
                 ", invalidTotal=" + invalidTotal +
                 ", turnoutPct=" + turnoutPct +
                 ", invalidPct=" + invalidPct +
+                ", placesTotal=" + placesTotal +
+                ", placesReported=" + placesReported +
+                ", placesReportingPct=" + placesReportingPct +
+                ", hasPlaceAllocation=" + hasPlaceAllocation +
+                ", centerStarted=" + centerStarted +
+                ", centerPartial=" + centerPartial +
+                ", centerCompleted=" + centerCompleted +
                 '}';
     }
 }

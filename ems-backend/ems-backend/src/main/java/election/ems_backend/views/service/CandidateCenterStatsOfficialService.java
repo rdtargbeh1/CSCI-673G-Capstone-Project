@@ -34,7 +34,6 @@ public class CandidateCenterStatsOfficialService {
     private final MeterRegistry meterRegistry;
     private final CandidateCenterStatsOfficialMapper mapper = new CandidateCenterStatsOfficialMapper();
 
-
     @Transactional(readOnly = true)
     @Cacheable(
             value = "candidateCenterStatsOfficial",
@@ -52,7 +51,7 @@ public class CandidateCenterStatsOfficialService {
     )
     public Page<CandidateCenterStatsOfficialDto> listCandidateCenterOfficialStats(
             UUID electionId,
-            UUID contestId,   // ✅ NEW
+            UUID contestId,   // ✅ now OPTIONAL
             UUID countyId,
             UUID districtId,
             UUID centerId,
@@ -67,20 +66,19 @@ public class CandidateCenterStatsOfficialService {
         );
 
         if (electionId == null) throw new IllegalArgumentException("electionId is required");
-        if (contestId == null) throw new IllegalArgumentException("contestId is required"); // ✅ strongly recommended
+        // ✅ removed: contestId required
         electionValidationService.ensureExists(electionId);
 
-        // apply tenant GUCs if present in security context (cast null to disambiguate overload)
         UUID derivedOrgId = SecurityUtils.getOrgIdFromContext();
         if (derivedOrgId != null) {
             tenantGucService.applyForTransaction(derivedOrgId, false, false);
         } else {
-            tenantGucService.applyForTransaction((java.util.UUID) null, false, false);
+            tenantGucService.applyForTransaction((UUID) null, false, false);
         }
 
         Specification<CandidateCenterStatsOfficial> spec = Specification
                 .where(CandidateCenterStatsOfficialSpecs.electionEquals(electionId))
-                .and(CandidateCenterStatsOfficialSpecs.contestEquals(contestId))  // ✅ NEW
+                .and(CandidateCenterStatsOfficialSpecs.contestEquals(contestId))  // ✅ works if spec is null-safe
                 .and(CandidateCenterStatsOfficialSpecs.countyEquals(countyId))
                 .and(CandidateCenterStatsOfficialSpecs.districtEquals(districtId))
                 .and(CandidateCenterStatsOfficialSpecs.centerEquals(centerId))

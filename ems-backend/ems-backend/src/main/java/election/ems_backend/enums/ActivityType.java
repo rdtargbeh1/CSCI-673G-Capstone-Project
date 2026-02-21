@@ -54,7 +54,10 @@ public enum ActivityType {
     ORG_DISABLE,
     ORG_ENABLE,
     MEMBERSHIP_ADD,
-    MEMBERSHIP_REMOVE,
+    MEMBERSHIP_ENABLED,
+    MEMBERSHIP_REMOVED,
+    MEMBERSHIP_DISABLED,
+
 
     // System / Settings
     SETTINGS_UPDATE,

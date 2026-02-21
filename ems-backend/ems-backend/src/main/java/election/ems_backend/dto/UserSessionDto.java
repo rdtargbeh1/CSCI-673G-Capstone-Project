@@ -15,7 +15,9 @@ import java.util.UUID;
 public class UserSessionDto {
     private UUID sessionId;
     private UUID userId;
+    private String userFullName;
     private UUID orgId;
+    private String orgName;
     private LocalDateTime dateCreated;
     private LocalDateTime expiresDate;
     private boolean revoked;

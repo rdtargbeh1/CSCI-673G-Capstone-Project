@@ -5,27 +5,15 @@ import lombok.RequiredArgsConstructor;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-
-/**
- * Aspect that synchronizes the current tenant context (Java thread)
- * with PostgreSQL session variables used for Row-Level Security (RLS).
- *
- * For every @Transactional method:
- *   - SET LOCAL app.current_org       = current tenant UUID (or empty)
- *   - SET LOCAL app.is_system_admin   = 'true'/'false'
- *
- * These variables are scoped to the current DB connection/transaction,
- * ensuring RLS policies are automatically enforced by Postgres.
- *
- * Example of matching Postgres RLS policy:
- *   CREATE POLICY tenant_isolation ON vote_table
- *   USING (organization_id::text = current_setting('app.current_org', true));
- *
- * The Aspect must run inside the same transaction context as the JPA session.
- */
+import java.lang.reflect.Method;
+import java.util.Collection;
+import java.util.Optional;
+import java.util.UUID;
 
 @Aspect
 @Component
@@ -34,38 +22,89 @@ public class RlsTenantAspect {
 
     private final JdbcTemplate jdbc;
 
-    /**
-     * Runs before any public @Transactional method within your application package.
-     * Adjust the package expression if your root package changes.
-     */
-    @Before("execution(public * Backend.ElectionVote..*(..)) && @annotation(transactional)")
+    @Before("@annotation(transactional) && execution(public * election.ems_backend..*(..))")
     public void setRlsVariables(Transactional transactional) {
+
         TenantContext ctx = TenantContext.get();
-        if (ctx == null) {
-            // No tenant context → likely public/system operation; skip RLS vars
-            return;
-        }
 
-        String isAdmin = Boolean.toString(ctx.isSystemAdmin());
-        String org = ctx.orgId().map(Object::toString).orElse("");
+        boolean systemAdmin = (ctx != null) && ctx.isSystemAdmin();
+        String org = (ctx != null) ? ctx.orgId().map(UUID::toString).orElse("") : "";
+        String user = (ctx != null) ? resolveUserId(ctx) : "";
+        boolean necAdmin = (ctx != null) && resolveIsNecAdmin(ctx);
 
-        // Use set_config so we can use parameters.
-        // set_config returns text (old value), so we use queryForObject and ignore the result.
+        // ✅ IMPORTANT: set_config returns TEXT, so use queryForObject (not update)
+        setConfig("app.is_system_admin", Boolean.toString(systemAdmin));
+        setConfig("app.current_org", org);
+        setConfig("app.current_user", user);
+        setConfig("app.is_nec_admin", Boolean.toString(necAdmin));
+    }
+
+    private void setConfig(String key, String val) {
+        // ignore returned old value
         jdbc.queryForObject(
-                "SELECT set_config('app.is_system_admin', ?, true)",
+                "SELECT set_config(?, ?, true)",
                 String.class,
-                isAdmin
-        );
-
-        jdbc.queryForObject(
-                "SELECT set_config('app.current_org', ?, true)",
-                String.class,
-                org
+                key,
+                val == null ? "" : val
         );
     }
 
+    private String resolveUserId(TenantContext ctx) {
+        try {
+            Method m = ctx.getClass().getMethod("userId");
+            Object v = m.invoke(ctx);
 
+            if (v instanceof Optional<?> opt) {
+                Object inner = opt.orElse(null);
+                if (inner instanceof UUID u) return u.toString();
+                if (inner instanceof String s && !s.isBlank()) return s.trim();
+                return "";
+            }
+
+            if (v instanceof UUID u) return u.toString();
+            if (v instanceof String s && !s.isBlank()) return s.trim();
+
+        } catch (Exception ignore) {}
+
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null) return "";
+            String name = auth.getName();
+            if (name == null || name.isBlank()) return "";
+            try {
+                return UUID.fromString(name.trim()).toString();
+            } catch (Exception ignored) {
+                return "";
+            }
+        } catch (Exception ignore) {
+            return "";
+        }
+    }
+
+    private boolean resolveIsNecAdmin(TenantContext ctx) {
+        try {
+            Method m = ctx.getClass().getMethod("isNecAdmin");
+            Object v = m.invoke(ctx);
+            if (v instanceof Boolean b) return b;
+            if (v != null) return Boolean.parseBoolean(v.toString());
+        } catch (Exception ignore) {}
+
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null || auth.getAuthorities() == null) return false;
+
+            Collection<?> auths = auth.getAuthorities();
+            for (Object a : auths) {
+                String s = a.toString();
+                if ("ROLE_NEC_ADMIN".equals(s) || "NEC_ADMIN".equals(s)) return true;
+            }
+        } catch (Exception ignore) {}
+
+        return false;
+    }
 
 }
+
+
 
 

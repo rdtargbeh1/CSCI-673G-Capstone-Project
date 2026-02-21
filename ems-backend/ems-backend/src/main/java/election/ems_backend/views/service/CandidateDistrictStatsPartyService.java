@@ -33,7 +33,6 @@ public class CandidateDistrictStatsPartyService {
     private final MeterRegistry meterRegistry;
     private final CandidateDistrictStatsPartyMapper mapper = new CandidateDistrictStatsPartyMapper();
 
-
     @Transactional(readOnly = true)
     @Cacheable(
             value = "candidateDistrictStatsParty",
@@ -51,7 +50,7 @@ public class CandidateDistrictStatsPartyService {
     public Page<CandidateDistrictStatsPartyDto> listCandidateDistrictStats(
             UUID orgId,
             UUID electionId,
-            UUID contestId,   // ✅ NEW
+            UUID contestId,   // ✅ OPTIONAL (nullable)
             UUID countyId,
             UUID districtId,
             UUID candidateId,
@@ -63,6 +62,8 @@ public class CandidateDistrictStatsPartyService {
                 pageable.getPageNumber(), pageable.getPageSize());
 
         if (orgId == null) throw new IllegalArgumentException("orgId is required");
+        if (electionId == null) throw new IllegalArgumentException("electionId is required");
+
         electionValidationService.ensureExists(electionId);
 
         tenantGucService.applyForTransaction(orgId, false, false);
@@ -70,7 +71,7 @@ public class CandidateDistrictStatsPartyService {
         Specification<CandidateDistrictStatsParty> spec = Specification
                 .where(CandidateDistrictStatsPartySpecs.orgEquals(orgId))
                 .and(CandidateDistrictStatsPartySpecs.electionEquals(electionId))
-                .and(CandidateDistrictStatsPartySpecs.contestEquals(contestId)) // ✅ NEW
+                .and(CandidateDistrictStatsPartySpecs.contestEquals(contestId)) // ✅ must be null-safe
                 .and(CandidateDistrictStatsPartySpecs.countyEquals(countyId))
                 .and(CandidateDistrictStatsPartySpecs.districtEquals(districtId))
                 .and(CandidateDistrictStatsPartySpecs.candidateEquals(candidateId))

@@ -1,13 +1,14 @@
 package election.ems_backend.controller;
 
-import election.ems_backend.dto.VoteSubmissionContestBulkRequest;
-import election.ems_backend.dto.VoteSubmissionContestCreateRequest;
-import election.ems_backend.dto.VoteSubmissionContestDto;
-import election.ems_backend.dto.VoteSubmissionContestUpdateRequest;
+import election.ems_backend.dto.*;
+import election.ems_backend.repository.VoteSubmissionContestRepository;
 import election.ems_backend.security.AuthorizationService;
 import election.ems_backend.service.VoteSubmissionContestService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,73 +22,68 @@ import java.util.UUID;
  *
  * This API is NEC/ADMIN-only in production. Keep it protected via method security.
  */
+
 @RestController
-@RequestMapping("/api/admin/normalize")
+@RequestMapping("/api/org/{orgId}/elections/{electionId}/normalize")
 @RequiredArgsConstructor
 public class VoteSubmissionContestController {
 
     private final VoteSubmissionContestService voteSubmissionContestService;
     private final AuthorizationService authz;
 
-
-    @PostMapping
-    public ResponseEntity<VoteSubmissionContestDto> createOrUpdate(@Valid @RequestBody VoteSubmissionContestCreateRequest req) {
-        // create-or-update matches unique index design (prevents duplicates)
-        return ResponseEntity.status(HttpStatus.CREATED).body(voteSubmissionContestService.createOrUpdate(req));
-    }
-
-    @PutMapping("/{scvId}")
-    public ResponseEntity<VoteSubmissionContestDto> update(@PathVariable UUID scvId,
-                                                           @Valid @RequestBody VoteSubmissionContestUpdateRequest req) {
-        return ResponseEntity.ok(voteSubmissionContestService.update(scvId, req));
-    }
-
-    @GetMapping("/{scvId}")
-    public ResponseEntity<VoteSubmissionContestDto> get(@PathVariable UUID scvId) {
-        return ResponseEntity.ok(voteSubmissionContestService.get(scvId));
-    }
-
+    // ✅ Search
     @GetMapping
-    public ResponseEntity<List<VoteSubmissionContestDto>> listBySubmission(
-            @RequestParam UUID submissionId,
-            @RequestParam(required = false) UUID contestId
+    public Page<VoteSubmissionContestRepository.SubmissionContestRowView> search(
+            @PathVariable UUID orgId,
+            @PathVariable UUID electionId,
+            @RequestParam(required = false) UUID countyId,
+            @RequestParam(required = false) UUID districtId,
+            @RequestParam(required = false) UUID centerId,
+            @RequestParam(required = false) UUID contestId,
+            @RequestParam(required = false) UUID candidateId,
+            @PageableDefault(size = 25) Pageable pageable
     ) {
-        if (contestId == null) {
-            return ResponseEntity.ok(voteSubmissionContestService.listBySubmission(submissionId));
-        }
-        return ResponseEntity.ok(voteSubmissionContestService.listBySubmissionAndContest(submissionId, contestId));
+//        authz.requireAnyInTenantOrPlatformAdmin();
+        return voteSubmissionContestService.search(
+                orgId, electionId,
+                countyId, districtId, centerId,
+                contestId, candidateId,
+                pageable
+        );
     }
 
-    @DeleteMapping("/{scvId}")
-    public ResponseEntity<Void> delete(@PathVariable UUID scvId) {
-        voteSubmissionContestService.delete(scvId);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Best UX endpoint: replace all votes for a contest in one request.
-     * Great for: single choice (1 item), multi choice (many items), ranked (many items with rank).
-     */
-    @PostMapping("/replace")
-    public ResponseEntity<List<VoteSubmissionContestDto>> replaceContestVotes(
-            @Valid @RequestBody VoteSubmissionContestBulkRequest req
-    ) {
-        return ResponseEntity.ok(voteSubmissionContestService.replaceContestVotes(req));
-    }
-
+    // ✅ Normalize a single submission
     @PostMapping("/submission/{submissionId}")
-    public ResponseEntity<Map<String, Object>> normalizeSubmission(@PathVariable UUID submissionId) {
-        authz.requireNecAdminOrPlatformAdmin();
+    public ResponseEntity<Map<String, Object>> normalizeSubmission(
+            @PathVariable UUID orgId,
+            @PathVariable UUID electionId,
+            @PathVariable UUID submissionId
+    ) {
+        authz.requireAnyInTenantOrPlatformAdmin();
         int rows = voteSubmissionContestService.normalizeSubmission(submissionId);
         return ResponseEntity.ok(Map.of("submissionId", submissionId, "rowsCreated", rows));
     }
 
-    @PostMapping("/election/{electionId}/verified-submissions")
-    public ResponseEntity<Map<String, Object>> normalizeVerified(@PathVariable UUID electionId) {
-        authz.requireNecAdminOrPlatformAdmin();
+    // ✅ Normalize VERIFIED submissions for THIS electionId (already in base path)
+    @PostMapping("/verified-submissions")
+    public ResponseEntity<Map<String, Object>> normalizeVerified() {
+        authz.requireAnyInTenantOrPlatformAdmin();
+        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
+    }
+
+    // ✅ Correct normalizeVerified with electionId available:
+    @PostMapping("/verified-submissions/run")
+    public ResponseEntity<Map<String, Object>> normalizeVerifiedRun(
+            @PathVariable UUID electionId
+    ) {
+        authz.requireAnyInTenantOrPlatformAdmin();
         int rows = voteSubmissionContestService.normalizeVerifiedSubmissionsForElection(electionId);
         return ResponseEntity.ok(Map.of("electionId", electionId, "rowsCreated", rows));
     }
 
 
+
 }
+
+
+

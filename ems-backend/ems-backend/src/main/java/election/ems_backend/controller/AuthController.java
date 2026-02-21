@@ -1,10 +1,12 @@
 package election.ems_backend.controller;
 
+
 import election.ems_backend.entity.Organization;
 import election.ems_backend.entity.SystemUser;
 import election.ems_backend.repository.SystemUserRepository;
 import election.ems_backend.security.TokenService;
 import election.ems_backend.service.AuditLogService;
+import election.ems_backend.service.implement.UserSessionService;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -14,12 +16,11 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @RestController
@@ -32,19 +33,26 @@ public class AuthController {
     private final SystemUserRepository systemUserRepository;
     private final AuditLogService auditLogService;
 
-    public record LoginRequest(String userName, String password) { }
+    // ✅ NEW: session service
+    private final UserSessionService userSessionService;
 
+    public record LoginRequest(String userName, String password) { }
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest req) {
 
-        // 1) Authenticate credentials
+        if (req.userName() != null && "SYSTEM".equalsIgnoreCase(req.userName().trim())) {
+            auditLogService.logFailedLogin(null, null, "AUTH",
+                    "Login blocked: SYSTEM service account cannot login");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "SYSTEM account cannot be used for login.");
+        }
+
         Authentication auth = authManager.authenticate(
                 new UsernamePasswordAuthenticationToken(req.userName(), req.password())
         );
         SecurityContextHolder.getContext().setAuthentication(auth);
 
-        // 2) Resolve the real user record (username OR email, case-insensitive)
         String identifier = auth.getName();
         SystemUser user = systemUserRepository.findByUserNameIgnoreCase(identifier)
                 .or(() -> systemUserRepository.findByEmailIgnoreCase(identifier))
@@ -52,93 +60,85 @@ public class AuthController {
                         "User not found after successful authentication: " + identifier
                 ));
 
-        // 3) Resolve default org (if any)
         Organization defaultOrg = user.getDefaultOrg();
         UUID orgId = (defaultOrg != null ? defaultOrg.getOrgId() : null);
 
-        // 4) Determine if SYSTEM_ADMIN (allowed to login without org)
         boolean isSystemAdmin = auth.getAuthorities().stream()
                 .anyMatch(a -> "ROLE_SYSTEM_ADMIN".equals(a.getAuthority()));
 
-        // ✅ A) Block deactivated user
         if (!user.isActive()) {
-            auditLogService.logFailedLogin(
-                    orgId,
-                    user.getUserId(),
-                    "AUTH",
-                    "Login blocked: user account is deactivated"
-            );
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
-                    "Your account has been deactivated. Please contact your organization administrator."
-            );
+            auditLogService.logFailedLogin(orgId, user.getUserId(), "AUTH",
+                    "Login blocked: user account is deactivated");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Your account has been deactivated. Please contact your organization administrator.");
         }
 
-        // ✅ B) Enforce tenant rule (non-system-admin must have active org)
         if (!isSystemAdmin) {
-
-            // No default org assigned
             if (defaultOrg == null) {
-                auditLogService.logFailedLogin(
-                        null,
-                        user.getUserId(),
-                        "AUTH",
-                        "Login blocked: no default organization"
-                );
-                throw new ResponseStatusException(
-                        HttpStatus.FORBIDDEN,
-                        "No organization assigned. Please contact your administrator."
-                );
+                auditLogService.logFailedLogin(null, user.getUserId(), "AUTH",
+                        "Login blocked: no default organization");
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "No organization assigned. Please contact your administrator.");
             }
-
-            // Org is deactivated
             if (!defaultOrg.isActive()) {
-                auditLogService.logFailedLogin(
-                        orgId,
-                        user.getUserId(),
-                        "AUTH",
-                        "Login blocked: organization is deactivated (" + defaultOrg.getOrgName() + ")"
-                );
-                throw new ResponseStatusException(
-                        HttpStatus.FORBIDDEN,
-                        "Your organization has been deactivated. Please contact your administrator."
-                );
+                auditLogService.logFailedLogin(orgId, user.getUserId(), "AUTH",
+                        "Login blocked: organization is deactivated (" + defaultOrg.getOrgName() + ")");
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Your organization has been deactivated. Please contact your administrator.");
             }
         }
 
-        // ✅ 5) Mint JWT only after checks pass
-        String jwt = tokenService.mintAccessToken(auth);
+        // ✅ Create session row first
+        LocalDateTime expiresAt = LocalDateTime.now().plusSeconds(tokenService.expiresInSeconds());
+        UUID sessionId = userSessionService.createLoginSession(user.getUserId(), orgId, expiresAt);
 
-        UUID defaultOrgId = (defaultOrg != null ? defaultOrg.getOrgId() : null);
+        // ✅ Mint token WITH sid
+        String jwt = tokenService.mintAccessToken(auth, sessionId);
+
         String defaultOrgName = (defaultOrg != null ? defaultOrg.getOrgName() : null);
 
-        // ✅ NEW: include org type so frontend can select dashboard mode immediately
         String defaultOrgType = null;
         if (defaultOrg != null) {
-            // adjust getter if your Organization uses a different field name
             Object t = defaultOrg.getOrganizationType();
             defaultOrgType = (t == null ? null : String.valueOf(t));
         }
 
-        // ✅ 6) Audit successful login
-        auditLogService.logLogin(
-                defaultOrgId,
-                user.getUserId(),
-                "AUTH",
-                "User logged in successfully"
-        );
+        auditLogService.logLogin(orgId, user.getUserId(), "AUTH",
+                "User logged in successfully (sid=" + sessionId + ")");
 
         return ResponseEntity.ok(
                 new AuthResponse(
                         jwt,
                         tokenService.expiresInSeconds(),
-                        defaultOrgId,
+                        orgId,
                         defaultOrgName,
                         defaultOrgType,
                         isSystemAdmin
                 )
         );
     }
+
+    /**
+     * ✅ Logout revokes CURRENT session using sid claim
+     */
+    // AuthController.java
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(Authentication authentication) {
+        if (!(authentication instanceof JwtAuthenticationToken jwtAuth)) {
+            return ResponseEntity.noContent().build();
+        }
+
+        var jwt = jwtAuth.getToken();
+        Object sidObj = jwt.getClaims().get("sid");
+        String sid = sidObj == null ? null : String.valueOf(sidObj);
+
+        if (sid != null && !sid.isBlank()) {
+            userSessionService.revoke(UUID.fromString(sid));
+        }
+
+        return ResponseEntity.noContent().build();
+    }
+
 
     @Getter
     @AllArgsConstructor
@@ -147,11 +147,10 @@ public class AuthController {
         private long expiresIn;
         private UUID defaultOrgId;
         private String defaultOrgName;
-
-        // ✅ NEW
-        private String defaultOrgType; // "NEC" | "POLITICAL_PARTY" | "MEDIA" | etc.
+        private String defaultOrgType;
         private boolean isSystemAdmin;
     }
 
 
 }
+

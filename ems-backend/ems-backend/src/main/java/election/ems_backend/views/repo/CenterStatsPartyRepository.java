@@ -19,4 +19,9 @@ public interface CenterStatsPartyRepository extends JpaRepository<CenterStatsPar
 
     // Find all centers for an org+election with pagination.
     Page<CenterStatsParty> findByIdOrgIdAndIdElectionId(UUID orgId, UUID electionId, Pageable pageable);
+
+    Page<CenterStatsParty> findByIdOrgIdAndIdElectionIdAndIdContestId(
+            UUID orgId, UUID electionId, UUID contestId, Pageable pageable
+    );
+
 }

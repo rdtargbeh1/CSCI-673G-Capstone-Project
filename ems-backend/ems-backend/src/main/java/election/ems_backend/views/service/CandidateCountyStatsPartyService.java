@@ -33,13 +33,12 @@ public class CandidateCountyStatsPartyService{
     private final MeterRegistry meterRegistry;
     private final CandidateCountyStatsPartyMapper mapper = new CandidateCountyStatsPartyMapper();
 
-
     @Transactional(readOnly = true)
     @Cacheable(
             value = "candidateCountyStatsParty",
             key =
                     "T(java.lang.String).valueOf(#orgId) + ':' + #electionId"
-                            + " + ':' + (#contestId==null?'':#contestId)"
+                            + " + ':' + (#contestId==null?'':#contestId)"   // ✅ contest optional
                             + " + ':' + (#countyId==null?'':#countyId)"
                             + " + ':' + (#candidateId==null?'':#candidateId)"
                             + " + ':' + (#partyId==null?'':#partyId)"
@@ -50,27 +49,36 @@ public class CandidateCountyStatsPartyService{
     public Page<CandidateCountyStatsPartyDto> listCandidateCountyStats(
             UUID orgId,
             UUID electionId,
-            UUID contestId,   // ✅ NEW
+            UUID contestId,   // ✅ OPTIONAL (nullable)
             UUID countyId,
             UUID candidateId,
             UUID partyId,
             Pageable pageable
     ) {
         if (orgId == null) throw new IllegalArgumentException("orgId is required");
+        if (electionId == null) throw new IllegalArgumentException("electionId is required");
+
         electionValidationService.ensureExists(electionId);
 
+        // ✅ enforce tenant scoping
         tenantGucService.applyForTransaction(orgId, false, false);
 
         Specification<CandidateCountyStatsParty> spec = Specification
                 .where(CandidateCountyStatsPartySpecs.orgEquals(orgId))
                 .and(CandidateCountyStatsPartySpecs.electionEquals(electionId))
-                .and(CandidateCountyStatsPartySpecs.contestEquals(contestId)) // ✅ NEW
+                .and(CandidateCountyStatsPartySpecs.contestEquals(contestId)) // ✅ now safe when null
                 .and(CandidateCountyStatsPartySpecs.countyEquals(countyId))
                 .and(CandidateCountyStatsPartySpecs.candidateEquals(candidateId))
                 .and(CandidateCountyStatsPartySpecs.partyEquals(partyId));
 
         Page<CandidateCountyStatsParty> page = repo.findAll(spec, pageable);
-        meterRegistry.gauge("api.stats.candidate_county.result_size", page.getContent(), c -> (double) c.size());
+
+        meterRegistry.gauge(
+                "api.stats.candidate_county.result_size",
+                page.getContent(),
+                c -> (double) c.size()
+        );
+
         return page.map(mapper::toDto);
     }
 

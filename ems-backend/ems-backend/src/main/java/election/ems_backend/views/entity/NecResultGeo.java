@@ -24,7 +24,7 @@ public class NecResultGeo {
 
     @Id
     @Column(name = "result_id")
-    private Long resultId;
+    private UUID resultId; // ✅ IMPORTANT: use UUID if nec_result.result_id is UUID
 
     @Column(name = "election_id")
     private UUID electionId;
@@ -53,9 +53,8 @@ public class NecResultGeo {
     @Column(name = "county_name")
     private String countyName;
 
-    // candidate_votes stored as jsonb in DB; represent as String in DTO
     @Column(name = "candidate_votes")
-    private String candidateVotes;
+    private String candidateVotes; // JSONB -> string
 
     @Column(name = "total_registered_voters")
     private Integer totalRegisteredVoters;
@@ -66,14 +65,17 @@ public class NecResultGeo {
     @Column(name = "invalid_ballots")
     private Integer invalidBallots;
 
-    @Column(name = "blank_ballots")
-    private Integer blankBallots;
+    @Column(name = "unmarked_ballots")   // ✅ was blank_ballots
+    private Integer unmarkedBallots;
 
     @Column(name = "rejected_ballots")
     private Integer rejectedBallots;
 
     @Column(name = "spoiled_ballots")
     private Integer spoiledBallots;
+
+    @Column(name = "unused_ballots")     // ✅ NEW
+    private Integer unusedBallots;
 
     @Column(name = "ballots_issued")
     private Integer ballotsIssued;
@@ -83,4 +85,6 @@ public class NecResultGeo {
 
     @Column(name = "upload_time")
     private OffsetDateTime uploadTime;
+
+
 }

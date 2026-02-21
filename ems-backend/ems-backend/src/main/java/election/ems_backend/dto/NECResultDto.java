@@ -1,14 +1,18 @@
 package election.ems_backend.dto;
 
-import election.ems_backend.entity.Contest;
-import jakarta.persistence.Column;
 import lombok.Builder;
 import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
+
+@Getter
+@Setter
 @Data
 @Builder
 public class NECResultDto {
@@ -24,7 +28,8 @@ public class NECResultDto {
     private String pollingCenterName;
 
     // Candidate -> votes; serialized to jsonb in the entity
-    private Map<String, Integer> candidateVotes;
+    @Builder.Default
+    private Map<String, Integer> candidateVotes = new HashMap<>();
 
     private Integer totalRegisteredVoters;
     private Integer ballotsInBox;

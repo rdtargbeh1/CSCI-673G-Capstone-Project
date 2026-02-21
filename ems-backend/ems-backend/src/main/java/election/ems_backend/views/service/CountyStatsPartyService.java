@@ -1,3 +1,4 @@
+
 package election.ems_backend.views.service;
 
 import election.ems_backend.views.CountyStatsPartySpecs;
@@ -25,6 +26,9 @@ import java.util.UUID;
  * - Applies tenant GUCs before queries for RLS.
  * - Caches pages for short TTL.
  * - Emits metrics and logs.
+ *
+ * NOTE: contestId is OPTIONAL:
+ * - contestId == null => return rows for ALL contests (no contest filter applied)
  */
 @Service
 @RequiredArgsConstructor
@@ -38,7 +42,6 @@ public class CountyStatsPartyService {
     private final MeterRegistry meterRegistry;
     private final CountyStatsPartyMapper mapper = new CountyStatsPartyMapper();
 
-
     @Transactional(readOnly = true)
     @Cacheable(
             value = "countyStatsParty",
@@ -50,7 +53,7 @@ public class CountyStatsPartyService {
     public Page<CountyStatsPartyDto> listCountyStats(
             UUID orgId,
             UUID electionId,
-            UUID contestId,   // ✅ NEW
+            UUID contestId,   // ✅ OPTIONAL now
             UUID countyId,
             Pageable pageable
     ) {
@@ -59,6 +62,7 @@ public class CountyStatsPartyService {
 
         if (orgId == null) throw new IllegalArgumentException("orgId is required");
         if (electionId == null) throw new IllegalArgumentException("electionId is required");
+        // ✅ contestId is OPTIONAL (no validation)
 
         electionValidationService.ensureExists(electionId);
 
@@ -67,7 +71,8 @@ public class CountyStatsPartyService {
         Specification<CountyStatsParty> spec = Specification
                 .where(CountyStatsPartySpecs.orgEquals(orgId))
                 .and(CountyStatsPartySpecs.electionEquals(electionId))
-                .and(CountyStatsPartySpecs.contestEquals(contestId))   // ✅ NEW
+                // ✅ contest filter applied ONLY if contestId != null (spec should return null when contestId is null)
+                .and(CountyStatsPartySpecs.contestEquals(contestId))
                 .and(CountyStatsPartySpecs.countyEquals(countyId));
 
         Page<CountyStatsParty> page = repo.findAll(spec, pageable);
@@ -76,5 +81,4 @@ public class CountyStatsPartyService {
 
         return page.map(mapper::toDto);
     }
-
 }

@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -47,6 +48,15 @@ public class NECResultController {
         service.unpublishForCenterContest(electionId, contestId, centerId, actorUserId, reason);
     }
 
+
+    @GetMapping("/published")
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasAnyRole('SYSTEM_ADMIN','NEC_ADMIN','TENANT_ADMIN','TENANT_USER','PARTY_ADMIN','PARTY_USER','OBSERVER')")
+    public Map<String, Boolean> published(@RequestParam UUID electionId,
+                                          @RequestParam(required = false) UUID contestId) {
+        boolean published = service.isElectionPublished(electionId, contestId);
+        return Map.of("published", published);
+    }
 
     @GetMapping("/{id}")
     public NECResultDto get(@PathVariable UUID id) {
