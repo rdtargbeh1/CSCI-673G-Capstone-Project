@@ -1,7 +1,10 @@
-// src/pages/dashboard/modes/NecDashboardReal.tsx
+
+// src/pages/dashboard/panels/NecDashboard.tsx
+
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import DashboardFrame from "./DashboardFrame";
+import DashboardFrame from "../panels/DashboardFrame";
+import DashboardTabs from "../shared/DashboardTabs";
 import {
   Grid,
   Panel,
@@ -11,8 +14,9 @@ import {
 } from "../shared/dashboard-ui";
 import { useAuthStore } from "../../../shared/store/authStore";
 import {
-  fetchOfficialElectionStats,
-  fetchOfficialCenterStats,
+  fetchNecOfficialElectionStats,
+  fetchNecOfficialCenterStats,
+  fetchNecPublishStatus,
 } from "../../../shared/services/statsService";
 
 function pickNumber(obj: any, keys: string[], fallback = 0) {
@@ -25,11 +29,12 @@ function pickNumber(obj: any, keys: string[], fallback = 0) {
 
 export default function NecDashboard() {
   const currentElectionId = useAuthStore((s) => s.currentElectionId);
+  const currentOrgId = useAuthStore((s) => s.currentOrgId);
 
   const electionStatsQ = useQuery({
     queryKey: ["nec", "officialElection", currentElectionId],
     queryFn: () =>
-      fetchOfficialElectionStats(currentElectionId as string, {
+      fetchNecOfficialElectionStats(currentElectionId as string, {
         page: 0,
         size: 1,
       }),
@@ -39,11 +44,17 @@ export default function NecDashboard() {
   const topCentersQ = useQuery({
     queryKey: ["nec", "officialCenters", currentElectionId],
     queryFn: () =>
-      fetchOfficialCenterStats(
+      fetchNecOfficialCenterStats(
         currentElectionId as string,
         {},
         { page: 0, size: 8, sort: ["validVotes,desc"] }
       ),
+    enabled: !!currentElectionId,
+  });
+
+  const publishStatusQ = useQuery({
+    queryKey: ["nec", "publishStatus", currentElectionId],
+    queryFn: () => fetchNecPublishStatus(currentElectionId as string),
     enabled: !!currentElectionId,
   });
 
@@ -80,83 +91,98 @@ export default function NecDashboard() {
     </span>,
   ]);
 
+  const isPublished = publishStatusQ.data?.isPublished ?? false;
+
   return (
-    <DashboardFrame
-      title="NEC Dashboard"
-      subtitle="Official results monitoring (published NEC views) + integrity readiness."
-      right={<Chip text="NEC" tone="blue" />}
-    >
-      {!currentElectionId ? (
-        <Panel
-          title="No election selected"
-          subtitle="Pick an election to show NEC dashboards"
-        >
-          <div className="text-sm text-slate-700">
-            Select an election (workspace context). This dashboard depends on
-            electionId for official views.
-          </div>
-        </Panel>
-      ) : (
-        <>
-          <Grid columns={4}>
-            <StatCard
-              label="Registered Voters"
-              value={`${summary.registeredVoters}`}
-            />
-            <StatCard label="Ballots Cast" value={`${summary.ballotsCast}`} />
-            <StatCard label="Valid Votes" value={`${summary.validVotes}`} />
-            <StatCard label="Invalid Total" value={`${summary.invalidTotal}`} />
-          </Grid>
+    <>
+      <DashboardTabs
+        mode="NEC"
+        currentOrgId={currentOrgId ?? undefined}
+        isOfficialPublished={isPublished}
+      />
 
-          <Grid columns={2}>
-            <Panel
-              title="Top Centers (Official)"
-              subtitle="Highest official validVotes (published results)"
-              right={
-                summary.turnoutPct != null ? (
-                  <Chip
-                    text={`Turnout ${summary.turnoutPct.toFixed(1)}%`}
-                    tone="green"
-                  />
-                ) : (
-                  <Chip text="Turnout —" />
-                )
-              }
-            >
-              <SimpleTable
-                columns={["Center", "County", "Valid", "Ballots"]}
-                rows={centerRows}
-                emptyText="No official center stats yet"
+      <DashboardFrame
+        title="NEC Dashboard"
+        subtitle="Official results monitoring (published NEC views) + integrity readiness."
+        right={<Chip text="NEC" tone="blue" />}
+      >
+        {!currentElectionId ? (
+          <Panel
+            title="No election selected"
+            subtitle="Pick an election to show NEC dashboards"
+          >
+            <div className="text-sm text-slate-700">
+              Select an election (workspace context). This dashboard depends on
+              electionId for official views.
+            </div>
+          </Panel>
+        ) : (
+          <>
+            <Grid columns={4}>
+              <StatCard
+                label="Registered Voters"
+                value={`${summary.registeredVoters}`}
               />
-            </Panel>
+              <StatCard label="Ballots Cast" value={`${summary.ballotsCast}`} />
+              <StatCard label="Valid Votes" value={`${summary.validVotes}`} />
+              <StatCard
+                label="Invalid Total"
+                value={`${summary.invalidTotal}`}
+              />
+            </Grid>
 
-            <Panel
-              title="Integrity & Publication"
-              subtitle="UX rule: NEC observes + publishes; never edits tenant submissions."
-              right={
-                summary.invalidPct != null ? (
-                  <Chip
-                    text={`Invalid ${summary.invalidPct.toFixed(1)}%`}
-                    tone="amber"
-                  />
-                ) : (
-                  <Chip text="Invalid —" />
-                )
-              }
-            >
-              <div className="space-y-2 text-sm text-slate-700">
-                <div>• Official views come from NEC published pipeline.</div>
-                <div>
-                  • Use “NEC Workflow” for staging → publish (separate pages).
+            <Grid columns={2}>
+              <Panel
+                title="Top Centers (Official)"
+                subtitle="Highest official validVotes (published results)"
+                right={
+                  summary.turnoutPct != null ? (
+                    <Chip
+                      text={`Turnout ${summary.turnoutPct.toFixed(1)}%`}
+                      tone="green"
+                    />
+                  ) : (
+                    <Chip text="Turnout —" />
+                  )
+                }
+              >
+                <SimpleTable
+                  columns={["Center", "County", "Valid", "Ballots"]}
+                  rows={centerRows}
+                  emptyText="No official center stats yet"
+                />
+              </Panel>
+
+              <Panel
+                title="Integrity & Publication"
+                subtitle="UX rule: NEC observes + publishes; never edits tenant submissions."
+                right={
+                  summary.invalidPct != null ? (
+                    <Chip
+                      text={`Invalid ${summary.invalidPct.toFixed(1)}%`}
+                      tone="amber"
+                    />
+                  ) : (
+                    <Chip text="Invalid —" />
+                  )
+                }
+              >
+                <div className="space-y-2 text-sm text-slate-700">
+                  <div>• Official views come from NEC published pipeline.</div>
+                  <div>
+                    • Use "NEC Workflow" for staging → publish (separate
+                    pages).
+                  </div>
+                  <div>
+                    • This dashboard is safe: read-only monitoring and
+                    drilldowns.
+                  </div>
                 </div>
-                <div>
-                  • This dashboard is safe: read-only monitoring and drilldowns.
-                </div>
-              </div>
-            </Panel>
-          </Grid>
-        </>
-      )}
-    </DashboardFrame>
+              </Panel>
+            </Grid>
+          </>
+        )}
+      </DashboardFrame>
+    </>
   );
 }

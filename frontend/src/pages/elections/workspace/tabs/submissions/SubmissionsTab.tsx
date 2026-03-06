@@ -514,11 +514,11 @@ export default function SubmissionsTab() {
   const isDeletedQueue = queue === "DELETED";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, }}>
       <Panel
         title="Vote Submissions"
         right={
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 11, }}>
             {/* Queue */}
             <div className="flex gap-2 items-center flex-wrap">
               <button type="button" onClick={() => setQueue("ALL")} style={btn(queue === "ALL")}>
@@ -567,7 +567,7 @@ export default function SubmissionsTab() {
                 <button
                   type="button"
                   onClick={() => setOpenNew(true)}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border bg-white font-extrabold text-sm"
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border bg-blue-600 text-white font-extrabold"
                 >
                   <Plus size={14} />
                   New Submission
@@ -584,7 +584,7 @@ export default function SubmissionsTab() {
                     setSystemSelectedOrgId(e.target.value);
                     setPage(0);
                   }}
-                  className="px-2.5 py-1.5 rounded-md border bg-white text-sm"
+                  className="px-2.5 py-1.5 rounded-md border bg-white text-base"
                   title="Select tenant (organization)"
                 >
                   <option value="">-- Select tenant --</option>
@@ -691,7 +691,7 @@ export default function SubmissionsTab() {
                 type="button"
                 onClick={() => submissionsQ.refetch()}
                 disabled={submissionsQ.isFetching || !submissionsEnabled}
-                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md border bg-white text-sm ${
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md border bg-blue-100 text-sm ${
                   submissionsQ.isFetching || !submissionsEnabled ? "opacity-60" : ""
                 }`}
               >
@@ -727,7 +727,7 @@ export default function SubmissionsTab() {
         ) : null}
 
         <div className="w-full overflow-x-auto border rounded-xl">
-          <table className="min-w-1550px w-full text-[13px]">
+          <table className="min-w-1550px w-full text-base">
             <thead className="bg-slate-50 text-slate-600">
               <tr className="text-left">
                 <Th>Center</Th>
@@ -735,7 +735,7 @@ export default function SubmissionsTab() {
 
                 <Th className="text-right">Registered</Th>
                 <Th className="text-right">Ballots Issued</Th>
-                <Th>Alloc Src</Th>
+                {/* <Th>Alloc Src</Th> */}
 
                 <Th className="text-right">Valid</Th>
                 <Th className="text-right">Invalid (In Box)</Th>
@@ -797,9 +797,9 @@ export default function SubmissionsTab() {
                       <Td className="text-right font-semibold">
                         {fmtNum((s as any).ballotsIssued)}
                       </Td>
-                      <Td className="truncate">
+                      {/* <Td className="truncate">
                         {fmtAllocSource((s as any).allocationSource)}
-                      </Td>
+                      </Td> */}
 
                       <Td className="text-right font-semibold">{valid}</Td>
                       <Td className="text-right font-semibold">{invalidInBox}</Td>
@@ -814,7 +814,7 @@ export default function SubmissionsTab() {
                       <Td>
                         {(s as any).status ?? "—"}
                         {isDeletedQueue && deletedStamp ? (
-                          <div className="text-[11px] font-bold text-slate-500 mt-0.5">
+                          <div className="text-base font-bold text-slate-500 mt-0.5">
                             deleted: {String(deletedStamp)}
                           </div>
                         ) : null}
@@ -828,7 +828,7 @@ export default function SubmissionsTab() {
 
                       <Td>
                         {isDeletedQueue ? (
-                          <div className="text-[11px] text-slate-400 font-bold">—</div>
+                          <div className="text-base text-slate-400 font-bold">—</div>
                         ) : (
                           <div className="flex gap-1.5 items-center flex-wrap">
                             <ActionIconButton
@@ -844,7 +844,7 @@ export default function SubmissionsTab() {
                                 setOpenEdit(true);
                               }}
                             >
-                              <Pencil size={15} />
+                              <Pencil size={18} />
                             </ActionIconButton>
 
                             <ActionIconButton
@@ -858,7 +858,7 @@ export default function SubmissionsTab() {
                                 setOpenAmend(true);
                               }}
                             >
-                              <FileEdit size={15} />
+                              <FileEdit size={18} />
                             </ActionIconButton>
 
                             {flagged ? (
@@ -874,7 +874,7 @@ export default function SubmissionsTab() {
                                   unflagM.mutate({ id });
                                 }}
                               >
-                                <FlagOff size={15} />
+                                <FlagOff size={18} />
                               </ActionIconButton>
                             ) : null}
 
@@ -889,7 +889,7 @@ export default function SubmissionsTab() {
                                 setOpenVerify(true);
                               }}
                             >
-                              <CheckCircle2 size={15} />
+                              <CheckCircle2 size={18} />
                             </ActionIconButton>
 
                             <ActionIconButton
@@ -916,7 +916,7 @@ export default function SubmissionsTab() {
                                 setOpenDelete(true);
                               }}
                             >
-                              <Trash2 size={15} />
+                              <Trash2 size={18} />
                             </ActionIconButton>
                           </div>
                         )}
@@ -974,7 +974,7 @@ export default function SubmissionsTab() {
             setOpenVerify(false);
           }}
           busy={verifyM.isPending}
-          maxWidth="max-w-xl"
+          maxWidth="max-w-2xl"
         >
           <div className="grid grid-cols-1 gap-2">
             <Field label="Verifier (current user)">
@@ -982,13 +982,13 @@ export default function SubmissionsTab() {
                 type="text"
                 value={verifierName}
                 readOnly
-                className="px-2.5 py-1.5 rounded-md border w-full bg-slate-50 text-sm"
+                className="px-2.5 py-1.5 rounded-md border w-full bg-slate-50 text-base"
               />
             </Field>
 
             <Field label="Decision">
               <div className="flex gap-3 items-center">
-                <label className="inline-flex items-center gap-2 text-sm font-bold">
+                <label className="inline-flex items-center gap-2 text-base font-bold">
                   <input
                     type="radio"
                     name="verifyDecision"
@@ -997,7 +997,7 @@ export default function SubmissionsTab() {
                   />
                   Accept
                 </label>
-                <label className="inline-flex items-center gap-2 text-sm font-bold text-red-700">
+                <label className="inline-flex items-center gap-2 text-base font-bold text-red-700">
                   <input
                     type="radio"
                     name="verifyDecision"
@@ -1013,14 +1013,14 @@ export default function SubmissionsTab() {
               <textarea
                 value={verifyComment}
                 onChange={(e) => setVerifyComment(e.target.value)}
-                className="px-2.5 py-1.5 rounded-md border w-full text-sm"
+                className="px-2.5 py-1.5 rounded-md border w-full text-base"
                 rows={3}
                 placeholder="Add a review note (optional)…"
               />
             </Field>
 
             {verifyM.isError ? (
-              <div className="mt-1 p-2 rounded-md border border-red-200 bg-red-50 text-red-700 text-sm font-bold">
+              <div className="mt-1 p-2 rounded-md border border-red-200 bg-red-50 text-red-700 text-base font-bold">
                 {friendlyError(verifyM.error)}
               </div>
             ) : null}
@@ -1030,7 +1030,7 @@ export default function SubmissionsTab() {
                 type="button"
                 onClick={() => setOpenVerify(false)}
                 disabled={verifyM.isPending}
-                className={`px-3 py-1.5 rounded-md border bg-white text-sm ${
+                className={`px-3 py-1.5 rounded-md border bg-white text-base ${
                   verifyM.isPending ? "opacity-60" : ""
                 }`}
               >
@@ -1051,7 +1051,7 @@ export default function SubmissionsTab() {
                     { onSuccess: () => setOpenVerify(false) }
                   );
                 }}
-                className={`px-3 py-1.5 rounded-md border bg-white text-sm font-extrabold ${
+                className={`px-3 py-1.5 rounded-md border bg-white text-base font-extrabold ${
                   verifyM.isPending ? "opacity-60" : ""
                 }`}
               >
@@ -1147,7 +1147,7 @@ export default function SubmissionsTab() {
   );
 }
 
-/** --------- UI helpers ---------- */
+/** --------- Status Filter Nav UI helpers btns ---------- */
 function btn(active: boolean) {
   return {
     padding: "6px 10px",
@@ -1155,20 +1155,22 @@ function btn(active: boolean) {
     border: active ? "2px solid #2563eb" : "1px solid #e5e7eb",
     background: active ? "#eff6ff" : "#fff",
     fontWeight: 800,
-    fontSize: 12,
+    fontSize: 14,
     color: active ? "#1d4ed8" : "#111827",
     position: "relative",
     boxShadow: active ? "0 1px 0 rgba(37, 99, 235, 0.35)" : "none",
   } as const;
 }
+
 function Th(props: React.ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
       {...props}
-      className={`p-2 text-[10px] font-extrabold ${props.className ?? ""}`}
+      className={`p-2 text-sm font-extrabold ${props.className ?? ""}`}
     />
   );
 }
+
 function Td(props: React.TdHTMLAttributes<HTMLTableCellElement>) {
   return <td {...props} className={`p-2 align-top ${props.className ?? ""}`} />;
 }
@@ -1176,7 +1178,7 @@ function Td(props: React.TdHTMLAttributes<HTMLTableCellElement>) {
 function Field(props: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-[11px] font-extrabold text-slate-600 mb-1">
+      <div className="text-base font-extrabold text-slate-600 mb-1">
         {props.label}
       </div>
       {props.children}
@@ -1207,9 +1209,9 @@ function ModalShell(props: {
       >
         <div className="flex justify-between items-start gap-3">
           <div className="min-w-0">
-            <div className="font-extrabold text-base">{props.title}</div>
+            <div className="font-extrabold text-lg">{props.title}</div>
             {props.subtitle ? (
-              <div className="text-xs text-slate-500 mt-0.5">
+              <div className="text-sm text-slate-500 mt-0.5">
                 {props.subtitle}
               </div>
             ) : null}
@@ -1218,7 +1220,7 @@ function ModalShell(props: {
             type="button"
             onClick={props.onClose}
             disabled={Boolean(props.busy)}
-            className={`px-3 py-1.5 rounded-md border border-slate-200 bg-white text-sm ${
+            className={`px-3 py-1.5 rounded-md border border-slate-200 bg-white text-base ${
               props.busy ? "opacity-60" : ""
             }`}
           >
@@ -1261,13 +1263,13 @@ function DeleteReasonModal(props: {
           <textarea
             value={props.reason}
             onChange={(e) => props.onChangeReason(e.target.value)}
-            className="px-2.5 py-1.5 rounded-md border w-full text-sm"
+            className="px-2.5 py-1.5 rounded-md border w-full text-base"
             rows={4}
             placeholder="Explain why you are deleting this submission…"
             disabled={Boolean(props.busy)}
           />
           <div
-            className={`mt-1 text-[11px] font-bold ${
+            className={`mt-1 text-sm font-bold ${
               tooLong ? "text-red-700" : "text-slate-500"
             }`}
           >
@@ -1283,7 +1285,7 @@ function DeleteReasonModal(props: {
         ) : null}
 
         {!trimmed ? (
-          <div className="text-[11px] font-bold text-amber-700">
+          <div className="text-base font-bold text-amber-700">
             A reason is required to delete a submission.
           </div>
         ) : null}
@@ -1293,7 +1295,7 @@ function DeleteReasonModal(props: {
             type="button"
             onClick={props.onClose}
             disabled={Boolean(props.busy)}
-            className={`px-3 py-1.5 rounded-md border bg-white text-sm ${
+            className={`px-3 py-1.5 rounded-md border bg-white text-base ${
               props.busy ? "opacity-60" : ""
             }`}
           >
@@ -1304,7 +1306,7 @@ function DeleteReasonModal(props: {
             type="button"
             onClick={props.onSubmit}
             disabled={!canSubmit}
-            className={`px-3 py-1.5 rounded-md border text-sm font-extrabold ${
+            className={`px-3 py-1.5 rounded-md border text-base font-extrabold ${
               canSubmit ? "bg-white" : "bg-slate-50 opacity-60"
             }`}
           >

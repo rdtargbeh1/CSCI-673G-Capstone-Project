@@ -51,13 +51,13 @@ function CompactTable(props: { columns: string[]; rows: React.ReactNode[][] }) {
   const { columns, rows } = props;
   return (
     <div className="w-full overflow-auto rounded-xl border border-slate-200 bg-white">
-      <table className="w-full border-collapse text-sm">
+      <table className="w-full border-collapse text-lg">
         <thead>
           <tr className="bg-slate-50">
             {columns.map((c) => (
               <th
                 key={c}
-                className="text-left px-3 py-1.5 text-[11px] font-extrabold text-slate-600 border-b border-slate-200"
+                className="text-left px-3 py-1.5 text-base font-extrabold text-slate-600 border-b border-slate-200"
               >
                 {c}
               </th>
@@ -67,9 +67,9 @@ function CompactTable(props: { columns: string[]; rows: React.ReactNode[][] }) {
 
         <tbody>
           {rows.map((r, idx) => (
-            <tr key={idx} className="border-b border-slate-100 last:border-b-0">
+            <tr key={idx} className="border-b border-slate-100 last:border-b-0 text-sm">
               {r.map((cell, j) => (
-                <td key={j} className="px-3 py-1.5 align-top text-slate-800">
+                <td key={j} className="px-3 py-1.5 align-top text-slate-800 text-base">
                   {cell}
                 </td>
               ))}
@@ -220,6 +220,7 @@ export default function ElectionPartiesTab() {
 
     return items.map((p) => {
       const toggleBtn = (
+        // Activate btn
         <button
           type="button"
           onClick={() => {
@@ -236,13 +237,14 @@ export default function ElectionPartiesTab() {
           }`}
         >
           {p.isQualified ? (
-            <CheckCircle2 size={18} className="text-emerald-600" />
+            <CheckCircle2 size={22} className="text-emerald-600" />
           ) : (
             <XCircle size={18} className="text-slate-400" />
           )}
         </button>
       );
 
+         {/* Edit btn */}
       const actions = (
         <div className="flex flex-wrap gap-2">
           {toggleBtn}
@@ -250,15 +252,16 @@ export default function ElectionPartiesTab() {
           <button
             type="button"
             disabled={!canEdit}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-blue-600 ${
               !canEdit ? "opacity-60" : ""
             }`}
             title={canEdit ? "Edit (SYSTEM/NEC)" : "Read-only"}
             onClick={() => openEdit(p)}
           >
-            <Pencil size={16} />
+            <Pencil size={22} />
           </button>
 
+          {/* Delete btn */}
           <button
             type="button"
             disabled={!canEdit || deleteM.isPending}
@@ -275,7 +278,7 @@ export default function ElectionPartiesTab() {
               if (ok) deleteM.mutate(p.partyId);
             }}
           >
-            <Trash2 size={16} className="text-red-600" />
+            <Trash2 size={22} className="text-red-600" />
           </button>
         </div>
       );
@@ -286,7 +289,7 @@ export default function ElectionPartiesTab() {
         </span>,
         <span
           key="qual"
-          className={`text-xs font-extrabold ${
+          className={`text-base font-bold ${
             p.isQualified ? "text-emerald-700" : "text-slate-500"
           }`}
         >
@@ -302,7 +305,7 @@ export default function ElectionPartiesTab() {
     return (
       <div className="p-3 rounded-xl border border-slate-200 bg-white">
         <div className="font-extrabold text-slate-800">Election Parties</div>
-        <div className="text-sm text-slate-600 mt-1">
+        <div className="text-base text-slate-600 mt-1">
           Missing <b>electionId</b> in route params.
         </div>
       </div>
@@ -326,9 +329,9 @@ export default function ElectionPartiesTab() {
             <button
               type="button"
               onClick={openCreate}
-              className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white"
+              className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-600 text-white font-bold"
             >
-              <Plus size={16} />
+              <Plus size={18} />
               Assign Party
             </button>
           ) : (
@@ -339,7 +342,7 @@ export default function ElectionPartiesTab() {
             type="button"
             onClick={refreshNow}
             disabled={partiesQ.isFetching}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-100 ${
               partiesQ.isFetching ? "opacity-60" : ""
             }`}
           >
@@ -415,7 +418,7 @@ export default function ElectionPartiesTab() {
             <div className="grid gap-2.5 mt-3">
               {!editing ? (
                 <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-[18px] font-extrabold text-slate-600">
                     Party <span className="text-red-600">*</span>
                   </div>
 
@@ -446,7 +449,7 @@ export default function ElectionPartiesTab() {
               ) : null}
 
               <div className="grid gap-1.5">
-                <div className="text-[11px] font-extrabold text-slate-600">
+                <div className="text-base font-extrabold text-slate-600">
                   Ballot Order
                 </div>
                 <input
@@ -468,11 +471,11 @@ export default function ElectionPartiesTab() {
 
               {/* ✅ RADIO: checked based on DB value */}
               <div className="grid gap-1.5">
-                <div className="text-[11px] font-extrabold text-slate-600">
+                <div className="text-base font-extrabold text-slate-600">
                   Qualification
                 </div>
 
-                <div className="flex items-center gap-6 text-sm text-slate-700">
+                <div className="flex items-center gap-6 text-base text-slate-700">
                   <label className="inline-flex items-center gap-2">
                     <input
                       type="radio"
@@ -498,7 +501,7 @@ export default function ElectionPartiesTab() {
               </div>
 
               {addM.isError || updateM.isError ? (
-                <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm font-bold">
+                <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-base font-bold">
                   {addM.isError
                     ? friendlySaveError(addM.error)
                     : friendlySaveError(updateM.error)}

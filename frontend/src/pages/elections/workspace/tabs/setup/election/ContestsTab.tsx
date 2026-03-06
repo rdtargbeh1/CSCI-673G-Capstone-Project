@@ -78,13 +78,13 @@ function CompactTable(props: {
   const { columns, rows, onRowClick, selectedRowIndex } = props;
   return (
     <div className="w-full overflow-auto rounded-xl border border-slate-200 bg-white">
-      <table className="w-full border-collapse text-sm">
+      <table className="w-full border-collapse text-base">
         <thead>
           <tr className="bg-slate-50">
             {columns.map((c) => (
               <th
                 key={c}
-                className="text-left px-3 py-1.5 text-[11px] font-extrabold text-slate-600 border-b border-slate-200"
+                className="text-left px-3 py-1.5 text-lg font-extrabold text-slate-600 border-b border-slate-200"
               >
                 {c}
               </th>
@@ -449,32 +449,32 @@ export default function ContestsTab({ onOpenOptions }: Props) {
             title="Open contest options"
             onClick={() => onOpenOptions(c.contestId)}
           >
-            <List size={16} />
-            <span className="text-xs font-bold">Options</span>
+            <List size={18} />
+            <span className="text-base font-bold">Options</span>
           </button>
 
           <button
             type="button"
             disabled={!canEdit}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-800 ${
               !canEdit ? "opacity-60" : ""
             }`}
             title={canEdit ? "Edit contest (SYSTEM/NEC)" : "Read-only"}
             onClick={() => openEditContest(c)}
           >
-            <Pencil size={16} />
+            <Pencil size={20} />
           </button>
 
           <button
             type="button"
             disabled={!canEdit || contestToggleActiveM.isPending}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-blue-800 ${
               !canEdit || contestToggleActiveM.isPending ? "opacity-60" : ""
             }`}
             title={activeVal ? "Deactivate contest" : "Activate contest"}
             onClick={() => contestToggleActiveM.mutate(c)}
           >
-            <Power size={16} />
+            <Power size={20} />
             <span className="text-xs font-bold">
               {activeVal ? "Deactivate" : "Activate"}
             </span>
@@ -494,7 +494,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
               if (ok) contestDeleteM.mutate(c.contestId);
             }}
           >
-            <Trash2 size={16} className="text-red-600" />
+            <Trash2 size={20} className="text-red-600" />
           </button>
         </div>
       );
@@ -502,7 +502,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
       return [
         <div key={c.contestId} className="grid">
           <span className="font-bold">{c.contestName}</span>
-          <span className="text-[11px] text-slate-500">
+          <span className="text-[14px] text-slate-500">
             {c.category} · {c.scopeType} · {scopeMeta}
           </span>
         </div>,
@@ -520,13 +520,13 @@ export default function ContestsTab({ onOpenOptions }: Props) {
         </span>,
         <span
           key="active"
-          className={`text-xs font-bold ${
+          className={`text-sm font-bold ${
             activeVal ? "text-emerald-700" : "text-slate-500"
           }`}
         >
           {activeVal ? "ACTIVE" : "INACTIVE"}
         </span>,
-        <span key="created" className="text-xs text-slate-600">
+        <span key="created" className="text-base text-slate-600">
           {fmtDate((c as any).dateCreated)}
         </span>,
         actions,
@@ -593,10 +593,10 @@ export default function ContestsTab({ onOpenOptions }: Props) {
             <button
               type="button"
               onClick={openCreateContest}
-              className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white"
+              className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-600 text-white font-bold"
               title="Create contest (SYSTEM/NEC)"
             >
-              <Plus size={16} />
+              <Plus size={18} />
               Create Contest
             </button>
           ) : (
@@ -607,7 +607,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
             type="button"
             onClick={refreshNow}
             disabled={contestsQ.isFetching}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-100 ${
               contestsQ.isFetching ? "opacity-60" : ""
             }`}
             title="Refresh contests"

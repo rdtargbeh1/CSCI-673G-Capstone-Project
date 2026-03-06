@@ -271,13 +271,13 @@ export default function ObserverReportFormModal(props: {
 
   const selectBase = inputBase + " h-12 pr-10 font-semibold";
   const textareaBase =
-    "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[15px] leading-relaxed " +
+    "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base leading-relaxed " +
     "shadow-sm shadow-slate-100/80 placeholder:text-slate-400 " +
     "focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-300 " +
     "disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed";
 
   const btnBase =
-    "inline-flex items-center justify-center gap-2 rounded-2xl px-4 h-11 text-sm font-extrabold " +
+    "inline-flex items-center justify-center gap-2 rounded-2xl px-4 h-11 text-base font-extrabold " +
     "transition active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed";
 
   const ghostBtn =
@@ -333,10 +333,10 @@ export default function ObserverReportFormModal(props: {
           <div className="px-5 sm:px-6 py-4 border-b border-slate-200 bg-white">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
+                <div className="text-lg sm:text-2xl font-extrabold text-slate-900 tracking-tight">
                   {title}
                 </div>
-                <div className="text-sm text-slate-500 mt-1">
+                <div className="text-base text-slate-500 mt-1">
                   Capture incident details and optional evidence.
                 </div>
               </div>
@@ -358,7 +358,7 @@ export default function ObserverReportFormModal(props: {
               <div className="flex flex-wrap items-center gap-2">
                 <MapPin size={16} className="text-slate-600" />
                 <span
-                  className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-extrabold ${locationPillClass}`}
+                  className={`inline-flex items-center rounded-full border px-3 py-1 text-sm font-extrabold ${locationPillClass}`}
                 >
                   {locationText}
                 </span>
@@ -381,7 +381,7 @@ export default function ObserverReportFormModal(props: {
                   <label
                     className={[
                       "flex-1 sm:flex-none text-center",
-                      "px-4 py-2.5 rounded-xl text-sm font-extrabold cursor-pointer select-none transition",
+                      "px-4 py-2.5 rounded-xl text-base mr-3 font-extrabold cursor-pointer select-none transition",
                       !resolved
                         ? "bg-slate-900 text-white shadow-sm"
                         : "text-slate-700 hover:bg-white",
@@ -402,7 +402,7 @@ export default function ObserverReportFormModal(props: {
                   <label
                     className={[
                       "flex-1 sm:flex-none text-center",
-                      "px-4 py-2.5 rounded-xl text-sm font-extrabold cursor-pointer select-none transition",
+                      "px-4 py-2.5 rounded-xl text-sm  font-extrabold cursor-pointer select-none transition",
                       resolved
                         ? "bg-emerald-600 text-white shadow-sm"
                         : "text-slate-700 hover:bg-white",
@@ -429,7 +429,7 @@ export default function ObserverReportFormModal(props: {
             {!props.canSubmit ? (
               <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
                 <div className="text-sm font-extrabold">View only</div>
-                <div className="text-xs mt-1 text-amber-800/90">
+                <div className="text-sm mt-1 text-amber-800/90">
                   Only SYSTEM/NEC admins can create/update/delete reports.
                 </div>
               </div>
@@ -542,7 +542,7 @@ export default function ObserverReportFormModal(props: {
                   <label
                     className={[
                       "h-12 w-full rounded-2xl border border-slate-200 bg-white",
-                      "px-4 text-sm font-extrabold text-slate-800",
+                      "px-4 text-base font-extrabold text-slate-800",
                       "inline-flex items-center justify-center gap-2 cursor-pointer",
                       "shadow-sm shadow-slate-100/80",
                       "transition hover:bg-slate-50 active:scale-[0.99]",
@@ -569,10 +569,10 @@ export default function ObserverReportFormModal(props: {
               {files.length ? (
                 <div className="md:col-span-3">
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <div className="text-xs font-extrabold text-slate-700">
+                    <div className="text-base font-extrabold text-slate-700">
                       Selected files
                     </div>
-                    <div className="mt-2 space-y-1 text-xs text-slate-700">
+                    <div className="mt-2 space-y-1 text-base text-slate-700">
                       {files.slice(0, 4).map((f) => (
                         <div
                           key={f.name}
@@ -600,11 +600,11 @@ export default function ObserverReportFormModal(props: {
                 <div className="text-sm font-extrabold">
                   Request violates a data constraint
                 </div>
-                <div className="text-xs mt-1">{friendlyError(props.error)}</div>
+                <div className="text-sm mt-1">{friendlyError(props.error)}</div>
               </div>
             ) : null}
 
-            <div className="mt-4 text-xs text-slate-500 sm:hidden">
+            <div className="mt-4 text-sm text-slate-500 sm:hidden">
               * Required fields. Location is optional and captured
               automatically.
             </div>
@@ -699,7 +699,7 @@ export default function ObserverReportFormModal(props: {
 function Field(props: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-[12px] font-extrabold text-slate-700 mb-2 tracking-wide">
+      <div className="text-base font-extrabold text-slate-700 mb-2 tracking-wide">
         {props.label}
       </div>
       {props.children}

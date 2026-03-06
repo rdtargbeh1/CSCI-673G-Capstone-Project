@@ -140,7 +140,7 @@ export default function CountiesPage() {
             type="button"
             onClick={refreshNow}
             disabled={countiesQ.isFetching}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-blue-100 px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
           >
             <RefreshCw size={16} />
             Refresh
@@ -150,7 +150,7 @@ export default function CountiesPage() {
             type="button"
             onClick={openCreate}
             disabled={!canEdit}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-[#0000CD] text-white px-3 py-2 text-lg font-semibold hover:bg-slate-500 disabled:opacity-50"
             title={canEdit ? "Add County" : "NEC/SYSTEM only"}
           >
             <Plus size={16} />
@@ -175,7 +175,7 @@ export default function CountiesPage() {
                   setPage(0);
                 }}
                 placeholder="Search counties…"
-                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-(--org-primary)"
+                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-base outline-none focus:ring-2 focus:ring-(--org-primary)"
               />
             </div>
 
@@ -185,7 +185,7 @@ export default function CountiesPage() {
                 setQ("");
                 setPage(0);
               }}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50"
             >
               Clear
             </button>
@@ -230,12 +230,12 @@ export default function CountiesPage() {
                     >
                       <button
                         type="button"
-                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white text-[#008000] px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
                         disabled={!canEdit}
                         title={canEdit ? "Edit" : "NEC/SYSTEM only"}
                         onClick={() => openEdit(c)}
                       >
-                        <Pencil size={16} />
+                        <Pencil size={20} />
                         {/* Edit */}
                       </button>
 
@@ -251,7 +251,7 @@ export default function CountiesPage() {
                           if (ok) deleteM.mutate(c.countyId);
                         }}
                       >
-                        <Trash2 size={16} className="text-red-600" />
+                        <Trash2 size={20} className="text-red-600" />
                         {/* Delete */}
                       </button>
                     </div>,
@@ -262,7 +262,7 @@ export default function CountiesPage() {
 
         {/* Pagination */}
         <div className="mt-3 flex items-center justify-between">
-          <div className="text-xs text-slate-600">
+          <div className="text-sm text-slate-600">
             Page <span className="font-bold">{page + 1}</span> of{" "}
             <span className="font-bold">{totalPages}</span>
           </div>
@@ -324,7 +324,7 @@ export default function CountiesPage() {
           <div className="flex items-center justify-end gap-2">
             <button
               type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
               onClick={() => setOpen(false)}
               disabled={saving}
             >
@@ -332,7 +332,7 @@ export default function CountiesPage() {
             </button>
             <button
               type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
               onClick={save}
               disabled={!canEdit || saving}
               title={canEdit ? "Save" : "NEC/SYSTEM only"}
@@ -354,7 +354,7 @@ export default function CountiesPage() {
           />
 
           {createM.isError || updateM.isError ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-base text-red-700">
               {(createM.error as any)?.message ??
                 (updateM.error as any)?.message ??
                 "Failed to save county."}

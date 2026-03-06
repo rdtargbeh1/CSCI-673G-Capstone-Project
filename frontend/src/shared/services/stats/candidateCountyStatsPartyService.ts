@@ -1,8 +1,13 @@
+
+
+// ✅ FILE: src/shared/services/stats/candidateCountyStatsPartyService.ts
+
 import { apiClient } from "../../lib/apiClient";
 
-export type CandidateCountyStatsPartyDto = {
+export type CandidateCountyStatsPartyRow = {
   orgId: string;
   electionId: string;
+  contestId: string;
 
   countyId: string;
   countyName: string;
@@ -10,19 +15,29 @@ export type CandidateCountyStatsPartyDto = {
   candidateId: string;
   candidateName: string;
 
-  partyId?: string | null;
-  partyName?: string | null;
-  abbreviation?: string | null;
+  partyId?: string;
+  partyName?: string;
 
-  candidateVotes?: number | null;
-  ballotsCast?: number | null;
-  totalValidVotes?: number | null;
-  totalInvalidVotes?: number | null;
+  // backend DTO uses "abbreviation"
+  abbreviation?: string;
 
-  voteSharePct?: number | null;
+  candidateVotes: number;
+  ballotsCast: number;
+  totalValidVotes: number;
+  totalInvalidVotes: number;
+
+  voteSharePct: number;
+
+  // ✅ NEW fields (winner / margin / rank)
+  rankInCounty?: number;
+  winnerVotes?: number;
+  winnerVoteSharePct?: number;
+  marginVotes?: number;
+  marginPct?: number;
+  isCountyWinner?: boolean;
 };
 
-export type SpringPage<T> = {
+export type PageResp<T> = {
   content: T[];
   number: number;
   size: number;
@@ -32,37 +47,34 @@ export type SpringPage<T> = {
   last: boolean;
 };
 
-export type CandidateCountyStatsPartyQuery = {
-  orgId: string;       // REQUIRED for SYSTEM+TENANT+NEC for this controller
-  electionId: string;  // REQUIRED
+export async function searchCandidateCountyStatsParty(params: {
+  orgId: string;
+  electionId: string;
+  contestId?: string;
   countyId?: string;
   candidateId?: string;
   partyId?: string;
   page?: number;
   size?: number;
-  sort?: string[];     // e.g. ["candidateVotes,desc","countyName,asc"]
-};
+  sort?: string[];
+}): Promise<PageResp<CandidateCountyStatsPartyRow>> {
+  const res = await apiClient.get<PageResp<CandidateCountyStatsPartyRow>>(
+    "/stats/party/candidates/counties",
+    {
+      params,
+      paramsSerializer: {
+        serialize: (p: any) => {
+          const sp = new URLSearchParams();
+          Object.entries(p ?? {}).forEach(([k, v]) => {
+            if (v == null || v === "") return;
+            if (Array.isArray(v)) v.forEach((x) => sp.append(k, String(x)));
+            else sp.set(k, String(v));
+          });
+          return sp.toString();
+        },
+      } as any,
+    }
+  );
 
-export async function fetchCandidateCountyStatsParty(
-  q: CandidateCountyStatsPartyQuery
-): Promise<SpringPage<CandidateCountyStatsPartyDto>> {
-  if (!q.orgId) throw new Error("orgId is required");
-  if (!q.electionId) throw new Error("electionId is required");
-
-  const p = new URLSearchParams();
-  p.set("orgId", q.orgId);
-  p.set("electionId", q.electionId);
-  p.set("page", String(q.page ?? 0));
-  p.set("size", String(q.size ?? 50));
-
-  // ✅ IMPORTANT: use repeated `sort=` not `sort[]`
-  (q.sort ?? []).forEach((s) => p.append("sort", s));
-
-  if (q.countyId) p.set("countyId", q.countyId);
-  if (q.candidateId) p.set("candidateId", q.candidateId);
-  if (q.partyId) p.set("partyId", q.partyId);
-
-  const url = `/stats/party/candidates/counties?${p.toString()}`;
-  const { data } = await apiClient.get(url);
-  return data as SpringPage<CandidateCountyStatsPartyDto>;
+  return res.data;
 }

@@ -1,10 +1,17 @@
 
-
 // src/app/layout/SidebarNav.tsx
-
 
 import { useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router-dom";
+import {
+  LayoutDashboard,
+  Vote,
+  Zap,
+  MapPin,
+  FileText,
+  Shield,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useAuth } from "../../auth/useAuth";
 import { useAuthStore } from "../../shared/store/authStore";
 
@@ -13,15 +20,18 @@ type DashboardMode = "SYSTEM" | "NEC" | "TENANT";
 type NavItem = {
   to: string;
   label: string;
+  icon: LucideIcon;
+  iconColor: string;
   show: (mode: DashboardMode) => boolean;
 };
 
+// Side Bar Nav List item
 function linkClass(isActive: boolean) {
   return [
-    "flex items-center justify-between rounded-xl border px-3 py-2 text-sm font-semibold",
+    "flex items-center gap-4 px-4 py-4 text-[26px] font-semibold",
     isActive
-      ? "border-slate-200 bg-slate-100 text-slate-900"
-      : "border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50",
+      ? "text-red-600 border-slate-400 br-slate-400" // ✅ Keep original active state
+      : "border-transparent text-slate-200 hover:border-slate-400 hover:bg-slate-700", // ✅ Light text for dark bg
   ].join(" ");
 }
 
@@ -60,16 +70,48 @@ export default function SidebarNav() {
   const tenantName = isSystemPlatform ? " PLATFORM" : rawTenantName;
 
   const navItems: NavItem[] = [
-    { to: "/dashboard", label: "Dashboard", show: () => true },
-    { to: "/elections", label: "Elections", show: () => true },
-    { to: "/operations", label: "Operations", show: () => true },
+    {
+      to: "/dashboard",
+      label: "Dashboard",
+      icon: LayoutDashboard,
+      iconColor: "#3b82f6", // Blue
+      show: () => true,
+    },
+    {
+      to: "/elections",
+      label: "Elections",
+      icon: Vote,
+      iconColor: "#ef4444", // Red
+      show: () => true,
+    },
+    {
+      to: "/operations",
+      label: "Operations",
+      icon: Zap,
+      iconColor: "#f59e0b", // Amber
+      show: () => true,
+    },
     {
       to: "/geography-registry",
       label: "Geography & Registry",
+      icon: MapPin,
+      iconColor: "#10b981", // Emerald
       show: () => true,
     },
-    { to: "/reports", label: "Reports", show: () => true },
-    { to: "/admin-security", label: "Admin & Security", show: () => true },
+    {
+      to: "/reports",
+      label: "Reports",
+      icon: FileText,
+      iconColor: "#8b5cf6", // Violet
+      show: () => true,
+    },
+    {
+      to: "/admin-security",
+      label: "Admin & Security",
+      icon: Shield,
+      iconColor: "#ec4899", // Pink
+      show: () => true,
+    },
   ];
 
   const filteredNav = useMemo(
@@ -90,48 +132,56 @@ export default function SidebarNav() {
 
   const sidebarContent = (
     <div className="h-full">
-      <div className="rounded-xl border border-slate-200 bg-white p-3">
-        <div className="text-lg font-extrabold">EMS</div>
+      {/* ✅ UPDATED: Dark background box */}
+      <div 
+        className="rounded-xl border px-3 py-3"
+        style={{ backgroundColor: "#191970", borderColor: "#312e81" }}
+      >
+        <div className="text-2xl font-extrabold text-white">EMS</div>
 
-        <div className="mt-2 space-y-1 text-xs text-slate-600">
+        <div className="mt-2 space-y-1 text-sm text-slate-300">
           <div>
-            Mode: <span className="font-bold text-slate-800">{mode}</span>
+            Mode: <span className="font-bold text-white">{mode}</span>
           </div>
 
           <div>
-            <span className="font-bold text-slate-800">{tenantName}</span>
+            <span className="font-bold text-2xl text-red-500">{tenantName}</span>
           </div>
 
           {user?.tenantRole ? (
             <div>
               Role:{" "}
-              <span className="font-bold text-slate-800">{user.tenantRole}</span>
+              <span className="font-bold text-white">{user.tenantRole}</span>
             </div>
           ) : null}
 
           {user?.systemRole ? (
             <div>
               System:{" "}
-              <span className="font-bold text-slate-800">{user.systemRole}</span>
+              <span className="font-bold text-white">{user.systemRole}</span>
             </div>
           ) : null}
         </div>
       </div>
 
       <nav className="mt-3 flex flex-col gap-2">
-        {filteredNav.map((n) => (
-          <NavLink
-            key={n.to}
-            to={n.to}
-            onClick={() => setOpen(false)}
-            className={({ isActive }) => linkClass(isActive)}
-          >
-            <span>{n.label}</span>
-          </NavLink>
-        ))}
+        {filteredNav.map((n) => {
+          const Icon = n.icon;
+          return (
+            <NavLink
+              key={n.to}
+              to={n.to}
+              onClick={() => setOpen(false)}
+              className={({ isActive }) => linkClass(isActive)}
+            >
+              <Icon size={30} className="flex-shrink-0" style={{ color: n.iconColor }} />
+              <span>{n.label}</span>
+            </NavLink>
+          );
+        })}
       </nav>
 
-      <div className="mt-4 border-t border-dashed border-slate-200 pt-3 text-xs text-slate-600">
+      <div className="mt-4 border-t border-dashed border-slate-400 pt-3 text-sm text-slate-300">
         Elections are viewable by all tenants.
         <br />
         Create/edit controls remain restricted inside pages.
@@ -141,12 +191,15 @@ export default function SidebarNav() {
 
   return (
     <>
-      {/* ✅ Desktop sidebar (lg+) */}
-      <aside className="hidden lg:block w-280px shrink-0 border-r border-slate-200 bg-white p-3">
+      {/* ✅ Desktop sidebar (lg+) with dark background */}
+      <aside 
+        className="hidden lg:block w-280px shrink-0 border-r p-3"
+        style={{ backgroundColor: "#191970", borderColor: "#312e81" }}
+      >
         {sidebarContent}
       </aside>
 
-      {/* ✅ Mobile “Menu” button */}
+      {/* ✅ Mobile "Menu" button */}
       <div className="lg:hidden px-3 pt-3">
         <button
           type="button"
@@ -158,7 +211,7 @@ export default function SidebarNav() {
         </button>
       </div>
 
-      {/* ✅ Mobile drawer */}
+      {/* ✅ Mobile drawer with dark background */}
       {open ? (
         <>
           <div
@@ -170,18 +223,20 @@ export default function SidebarNav() {
             className={[
               "fixed z-50 inset-y-0 left-0",
               "w-[78vw] max-w-[320px]",
-              "bg-white border-r border-slate-200 shadow-2xl",
+              "border-r shadow-2xl",
               "p-3",
             ].join(" ")}
+            style={{ backgroundColor: "#800000", borderColor: "#312e81" }}
             role="dialog"
             aria-modal="true"
           >
             <div className="flex items-center justify-between mb-3">
-              <div className="text-base font-extrabold text-slate-900">Menu</div>
+              <div className="text-base font-extrabold text-white">Menu</div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="h-9 w-9 rounded-xl border border-slate-200 hover:bg-slate-50"
+                className="h-9 w-9 rounded-xl border hover:bg-slate-700"
+                style={{ borderColor: "#312e81", color: "white" }}
                 aria-label="Close menu"
               >
                 ✕

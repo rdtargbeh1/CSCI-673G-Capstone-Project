@@ -1,4 +1,8 @@
+
+
 // src/shared/services/organizationService.ts
+
+
 import { apiClient } from "../lib/apiClient";
 
 const BASE_URL = "/orgs";

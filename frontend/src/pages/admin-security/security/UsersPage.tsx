@@ -1,7 +1,5 @@
-
-
 // src/pages/admin-security/security/UsersPage.tsx
-import  { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../../../shared/store/authStore";
 
@@ -26,6 +24,7 @@ import {
   setPlatformUserVerified, // PATCH /api/platform/system-users/{id}/verified
   updatePlatformUser, // PUT /api/platform/system-users/{id}
   createTenantAdmin, // ✅ NEW: POST /api/tenants/users/admins (X-Org-Id required)
+  adminResetPassword, // ✅ NEW: POST /api/user/{userId}/password/reset (X-Org-Id required)
 } from "../../../shared/services/userService";
 
 import {
@@ -36,13 +35,23 @@ import {
 import { apiClient } from "../../../shared/lib/apiClient";
 
 import { AdminShell, Badge, Card, Note } from "../shared/admin-ui";
-import { Pencil, Trash2, UserPlus, Search, RefreshCw } from "lucide-react";
+import {
+  Pencil,
+  Trash2,
+  UserPlus,
+  Search,
+  RefreshCw,
+  KeyRound, // ✅ NEW
+} from "lucide-react";
 
-// ✅ ADD
+// ✅ Existing modals
 import UsersFormModal from "./UsersFormModal";
 import TenantAdminFormModal from "./TenantAdminFormModal";
 
-// ✅ ADD
+// ✅ NEW modal
+import AdminResetPasswordModal from "./AdminResetPasswordModal";
+
+// ✅ Parties lookup
 import { searchParties } from "../../../shared/services/partyService";
 
 /** ---------------- helpers ---------------- */
@@ -153,9 +162,7 @@ export default function UsersPage() {
   const [selectedOrgId, setSelectedOrgId] = useState<string>("");
 
   const isPlatformView = isSystemMode && !selectedOrgId.trim();
-  const effectiveOrgId = isSystemMode
-    ? selectedOrgId
-    : String(currentOrgId ?? "");
+  const effectiveOrgId = isSystemMode ? selectedOrgId : String(currentOrgId ?? "");
   const hasOrgContext = !!effectiveOrgId.trim();
 
   // ✅ Permissions
@@ -178,6 +185,10 @@ export default function UsersPage() {
 
   // ✅ Tenant Admin modal state
   const [tenantAdminOpen, setTenantAdminOpen] = useState(false);
+
+  // ✅ NEW: Admin Reset Password modal state
+  const [resetPwOpen, setResetPwOpen] = useState(false);
+  const [resetPwUser, setResetPwUser] = useState<any | null>(null);
 
   // ✅ IMPORTANT: detect “protected role” while editing IN TENANT VIEW
   const editingRoleName = safeStr((editing as any)?.roleName);
@@ -216,11 +227,8 @@ export default function UsersPage() {
     password: "",
     roleName: "" as RoleName | "",
   });
-  const [tenantAdminTouched, setTenantAdminTouched] = useState<{
-    [k: string]: boolean;
-  }>({});
-  const [tenantAdminPhoneHasIllegalChar, setTenantAdminPhoneHasIllegalChar] =
-    useState(false);
+  const [tenantAdminTouched, setTenantAdminTouched] = useState<{ [k: string]: boolean }>({});
+  const [tenantAdminPhoneHasIllegalChar, setTenantAdminPhoneHasIllegalChar] = useState(false);
 
   function openCreate() {
     if (!canManageUsers) return;
@@ -284,6 +292,16 @@ export default function UsersPage() {
     setTenantAdminOpen(true);
   }
 
+  // ✅ NEW: open reset password modal for a specific user
+  function openResetPassword(u: any) {
+    // We only support tenant reset with org header
+    if (isPlatformView) return;
+    if (!canManageTenant || !hasOrgContext) return;
+
+    setResetPwUser(u);
+    setResetPwOpen(true);
+  }
+
   /** ✅ SYSTEM org dropdown options */
   const orgsQ = useQuery({
     queryKey: ["lookups", "orgs", "system"],
@@ -314,11 +332,10 @@ export default function UsersPage() {
   const partiesQ = useQuery({
     queryKey: ["lookups", "parties", "system", "tenantAdmin"],
     queryFn: async () => {
-      // load first page; enough for most cases
       const res = await searchParties({ page: 0, size: 200, q: undefined });
       return res.items;
     },
-    enabled: isSystemMode, // only show/use on SYSTEM dashboard
+    enabled: isSystemMode,
     staleTime: 1000 * 60 * 10,
     retry: 1,
   });
@@ -326,9 +343,7 @@ export default function UsersPage() {
   const partyOptions = useMemo(() => {
     return (partiesQ.data ?? []).map((p) => ({
       value: p.partyId,
-      label: p.abbreviation
-        ? `${p.partyName} (${p.abbreviation})`
-        : p.partyName,
+      label: p.abbreviation ? `${p.partyName} (${p.abbreviation})` : p.partyName,
     }));
   }, [partiesQ.data]);
 
@@ -407,13 +422,7 @@ export default function UsersPage() {
     }
 
     return e;
-  }, [
-    form,
-    editing,
-    isSystemMode,
-    phoneHasIllegalChar,
-    isProtectedTenantRoleEdit,
-  ]);
+  }, [form, editing, isSystemMode, phoneHasIllegalChar, isProtectedTenantRoleEdit]);
 
   const isValid = Object.keys(errors).length === 0;
 
@@ -486,8 +495,7 @@ export default function UsersPage() {
 
       // ✅ PLATFORM (no org)
       if (isPlatformView) {
-        if (!canManagePlatform)
-          throw new Error("Platform users: SYSTEM admin only.");
+        if (!canManagePlatform) throw new Error("Platform users: SYSTEM admin only.");
 
         if (!editing) {
           const payload: UserCreateRequest = {
@@ -539,11 +547,7 @@ export default function UsersPage() {
         } as any;
 
         const created = await createUser(String(effectiveOrgId), payload);
-        await assignUserCounty(
-          String(effectiveOrgId),
-          created.userId,
-          form.assignedCountyId || null
-        );
+        await assignUserCounty(String(effectiveOrgId), created.userId, form.assignedCountyId || null);
         return created;
       }
 
@@ -570,17 +574,9 @@ export default function UsersPage() {
         };
       }
 
-      const updated = await updateUser(
-        String(effectiveOrgId),
-        editing.userId,
-        payload
-      );
+      const updated = await updateUser(String(effectiveOrgId), editing.userId, payload);
 
-      await assignUserCounty(
-        String(effectiveOrgId),
-        editing.userId,
-        form.assignedCountyId || null
-      );
+      await assignUserCounty(String(effectiveOrgId), editing.userId, form.assignedCountyId || null);
 
       return updated;
     },
@@ -613,7 +609,6 @@ export default function UsersPage() {
         phoneNumber: tenantAdminForm.phoneNumber.trim() || undefined,
         password: tenantAdminForm.password.trim(),
         roleName: tenantAdminForm.roleName as RoleName,
-        // service uses X-Org-Id; partyId is in payload (if your backend expects it)
         partyId: tenantAdminForm.partyId.trim() || null,
       } as any;
 
@@ -627,8 +622,7 @@ export default function UsersPage() {
 
   const deleteM = useMutation({
     mutationFn: async (u: UserDto) => {
-      if (!canManageTenant)
-        throw new Error("Select a tenant org to manage users.");
+      if (!canManageTenant) throw new Error("Select a tenant org to manage users.");
       await deleteUser(String(effectiveOrgId), u.userId);
     },
     onSuccess: refreshNow,
@@ -639,14 +633,12 @@ export default function UsersPage() {
       if (!canManageUsers) throw new Error("No permission.");
 
       if (isPlatformView) {
-        if (!canManagePlatform)
-          throw new Error("Platform users: SYSTEM admin only.");
+        if (!canManagePlatform) throw new Error("Platform users: SYSTEM admin only.");
         await setPlatformUserActive(args.userId, args.value);
         return;
       }
 
-      if (!canManageTenant)
-        throw new Error("Select a tenant org to manage users.");
+      if (!canManageTenant) throw new Error("Select a tenant org to manage users.");
       await setUserActive(String(effectiveOrgId), args.userId, args.value);
     },
     onSuccess: refreshNow,
@@ -657,17 +649,31 @@ export default function UsersPage() {
       if (!canManageUsers) throw new Error("No permission.");
 
       if (isPlatformView) {
-        if (!canManagePlatform)
-          throw new Error("Platform users: SYSTEM admin only.");
+        if (!canManagePlatform) throw new Error("Platform users: SYSTEM admin only.");
         await setPlatformUserVerified(args.userId, args.value);
         return;
       }
 
-      if (!canManageTenant)
-        throw new Error("Select a tenant org to manage users.");
+      if (!canManageTenant) throw new Error("Select a tenant org to manage users.");
       await setUserVerified(String(effectiveOrgId), args.userId, args.value);
     },
     onSuccess: refreshNow,
+  });
+
+  // ✅ NEW: reset password mutation
+  const resetPwM = useMutation({
+    mutationFn: async (args: { userId: string; newPassword: string }) => {
+      if (isPlatformView) throw new Error("Password reset is tenant-scoped only.");
+      if (!canManageTenant) throw new Error("Select a tenant org to manage users.");
+      if (!hasOrgContext) throw new Error("Select an organization first.");
+
+      await adminResetPassword(String(effectiveOrgId), args.userId, args.newPassword);
+    },
+    onSuccess: async () => {
+      await refreshNow();
+      setResetPwOpen(false);
+      setResetPwUser(null);
+    },
   });
 
   const addDisabledReason = isPlatformView
@@ -688,11 +694,7 @@ export default function UsersPage() {
           ? "SYSTEM: platform users by default; select an org to manage tenant users."
           : "Tenant-scoped users."
       }
-      right={
-        <Badge>
-          {isSystemMode ? (isPlatformView ? "Platform" : "Org") : "Tenant"}
-        </Badge>
-      }
+      right={<Badge>{isSystemMode ? (isPlatformView ? "Platform" : "Org") : "Tenant"}</Badge>}
     >
       <Card
         title="Users"
@@ -738,7 +740,6 @@ export default function UsersPage() {
         {/* ✅ SYSTEM: Organization selector ALWAYS visible */}
         {isSystemMode ? (
           <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {/* kept inline select UI exactly like before */}
             <label className="block">
               <div className="mb-1 flex items-center justify-between">
                 <div className="text-[11px] font-semibold text-slate-600">
@@ -757,9 +758,7 @@ export default function UsersPage() {
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary)"
               >
                 <option value="">
-                  {orgsQ.isLoading
-                    ? "Loading organizations…"
-                    : "— Platform Users (no org) —"}
+                  {orgsQ.isLoading ? "Loading organizations…" : "— Platform Users (no org) —"}
                 </option>
                 {orgOptions.map((o) => (
                   <option key={o.value} value={o.value}>
@@ -790,11 +789,7 @@ export default function UsersPage() {
                   setQ(e.target.value);
                   setPage(0);
                 }}
-                placeholder={
-                  isPlatformView
-                    ? "Search platform users..."
-                    : "Search tenant users..."
-                }
+                placeholder={isPlatformView ? "Search platform users..." : "Search tenant users..."}
                 className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-(--org-primary)"
               />
             </div>
@@ -857,10 +852,7 @@ export default function UsersPage() {
               <tbody>
                 {rows.length === 0 && !usersQ.isLoading ? (
                   <tr>
-                    <td
-                      colSpan={10}
-                      className="px-3 py-6 text-sm text-slate-600"
-                    >
+                    <td colSpan={10} className="px-3 py-6 text-sm text-slate-600">
                       No users found.
                     </td>
                   </tr>
@@ -877,9 +869,7 @@ export default function UsersPage() {
                     return (
                       <tr key={u.userId} className="hover:bg-slate-50">
                         <td className="border-b border-slate-100 px-3 py-2">
-                          <div className="text-sm font-bold text-slate-900">
-                            {fullName(u)}
-                          </div>
+                          <div className="text-sm font-bold text-slate-900">{fullName(u)}</div>
                         </td>
                         <td className="border-b border-slate-100 px-3 py-2 text-sm font-semibold text-slate-800">
                           @{u.userName}
@@ -924,9 +914,7 @@ export default function UsersPage() {
                               <input
                                 type="checkbox"
                                 checked={verified}
-                                disabled={
-                                  !canManageUsers || verifiedM.isPending
-                                }
+                                disabled={!canManageUsers || verifiedM.isPending}
                                 onChange={(e) =>
                                   verifiedM.mutate({
                                     userId: u.userId,
@@ -942,6 +930,26 @@ export default function UsersPage() {
 
                         <td className="border-b border-slate-100 px-3 py-2">
                           <div className="flex items-center gap-2">
+                            {/* ✅ Reset password (tenant only) */}
+                            <button
+                              type="button"
+                              className="h-9 w-9 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
+                              title={
+                                isPlatformView
+                                  ? "Reset password not available for platform users"
+                                  : "Reset password"
+                              }
+                              disabled={
+                                isPlatformView ||
+                                !canManageTenant ||
+                                !hasOrgContext ||
+                                resetPwM.isPending
+                              }
+                              onClick={() => openResetPassword(u)}
+                            >
+                              <KeyRound size={16} className="mx-auto text-slate-700" />
+                            </button>
+
                             <button
                               type="button"
                               className="h-9 w-9 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
@@ -949,36 +957,20 @@ export default function UsersPage() {
                               onClick={() => openEdit(u)}
                               disabled={!canManageUsers}
                             >
-                              <Pencil
-                                size={16}
-                                className="mx-auto text-slate-700"
-                              />
+                              <Pencil size={16} className="mx-auto text-slate-700" />
                             </button>
 
                             <button
                               type="button"
                               className="h-9 w-9 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
-                              title={
-                                isPlatformView
-                                  ? "Platform delete not enabled"
-                                  : "Delete"
-                              }
-                              disabled={
-                                isPlatformView ||
-                                !canManageTenant ||
-                                deleteM.isPending
-                              }
+                              title={isPlatformView ? "Platform delete not enabled" : "Delete"}
+                              disabled={isPlatformView || !canManageTenant || deleteM.isPending}
                               onClick={() => {
-                                const ok = window.confirm(
-                                  `Delete user "${fullName(u)}"?`
-                                );
+                                const ok = window.confirm(`Delete user "${fullName(u)}"?`);
                                 if (ok) deleteM.mutate(u);
                               }}
                             >
-                              <Trash2
-                                size={16}
-                                className="mx-auto text-red-600"
-                              />
+                              <Trash2 size={16} className="mx-auto text-red-600" />
                             </button>
                           </div>
                         </td>
@@ -1081,8 +1073,36 @@ export default function UsersPage() {
         phoneHasIllegalChar={tenantAdminPhoneHasIllegalChar}
         setPhoneHasIllegalChar={setTenantAdminPhoneHasIllegalChar}
         orgOptions={orgOptions}
-        partyOptions={partyOptions} // ✅ NEW
-        partiesQ={partiesQ} // ✅ NEW (for disable/error label)
+        partyOptions={partyOptions}
+        partiesQ={partiesQ}
+      />
+
+      {/* ✅ Admin Reset Password Modal */}
+      <AdminResetPasswordModal
+        open={resetPwOpen}
+        user={resetPwUser}
+        onClose={() => {
+          if (resetPwM.isPending) return;
+          setResetPwOpen(false);
+          setResetPwUser(null);
+        }}
+        isSaving={resetPwM.isPending}
+        errorText={
+          resetPwM.isError ? ((resetPwM.error as any)?.message ?? "Reset failed.") : ""
+        }
+        disabledReason={
+          isPlatformView
+            ? "Platform users: reset password not enabled here."
+            : !hasOrgContext
+            ? "Select an organization first."
+            : !canManageTenant
+            ? "No permission to manage tenant users."
+            : ""
+        }
+        onSubmit={(newPassword) => {
+          if (!resetPwUser?.userId) return;
+          resetPwM.mutate({ userId: resetPwUser.userId, newPassword });
+        }}
       />
     </AdminShell>
   );

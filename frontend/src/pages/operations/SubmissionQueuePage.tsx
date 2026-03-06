@@ -694,7 +694,7 @@ export default function SubmissionQueuePage() {
                         setSystemSelectedOrgId(e.target.value);
                         setPage(0);
                       }}
-                      className="h-9 rounded-lg border bg-white px-3 text-sm font-semibold max-w-[220px]"
+                      className="h-9 rounded-lg border bg-white px-3 text-base font-semibold max-w-[220px]"
                       title="Select tenant (organization)"
                     >
                       <option value="">-- Select tenant --</option>
@@ -712,7 +712,7 @@ export default function SubmissionQueuePage() {
                       setElectionId(e.target.value);
                       setPage(0);
                     }}
-                    className="h-9 rounded-lg border bg-white px-3 text-sm font-semibold max-w-[240px]"
+                    className="h-9 rounded-lg border bg-white px-3 text-base font-semibold max-w-[240px]"
                   >
                     {elections.map((el) => (
                       <option key={el.electionId} value={el.electionId}>
@@ -727,7 +727,7 @@ export default function SubmissionQueuePage() {
                       setFilterContest(e.target.value);
                       setPage(0);
                     }}
-                    className="h-9 rounded-lg border bg-white px-3 text-sm font-semibold max-w-[240px]"
+                    className="h-9 rounded-lg border bg-white px-3 text-base font-semibold max-w-[240px]"
                     disabled={!electionId}
                     title="Filter by contest"
                   >
@@ -745,7 +745,7 @@ export default function SubmissionQueuePage() {
                       setFilterCounty(e.target.value);
                       setPage(0);
                     }}
-                    className="h-9 rounded-lg border bg-white px-3 text-sm font-semibold max-w-200px"
+                    className="h-9 rounded-lg border bg-white px-3 text-base font-semibold max-w-200px"
                   >
                     <option value="">All counties</option>
                     {counties.map((c) => (
@@ -762,7 +762,7 @@ export default function SubmissionQueuePage() {
                       setPage(0);
                     }}
                     disabled={!filterCounty}
-                    className="h-9 rounded-lg border bg-white px-3 text-sm font-semibold disabled:bg-slate-50 max-w-[220px]"
+                    className="h-9 rounded-lg border bg-white px-3 text-base font-semibold disabled:bg-slate-50 max-w-[220px]"
                   >
                     <option value="">All districts</option>
                     {districts.map((d) => (
@@ -779,7 +779,7 @@ export default function SubmissionQueuePage() {
                       setPage(0);
                     }}
                     disabled={!filterCounty && !filterDistrict}
-                    className="h-9 rounded-lg border bg-white px-3 text-sm font-semibold disabled:bg-slate-50 max-w-[240px]"
+                    className="h-9 rounded-lg border bg-white px-3 text-base font-semibold disabled:bg-slate-50 max-w-[240px]"
                   >
                     <option value="">All centers</option>
                     {centers.map((c) => (
@@ -792,7 +792,7 @@ export default function SubmissionQueuePage() {
                   <button
                     type="button"
                     onClick={clearFilters}
-                    className="h-9 rounded-lg border bg-white px-3 text-sm font-bold inline-flex items-center gap-2"
+                    className="h-9 rounded-lg border bg-white px-3 text-base font-bold inline-flex items-center gap-2"
                   >
                     <X size={14} />
                     Clear
@@ -802,7 +802,7 @@ export default function SubmissionQueuePage() {
                     type="button"
                     onClick={() => submissionsQ.refetch()}
                     disabled={submissionsQ.isFetching || !enabled}
-                    className={`h-9 rounded-lg border bg-white px-3 text-sm font-bold inline-flex items-center gap-2 ${
+                    className={`h-9 rounded-lg border bg-white px-3 text-lg font-bold inline-flex items-center gap-2 ${
                       submissionsQ.isFetching || !enabled ? "opacity-60" : ""
                     }`}
                   >
@@ -814,7 +814,7 @@ export default function SubmissionQueuePage() {
                     <button
                       type="button"
                       onClick={() => setOpenNew(true)}
-                      className="h-9 rounded-lg px-4 text-sm font-extrabold inline-flex items-center gap-2
+                      className="h-9 rounded-lg px-4 p-5 text-xl font-extrabold inline-flex items-center gap-2
                                  bg-blue-600 text-white border border-blue-700 shadow-sm
                                  hover:bg-blue-700 active:bg-blue-800"
                     >
@@ -836,14 +836,14 @@ export default function SubmissionQueuePage() {
         }
       >
         {submissionsQ.isError ? (
-          <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm font-bold">
+          <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-base font-bold">
             {friendlyError(submissionsQ.error)}
           </div>
         ) : null}
 
         {/* ✅ TABLE (kept) */}
         <div className="w-full overflow-x-auto border rounded-2xl">
-          <table className="min-w-1280px w-full text-[12px] sm:text-[13px]">
+          <table className="min-w-1280px w-full text-base sm:text-base">
             <thead className="bg-slate-50 text-slate-600">
               <tr className="text-left">
                 <Th>Center</Th>
@@ -909,12 +909,12 @@ export default function SubmissionQueuePage() {
 
                       <Td>
                         {evidenceLoading ? (
-                          <span className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-extrabold bg-slate-50 text-slate-700 border border-slate-200">
+                          <span className="inline-flex rounded-full px-2 py-0.5 text-base font-extrabold bg-slate-50 text-slate-700 border border-slate-200">
                             Checking…
                           </span>
                         ) : (
                           <span
-                            className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-extrabold ${
+                            className={`inline-flex rounded-full px-2 py-0.5 text-sm font-extrabold ${
                               evidenceOk
                                 ? "bg-green-50 text-green-700 border border-green-200"
                                 : "bg-red-50 text-red-700 border border-red-200"
@@ -1055,7 +1055,7 @@ export default function SubmissionQueuePage() {
                         </div>
 
                         {flagM.isError ? (
-                          <div className="mt-1 text-[11px] font-bold text-red-700">
+                          <div className="mt-1 text-base font-bold text-red-700">
                             {friendlyError(flagM.error)}
                           </div>
                         ) : null}
@@ -1098,7 +1098,7 @@ export default function SubmissionQueuePage() {
             </button>
           </div>
 
-          <div className="text-xs text-slate-600 sm:text-right">
+          <div className="text-sm text-slate-600 sm:text-right">
             Page {submissionsQ.data ? (submissionsQ.data as any).page + 1 : page + 1} /{" "}
             {submissionsQ.data ? (submissionsQ.data as any).totalPages : "?"}
           </div>
@@ -1187,13 +1187,13 @@ export default function SubmissionQueuePage() {
                 type="text"
                 value={verifierName}
                 readOnly
-                className="px-2.5 py-1.5 rounded-md border w-full bg-slate-50 text-sm"
+                className="px-2.5 py-1.5 rounded-md border w-full bg-slate-50 text-base"
               />
             </Field>
 
             <Field label="Decision">
               <div className="flex gap-3 items-center">
-                <label className="inline-flex items-center gap-2 text-sm font-bold">
+                <label className="inline-flex items-center gap-2 text-base font-bold">
                   <input
                     type="radio"
                     name="verifyDecision"
@@ -1202,7 +1202,7 @@ export default function SubmissionQueuePage() {
                   />
                   Accept
                 </label>
-                <label className="inline-flex items-center gap-2 text-sm font-bold text-red-700">
+                <label className="inline-flex items-center gap-2 text-base font-bold text-red-700">
                   <input
                     type="radio"
                     name="verifyDecision"
@@ -1218,14 +1218,14 @@ export default function SubmissionQueuePage() {
               <textarea
                 value={verifyComment}
                 onChange={(e) => setVerifyComment(e.target.value)}
-                className="px-2.5 py-1.5 rounded-md border w-full text-sm"
+                className="px-2.5 py-1.5 rounded-md border w-full text-base"
                 rows={3}
                 placeholder="Add a review note (optional)…"
               />
             </Field>
 
             {verifyM.isError ? (
-              <div className="mt-1 p-2 rounded-md border border-red-200 bg-red-50 text-red-700 text-sm font-bold">
+              <div className="mt-1 p-2 rounded-md border border-red-200 bg-red-50 text-red-700 text-base font-bold">
                 {friendlyError(verifyM.error)}
               </div>
             ) : null}
@@ -1235,7 +1235,7 @@ export default function SubmissionQueuePage() {
                 type="button"
                 onClick={() => setOpenVerify(false)}
                 disabled={verifyM.isPending}
-                className={`px-3 py-1.5 rounded-md border bg-white text-sm ${
+                className={`px-3 py-1.5 rounded-md border bg-white text-base ${
                   verifyM.isPending ? "opacity-60" : ""
                 }`}
               >
@@ -1258,7 +1258,7 @@ export default function SubmissionQueuePage() {
                     { onSuccess: () => setOpenVerify(false) }
                   );
                 }}
-                className={`px-3 py-1.5 rounded-md border bg-white text-sm font-extrabold ${
+                className={`px-3 py-1.5 rounded-md border bg-white text-base font-extrabold ${
                   verifyM.isPending ? "opacity-60" : ""
                 }`}
               >
@@ -1340,7 +1340,7 @@ export default function SubmissionQueuePage() {
               </div>
 
               <div className="rounded-xl border p-3">
-                <div className="text-sm font-extrabold mb-2">
+                <div className="text-base font-extrabold mb-2">
                   Candidate Votes
                 </div>
 
@@ -1349,11 +1349,11 @@ export default function SubmissionQueuePage() {
                     Loading candidate names…
                   </div>
                 ) : contestOptionsQ.isError ? (
-                  <div className="text-sm font-bold text-red-700">
+                  <div className="text-base font-bold text-red-700">
                     {friendlyError(contestOptionsQ.error)}
                   </div>
                 ) : !drawerVotes.length ? (
-                  <div className="text-sm text-slate-600">
+                  <div className="text-base text-slate-600">
                     No candidate votes.
                   </div>
                 ) : (
@@ -1362,10 +1362,10 @@ export default function SubmissionQueuePage() {
                       <table className="w-full min-w-[420px]">
                         <thead className="bg-slate-50 sticky top-0 z-10">
                           <tr className="text-left">
-                            <th className="p-2 text-[11px] font-extrabold text-slate-600">
+                            <th className="p-2 text-base font-extrabold text-slate-600">
                               Candidate
                             </th>
-                            <th className="p-2 text-[11px] font-extrabold text-slate-600 text-right">
+                            <th className="p-2 text-base font-extrabold text-slate-600 text-right">
                               Votes
                             </th>
                           </tr>
@@ -1373,10 +1373,10 @@ export default function SubmissionQueuePage() {
                         <tbody>
                           {drawerVotes.map((r) => (
                             <tr key={r.key} className="border-t">
-                              <td className="p-2 text-sm font-bold">
+                              <td className="p-2 text-base font-bold">
                                 {r.name}
                               </td>
-                              <td className="p-2 text-sm font-extrabold text-right">
+                              <td className="p-2 text-base font-extrabold text-right">
                                 {fmtNum(r.votes)}
                               </td>
                             </tr>
@@ -1386,7 +1386,7 @@ export default function SubmissionQueuePage() {
                     </div>
 
                     {drawerVotes.length > 15 ? (
-                      <div className="mt-2 text-[11px] font-bold text-slate-600">
+                      <div className="mt-2 text-base font-bold text-slate-600">
                         This contest has {drawerVotes.length} candidates. Scroll
                         to view all.
                       </div>
@@ -1397,8 +1397,8 @@ export default function SubmissionQueuePage() {
 
               {(drawerRow as any)?.comments ? (
                 <div className="rounded-xl border p-3">
-                  <div className="text-sm font-extrabold mb-1">Notes</div>
-                  <div className="text-sm text-slate-700 whitespace-pre-wrap">
+                  <div className="text-base font-extrabold mb-1">Notes</div>
+                  <div className="text-base text-slate-700 whitespace-pre-wrap">
                     {(drawerRow as any).comments}
                   </div>
                 </div>
@@ -1516,7 +1516,7 @@ function StatCard(props: {
       </div>
 
       <div className="min-w-0 leading-tight">
-        <div className="text-[10px] font-extrabold text-slate-600 truncate">
+        <div className="text-sm font-extrabold text-slate-600 truncate">
           {props.label}
         </div>
         <div className="text-base font-extrabold leading-4">{props.value}</div>
@@ -1536,7 +1536,7 @@ function StatusPill(props: {
     <button
       type="button"
       onClick={props.onClick}
-      className={`relative h-9 px-3 rounded-xl border text-sm font-extrabold transition ${
+      className={`relative h-9 px-3 rounded-xl border text-base font-extrabold transition ${
         props.active
           ? `bg-white border-slate-300 shadow-sm`
           : `bg-white border-slate-200 hover:bg-slate-50`
@@ -1558,7 +1558,7 @@ function Th(props: React.ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
       {...props}
-      className={`p-2 text-[10px] sm:text-[11px] font-extrabold ${
+      className={`p-2 text-[10px] sm:text-base font-extrabold ${
         props.className ?? ""
       }`}
     />
@@ -1577,8 +1577,8 @@ function Td(props: React.TdHTMLAttributes<HTMLTableCellElement>) {
 function NoteCard(props: { title: string; lines: string[] }) {
   return (
     <div className="rounded-2xl border bg-white p-3">
-      <div className="text-sm font-extrabold">{props.title}</div>
-      <div className="mt-2 text-[12px] text-slate-700 space-y-1">
+      <div className="text-base font-extrabold">{props.title}</div>
+      <div className="mt-2 text-base text-slate-700 space-y-1">
         {props.lines.map((l, i) => (
           <div key={i}>{l}</div>
         ))}
@@ -1590,10 +1590,10 @@ function NoteCard(props: { title: string; lines: string[] }) {
 function Info(props: { label: string; value: string }) {
   return (
     <div className="rounded-xl border bg-slate-50 px-3 py-2">
-      <div className="text-[11px] font-extrabold text-slate-600">
+      <div className="text-base font-extrabold text-slate-600">
         {props.label}
       </div>
-      <div className="text-sm font-extrabold text-slate-900">{props.value}</div>
+      <div className="text-base font-extrabold text-slate-900">{props.value}</div>
     </div>
   );
 }
@@ -1628,7 +1628,7 @@ function Drawer(props: {
             <div className="min-w-0">
               <div className="text-base font-extrabold">{props.title}</div>
               {props.subtitle ? (
-                <div className="text-xs text-slate-500 mt-0.5 truncate">
+                <div className="text-sm text-slate-500 mt-0.5 truncate">
                   {props.subtitle}
                 </div>
               ) : null}
@@ -1636,7 +1636,7 @@ function Drawer(props: {
             <button
               type="button"
               onClick={props.onClose}
-              className="px-3 py-1.5 rounded-md border bg-white text-sm"
+              className="px-3 py-1.5 rounded-md border bg-white text-base"
             >
               Close
             </button>
@@ -1652,7 +1652,7 @@ function Drawer(props: {
 function Field(props: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-[11px] font-extrabold text-slate-600 mb-1">
+      <div className="text-vase font-extrabold text-slate-600 mb-1">
         {props.label}
       </div>
       {props.children}
@@ -1685,7 +1685,7 @@ function ModalShell(props: {
           <div className="min-w-0">
             <div className="font-extrabold text-base">{props.title}</div>
             {props.subtitle ? (
-              <div className="text-xs text-slate-500 mt-0.5">
+              <div className="text-sm text-slate-500 mt-0.5">
                 {props.subtitle}
               </div>
             ) : null}
@@ -1694,7 +1694,7 @@ function ModalShell(props: {
             type="button"
             onClick={props.onClose}
             disabled={Boolean(props.busy)}
-            className={`px-3 py-1.5 rounded-md border border-slate-200 bg-white text-sm ${
+            className={`px-3 py-1.5 rounded-md border border-slate-200 bg-white text-base ${
               props.busy ? "opacity-60" : ""
             }`}
           >
@@ -1737,13 +1737,13 @@ function FlagReasonModal(props: {
           <textarea
             value={props.reason}
             onChange={(e) => props.onChangeReason(e.target.value)}
-            className="px-2.5 py-1.5 rounded-md border w-full text-sm"
+            className="px-2.5 py-1.5 rounded-md border w-full text-base"
             rows={4}
             placeholder="Explain why you are flagging this submission…"
             disabled={Boolean(props.busy)}
           />
           <div
-            className={`mt-1 text-[11px] font-bold ${
+            className={`mt-1 text-base font-bold ${
               tooLong ? "text-red-700" : "text-slate-500"
             }`}
           >
@@ -1753,13 +1753,13 @@ function FlagReasonModal(props: {
         </Field>
 
         {props.error ? (
-          <div className="mt-1 p-2 rounded-md border border-red-200 bg-red-50 text-red-700 text-sm font-bold">
+          <div className="mt-1 p-2 rounded-md border border-red-200 bg-red-50 text-red-700 text-base font-bold">
             {props.error}
           </div>
         ) : null}
 
         {!trimmed ? (
-          <div className="text-[11px] font-bold text-amber-700">
+          <div className="text-sm font-bold text-amber-700">
             A reason is required to flag a submission.
           </div>
         ) : null}
@@ -1769,7 +1769,7 @@ function FlagReasonModal(props: {
             type="button"
             onClick={props.onClose}
             disabled={Boolean(props.busy)}
-            className={`px-3 py-1.5 rounded-md border bg-white text-sm ${
+            className={`px-3 py-1.5 rounded-md border bg-white text-base ${
               props.busy ? "opacity-60" : ""
             }`}
           >
@@ -1780,7 +1780,7 @@ function FlagReasonModal(props: {
             type="button"
             onClick={props.onSubmit}
             disabled={!canSubmit}
-            className={`px-3 py-1.5 rounded-md border text-sm font-extrabold ${
+            className={`px-3 py-1.5 rounded-md border text-base font-extrabold ${
               canSubmit ? "bg-white" : "bg-slate-50 opacity-60"
             }`}
             title={

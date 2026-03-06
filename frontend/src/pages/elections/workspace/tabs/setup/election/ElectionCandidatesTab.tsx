@@ -58,13 +58,13 @@ function CompactTable(props: {
   const { columns, rows, onRowClick, selectedRowIndex } = props;
   return (
     <div className="w-full overflow-auto rounded-xl border border-slate-200 bg-white">
-      <table className="w-full border-collapse text-sm">
+      <table className="w-full border-collapse text-base">
         <thead>
           <tr className="bg-slate-50">
             {columns.map((c) => (
               <th
                 key={c}
-                className="text-left px-3 py-1.5 text-[11px] font-extrabold text-slate-600 border-b border-slate-200"
+                className="text-left px-3 py-1.5 text-base font-extrabold text-slate-600 border-b border-slate-200"
               >
                 {c}
               </th>
@@ -252,16 +252,17 @@ export default function ElectionCandidatesTab() {
           className="flex flex-wrap gap-2"
           onClick={(e) => e.stopPropagation()}
         >
+          {/* Edit btn */}
           <button
             type="button"
             disabled={!canEdit}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-700 ${
               !canEdit ? "opacity-60" : ""
             }`}
             title={canEdit ? "Edit (SYSTEM/NEC)" : "Read-only"}
             onClick={() => openEdit(r)}
           >
-            <Pencil size={16} />
+            <Pencil size={20} />
           </button>
 
           <button
@@ -278,7 +279,7 @@ export default function ElectionCandidatesTab() {
               if (ok) deleteM.mutate(r.electId);
             }}
           >
-            <Trash2 size={16} className="text-red-600" />
+            <Trash2 size={20} className="text-red-600" />
           </button>
         </div>
       );
@@ -293,10 +294,10 @@ export default function ElectionCandidatesTab() {
         <div key="center" className="grid">
           <span className="text-slate-700">{r.centerName ?? "NATIONAL"}</span>
         </div>,
-        <span key="created" className="text-xs text-slate-600">
+        <span key="created" className="text-base text-slate-600">
           {fmtDate(r.dateCreated)}
         </span>,
-        <span key="updated" className="text-xs text-slate-600">
+        <span key="updated" className="text-base text-slate-600">
           {fmtDate(r.dateUpdated)}
         </span>,
         actions,
@@ -308,7 +309,7 @@ export default function ElectionCandidatesTab() {
     return (
       <div className="p-3 rounded-xl border border-slate-200 bg-white">
         <div className="font-extrabold text-slate-800">Election Candidates</div>
-        <div className="text-sm text-slate-600 mt-1">
+        <div className="text-base text-slate-600 mt-1">
           Missing <b>electionId</b> in route params.
         </div>
       </div>
@@ -353,7 +354,7 @@ export default function ElectionCandidatesTab() {
             <button
               type="button"
               onClick={openCreate}
-              className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white"
+              className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-700 text-white font-bold"
             >
               <Plus size={16} />
               Assign Candidate
@@ -366,7 +367,7 @@ export default function ElectionCandidatesTab() {
             type="button"
             onClick={refreshNow}
             disabled={candidatesQ.isFetching}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-100 ${
               candidatesQ.isFetching ? "opacity-60" : ""
             }`}
           >
@@ -441,12 +442,12 @@ export default function ElectionCandidatesTab() {
           >
             <div className="flex justify-between gap-3">
               <div>
-                <div className="font-extrabold text-base">
+                <div className="font-extrabold text-xl">
                   {editing
                     ? "Edit Election Candidate"
                     : "Assign Candidate to Election"}
                 </div>
-                <div className="text-xs text-slate-500 mt-0.5">
+                <div className="text-sm text-slate-500 mt-0.5 font-bold">
                   {editing
                     ? `electId: ${editing.electId}`
                     : "Select a candidate from Candidate Master and optional centerId."}
@@ -468,7 +469,7 @@ export default function ElectionCandidatesTab() {
             <div className="grid gap-2.5 mt-3">
               {!editing ? (
                 <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-lg font-extrabold text-slate-600">
                     Candidate <span className="text-red-600">*</span>
                   </div>
 
@@ -501,22 +502,22 @@ export default function ElectionCandidatesTab() {
                   )}
 
                   {touched && !candidateId.trim() ? (
-                    <div className="text-[11px] font-bold text-red-600">
+                    <div className="text-sm font-bold text-red-600">
                       Required
                     </div>
                   ) : null}
-                  <div className="text-[11px] text-slate-500">
+                  <div className="text-sm text-slate-500 font-bold">
                     Select candidate from Candidate Master.
                   </div>
                 </div>
               ) : null}
 
               <div className="grid gap-1.5">
-                <div className="text-[11px] font-extrabold text-slate-600">
+                <div className="text-base font-extrabold text-slate-600">
                   Polling Center
                 </div>
 
-                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                <label className="inline-flex items-center gap-2 text-base text-slate-700">
                   <input
                     type="checkbox"
                     checked={centerNullable}
@@ -539,8 +540,8 @@ export default function ElectionCandidatesTab() {
                   }`}
                 />
 
-                <div className="text-[11px] text-slate-500">
-                  If NATIONAL is checked, centerId will be saved as <b>null</b>.
+                <div className="text-base text-slate-500 text-blue font-bold">
+                  If <span className="text-red-800 font-extrabold">NATIONAL</span> is checked, centerId will be saved as <b>null</b>.
                 </div>
               </div>
 

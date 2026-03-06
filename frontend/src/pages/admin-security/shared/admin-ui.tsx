@@ -39,8 +39,8 @@ export function Tabs() {
   const isSystem = dashboardMode === "SYSTEM";
   const isNecOrSystem = dashboardMode === "NEC" || dashboardMode === "SYSTEM";
 
-  const base = "rounded-xl border px-3 py-2 text-sm font-semibold";
-  const active = "bg-slate-100 border-slate-200";
+  const base = "rounded-xl border px-3 py-2 text-xl font-semibold";
+  const active = "bg-[#00008B] border-slate-200 text-[#EFBF04] font-extrabold";
   const idle = "bg-white border-slate-200 hover:bg-slate-50";
 
   return (
@@ -163,7 +163,7 @@ export function Card({
 
 export function Badge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
+    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-base font-semibold text-slate-700">
       {children}
     </span>
   );
@@ -173,7 +173,7 @@ export function Note({ title, bullets }: { title: string; bullets: string[] }) {
   return (
     <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3">
       <div className="font-extrabold">{title}</div>
-      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+      <ul className="mt-2 list-disc space-y-1 pl-5 text-base text-slate-700">
         {bullets.map((b) => (
           <li key={b}>{b}</li>
         ))}
@@ -220,7 +220,7 @@ export function Table({
               <th
                 key={c}
                 className={[
-                  "border-b border-slate-200 px-2 py-2 text-left text-xs font-bold text-slate-600",
+                  "border-b border-slate-200 px-2 py-2 text-left text-base font-bold text-slate-600",
                   "whitespace-nowrap",
                   idx === lastColIndex
                     ? "sticky right-0 z-10 bg-white shadow-[-10px_0_10px_-12px_rgba(0,0,0,0.25)]"
@@ -240,7 +240,7 @@ export function Table({
                 <td
                   key={j}
                   className={[
-                    "border-b border-slate-100 px-2 py-2 text-sm text-slate-800 align-top",
+                    "border-b border-slate-100 px-2 py-2 text-base text-slate-800 align-top",
                     // ✅ Fix 620px–1585px: allow wrap/truncate instead of forcing one long line
                     "whitespace-normal wrap-break-words",
                     j === lastColIndex

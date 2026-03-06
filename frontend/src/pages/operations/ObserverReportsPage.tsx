@@ -119,7 +119,7 @@ function ClampCell(props: { text?: any; className?: string }) {
     <div
       title={t || ""}
       className={[
-        "min-w-0 truncate text-sm text-slate-800",
+        "min-w-0 truncate text-lg text-slate-800",
         props.className ?? "max-w-[240px]",
       ].join(" ")}
     >
@@ -375,7 +375,7 @@ export default function ObserverReportsPage() {
 
         <span
           key={`e-${r.reportId}`}
-          className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-extrabold border ${
+          className={`inline-flex rounded-full px-2 py-0.5 text-base font-extrabold border ${
             evidence === "Attached"
               ? "bg-green-50 text-green-700 border-green-200"
               : "bg-red-50 text-red-700 border-red-200"
@@ -437,7 +437,7 @@ export default function ObserverReportsPage() {
             }}
             title="Delete"
           >
-            <Trash2 size={16} className="text-red-600" />
+            <Trash2 size={18} className="text-red-600" />
           </button>
         </div>,
       ];
@@ -457,17 +457,17 @@ export default function ObserverReportsPage() {
         right={
           <div className="flex flex-wrap gap-2">
             <button
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 inline-flex items-center gap-2"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-lg font-semibold hover:bg-slate-50 inline-flex items-center gap-2"
               onClick={() => listQ.refetch()}
               disabled={!listEnabled || listQ.isFetching}
               type="button"
             >
-              <RefreshCw size={16} />
+              <RefreshCw size={18} />
               Refresh
             </button>
 
             <button
-              className={`rounded-xl border px-3 py-2 text-sm font-extrabold inline-flex items-center gap-2 ${
+              className={`rounded-xl border px-3 py-2 text-lg font-extrabold inline-flex items-center gap-2 ${
                 canCrud
                   ? "bg-blue-600 text-white border-blue-700 hover:bg-blue-700"
                   : "bg-white text-slate-700 border-slate-200 opacity-60"
@@ -505,7 +505,7 @@ export default function ObserverReportsPage() {
           <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
-                <div className="text-sm font-extrabold text-slate-900">
+                <div className="text-base font-extrabold text-slate-900">
                   Select Tenant Organization
                 </div>
                 <div className="text-xs text-slate-500">
@@ -521,7 +521,7 @@ export default function ObserverReportsPage() {
                     setSystemSelectedOrgId(e.target.value);
                     setPage(0);
                   }}
-                  className="h-10 w-full sm:w-[320px] rounded-xl border bg-white px-3 text-sm font-semibold"
+                  className="h-10 w-full sm:w-[320px] rounded-xl border bg-white px-3 text-base font-semibold"
                   disabled={orgsQ.isLoading}
                 >
                   <option value="">— Select tenant —</option>
@@ -552,7 +552,7 @@ export default function ObserverReportsPage() {
             ) : null}
 
             {!systemSelectedOrgId ? (
-              <div className="mt-2 text-xs font-bold text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+              <div className="mt-2 text-base font-bold text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
                 Select a tenant to load reports.
               </div>
             ) : null}
@@ -579,7 +579,7 @@ export default function ObserverReportsPage() {
                 setPage(0);
               }}
               placeholder="Search…"
-              className="h-9 rounded-lg border bg-white px-3 text-sm w-[220px]"
+              className="h-9 rounded-lg border bg-white px-3 text-base w-[220px]"
               disabled={!effectiveOrgId}
             />
 
@@ -589,7 +589,7 @@ export default function ObserverReportsPage() {
                 setType(e.target.value as any);
                 setPage(0);
               }}
-              className="h-9 rounded-lg border bg-white px-3 text-sm font-semibold"
+              className="h-9 rounded-lg border bg-white px-3 text-base font-semibold"
               disabled={!effectiveOrgId}
             >
               <option value="">All types</option>
@@ -607,7 +607,7 @@ export default function ObserverReportsPage() {
                 setResolved(e.target.value as any);
                 setPage(0);
               }}
-              className="h-9 rounded-lg border bg-white px-3 text-sm font-semibold"
+              className="h-9 rounded-lg border bg-white px-3 text-base font-semibold"
               disabled={!effectiveOrgId}
             >
               <option value="">All</option>
@@ -616,13 +616,13 @@ export default function ObserverReportsPage() {
             </select>
           </div>
 
-          <div className="text-xs text-slate-500">
+          <div className="text-sm text-slate-500">
             Page {page + 1} / {totalPages}
           </div>
         </div>
 
         {listQ.isError ? (
-          <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm font-bold">
+          <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-base font-bold">
             {friendlyError(listQ.error)}
           </div>
         ) : null}
@@ -644,7 +644,7 @@ export default function ObserverReportsPage() {
             !effectiveOrgId
               ? [
                   [
-                    <span key="no-org" className="text-sm text-slate-600">
+                    <span key="no-org" className="text-base text-slate-600">
                       Select a tenant organization to load reports.
                     </span>,
                     "",
@@ -752,13 +752,13 @@ export default function ObserverReportsPage() {
           onClick={() => setOpenView(false)}
         >
           <div
-            className="w-full max-w-xl bg-white rounded-2xl border shadow-xl"
+            className="w-full max-w-3xl bg-white rounded-2xl border shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-3 border-b flex items-start justify-between">
               <div>
-                <div className="text-base font-extrabold">Observer Report</div>
-                <div className="text-xs text-slate-500">Details</div>
+                <div className="text-xl font-extrabold">Observer Report</div>
+                <div className="text-sm text-slate-500">Details</div>
               </div>
               <button
                 className="h-9 rounded-lg border bg-white px-3 text-sm font-bold"
@@ -779,7 +779,7 @@ export default function ObserverReportsPage() {
               ) : !viewQ.data ? (
                 <div className="text-sm text-slate-600">No data.</div>
               ) : (
-                <div className="space-y-2 text-sm">
+                <div className="space-y-2 text-base">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div className="rounded-xl border bg-slate-50 p-2">
                       <div className="text-[11px] font-extrabold text-slate-600">
@@ -787,18 +787,20 @@ export default function ObserverReportsPage() {
                       </div>
                       <div className="font-bold">{viewQ.data.type}</div>
                     </div>
+
                     <div className="rounded-xl border bg-slate-50 p-2">
-                      <div className="text-[11px] font-extrabold text-slate-600">
+                      <div className="text-base font-extrabold text-slate-600">
                         Resolved
                       </div>
-                      <div className="font-bold">
-                        {viewQ.data.resolved ? "Yes" : "No"}
+
+                      <div className={`font-bold ${viewQ.data.resolved ? "text-green-600" : "text-red-600"}`}>
+                        {viewQ.data.resolved ? "✓ Yes" : "✕ No"}
                       </div>
                     </div>
 
                     {/* ✅ Reporter */}
                     <div className="rounded-xl border bg-slate-50 p-2">
-                      <div className="text-[11px] font-extrabold text-slate-600">
+                      <div className="text-sm font-extrabold text-slate-600">
                         Reporter
                       </div>
                       <div className="font-bold">
@@ -807,7 +809,7 @@ export default function ObserverReportsPage() {
                     </div>
 
                     <div className="rounded-xl border bg-slate-50 p-2">
-                      <div className="text-[11px] font-extrabold text-slate-600">
+                      <div className="text-sm font-extrabold text-slate-600">
                         County
                       </div>
                       <div className="font-bold">
@@ -816,7 +818,7 @@ export default function ObserverReportsPage() {
                     </div>
 
                     <div className="rounded-xl border bg-slate-50 p-2">
-                      <div className="text-[11px] font-extrabold text-slate-600">
+                      <div className="text-sm font-extrabold text-slate-600">
                         District
                       </div>
                       <div className="font-bold">
@@ -825,7 +827,7 @@ export default function ObserverReportsPage() {
                     </div>
 
                     <div className="rounded-xl border bg-slate-50 p-2">
-                      <div className="text-[11px] font-extrabold text-slate-600">
+                      <div className="text-sm font-extrabold text-slate-600">
                         Center Code
                       </div>
                       <div className="font-bold">
@@ -834,7 +836,7 @@ export default function ObserverReportsPage() {
                     </div>
 
                     <div className="rounded-xl border bg-slate-50 p-2 sm:col-span-2">
-                      <div className="text-[11px] font-extrabold text-slate-600">
+                      <div className="text-sm font-extrabold text-slate-600">
                         Center
                       </div>
                       <div className="font-bold">
@@ -844,7 +846,7 @@ export default function ObserverReportsPage() {
                   </div>
 
                   <div className="rounded-xl border p-2">
-                    <div className="text-[11px] font-extrabold text-slate-600">
+                    <div className="text-sm font-extrabold text-slate-600">
                       Description
                     </div>
                     <div className="whitespace-pre-wrap">
@@ -854,7 +856,7 @@ export default function ObserverReportsPage() {
 
                   {viewQ.data.mediaUrl ? (
                     <div className="rounded-xl border p-2">
-                      <div className="text-[11px] font-extrabold text-slate-600">
+                      <div className="text-base font-extrabold text-slate-600">
                         Media URL
                       </div>
                       <div className="break-all">{viewQ.data.mediaUrl}</div>

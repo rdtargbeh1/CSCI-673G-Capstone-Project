@@ -1,4 +1,8 @@
+
+
 // src/shared/services/electionService.ts
+
+
 import { apiClient } from "../lib/apiClient";
 
 export type ElectionType =

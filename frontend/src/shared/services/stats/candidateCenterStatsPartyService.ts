@@ -1,12 +1,11 @@
 
-
-// src/shared/services/stats/candidateCenterStatsPartyService.ts
+//  CandidateCenterStatsPartyService
 
 import { apiClient } from "../../lib/apiClient";
 
 export type PageResponse<T> = {
   content: T[];
-  number: number; // current page index
+  number: number;
   size: number;
   totalElements: number;
   totalPages: number;
@@ -35,7 +34,7 @@ export type CandidateCenterStatsPartyRow = {
 
   partyId?: string;
   partyName?: string;
-  partyCode?: string;
+  partyCode?: string; // abbreviation
 
   candidateVotes: number;
   registeredVoters: number;
@@ -44,12 +43,21 @@ export type CandidateCenterStatsPartyRow = {
   centerInvalidTotal: number;
 
   voteSharePct: number;
+
+  // ✅ NEW: outcomes/insights added to v_candidate_center_stats_party
+  rankInCenter?: number;
+  winnerVotes?: number;
+  winnerVoteSharePct?: number;
+  marginVotes?: number;
+  marginPct?: number;
+  isCenterWinner?: boolean;
+  rankCenterInDistrictForCandidate?: number;
 };
 
 export type CandidateCenterStatsPartyQuery = {
-  orgId?: string; // optional: backend can derive (header/JWT)
+  orgId?: string;
   electionId: string;
-  contestId: string;
+  contestId?: string; // ✅ optional now
 
   countyId?: string;
   districtId?: string;
@@ -57,21 +65,11 @@ export type CandidateCenterStatsPartyQuery = {
   candidateId?: string;
   partyId?: string;
 
-  page?: number; // default 0
-  size?: number; // default 25
-  sort?: string[]; // Spring style: sort=field,dir (repeatable)
+  page?: number;
+  size?: number;
+  sort?: string[];
 };
 
-/**
- * Calls:
- *   GET /api/stats/party/candidates/centers
- *
- * Backend expects:
- *   electionId (required)
- *   contestId (required)
- * Optional:
- *   countyId, districtId, centerId, candidateId, partyId, page, size, sort
- */
 export async function searchCandidateCenterStatsParty(
   q: CandidateCenterStatsPartyQuery
 ): Promise<PageResponse<CandidateCenterStatsPartyRow>> {
@@ -79,7 +77,7 @@ export async function searchCandidateCenterStatsParty(
     params: {
       orgId: q.orgId,
       electionId: q.electionId,
-      contestId: q.contestId,
+      contestId: q.contestId, // ✅ optional
       countyId: q.countyId,
       districtId: q.districtId,
       centerId: q.centerId,
@@ -87,12 +85,11 @@ export async function searchCandidateCenterStatsParty(
       partyId: q.partyId,
       page: q.page ?? 0,
       size: q.size ?? 25,
-      // IMPORTANT: axios will serialize arrays; Spring supports repeated `sort` params
       sort: q.sort,
     },
-    // If your backend needs "sort" repeated exactly (sort=a&sort=b),
-    // axios does that by default in many setups. If not, configure paramsSerializer in apiClient.
   });
 
   return res.data as PageResponse<CandidateCenterStatsPartyRow>;
 }
+
+

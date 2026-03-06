@@ -1,5 +1,5 @@
 
-// src/app/layout/TopBar.tsx
+
 import { useState } from "react";
 import { useLocation, useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -128,49 +128,53 @@ export default function TopBar() {
 
   return (
     <>
-      <header className="h-14 w-full border-b border-slate-200 bg-white">
+      {/* ✅ UPDATED: Background color #660000 with dark red styling */}
+      <header 
+        className="h-14 w-full border-b"
+        style={{ backgroundColor: "#B80000", borderColor: "#330000" }}
+      >
         <div className="mx-auto flex h-full items-center justify-between px-4">
           {/* Left */}
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex items-center gap-2">
-              <div className="h-9 w-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-extrabold">
+              <div className="h-9 w-9 rounded-xl bg-blue-700 text-white flex items-center justify-center text-xl font-extrabold">
                 E
               </div>
-              <div className="hidden sm:block font-extrabold tracking-tight">
+              <div className="hidden sm:block font-extrabold tracking-tight text-white">
                 EMS
               </div>
             </div>
 
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <span className={pill("border-slate-200 bg-white text-slate-700")}>
+              <span className={pill("border-yellow-300 text-white")}>
                 {tenantName}
               </span>
 
-              <span className={pill("border-slate-200 bg-white text-slate-700")}>
+              <span className={pill("border-yellow-300 text-white font-bold")}>
                 Role: {role}
               </span>
 
-              <span className={pill("border-slate-200 bg-white text-slate-700")}>
+              <span className={pill("border-yellow-300 text-white")}>
                 {dashboardMode ?? "—"}
               </span>
 
               {isElectionScope && (
                 <>
                   {electionQuery.isLoading ? (
-                    <span className="text-xs text-slate-500">
+                    <span className="text-sm text-yellow-200">
                       Loading election…
                     </span>
                   ) : electionQuery.isError ? (
-                    <span className="text-xs font-semibold text-red-600">
+                    <span className="text-sm font-semibold text-red-300">
                       Election context error
                     </span>
                   ) : (
                     <>
-                      <span className={pill("border-slate-200 bg-white text-slate-700")}>
+                      <span className={pill("border-yellow-300 bg-red-100 text-blue-700 text-base")}>
                         Election: {election?.electionName ?? "—"}
                       </span>
 
-                      <span className={pill("border-slate-200 bg-white text-slate-700")}>
+                      <span className={pill("border-yellow-300 bg-red-100 text-blue-700")}>
                         Status: {election?.isActive ? "Active" : "Inactive"}
                       </span>
 
@@ -191,15 +195,15 @@ export default function TopBar() {
               )}
 
               {meQuery.isLoading && (
-                <span className="text-xs text-slate-500">Loading user…</span>
+                <span className="text-xs text-yellow-200">Loading user…</span>
               )}
               {meQuery.isError && (
-                <span className="text-xs font-semibold text-red-600">
+                <span className="text-xs font-semibold text-red-300">
                   User load error
                 </span>
               )}
               {orgQuery.isError && (
-                <span className="text-xs font-semibold text-red-600">
+                <span className="text-sm font-semibold text-red-300">
                   Org load error
                 </span>
               )}
@@ -213,7 +217,7 @@ export default function TopBar() {
               onClick={() => {
                 if (confirm("Log out of EMS?")) handleLogout();
               }}
-              className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold hover:bg-slate-50"
+              className="inline-flex items-center justify-center rounded-lg border border-yellow-300 bg-white  px-3 py-1.5 text-sm font-semibold hover:bg-blue-800"
             >
               Logout
             </button>
@@ -221,12 +225,12 @@ export default function TopBar() {
             <button
               type="button"
               onClick={() => setProfileOpen(true)}
-              className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 hover:bg-slate-50"
+              className="flex items-center gap-2 rounded-lg border border-white bg-blue-600 px-2 py-1.5 hover:bg-blue-800 "
             >
-              <div className="h-8 w-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center">
+              <div className="h-8 w-8 rounded-full bg-red-300 border border-yellow-300 flex items-center justify-center">
                 👤
               </div>
-              <div className="hidden sm:block text-sm font-semibold text-slate-700">
+              <div className="hidden sm:block text-sm font-bold text-white ">
                 {userLabel}
               </div>
             </button>
@@ -241,5 +245,4 @@ export default function TopBar() {
     </>
   );
 }
-
 

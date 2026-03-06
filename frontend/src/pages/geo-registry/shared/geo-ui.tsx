@@ -19,9 +19,9 @@ export function PageShell({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-extrabold">{title}</h1>
+          <h1 className="text-2xl font-extrabold">{title}</h1>
           {subtitle ? (
-            <p className="mt-1 text-sm text-slate-600">{subtitle}</p>
+            <p className="mt-1 text-base text-slate-600">{subtitle}</p>
           ) : null}
         </div>
         {right}
@@ -35,8 +35,8 @@ export function Tabs() {
   const { dashboardMode } = useAuth();
   const showRegistry = dashboardMode === "NEC" || dashboardMode === "SYSTEM";
 
-  const base = "rounded-xl border px-3 py-2 text-sm font-semibold";
-  const active = "bg-slate-100 border-slate-200";
+  const base = "rounded-xl border px-3 py-2 text-xl font-semibold";
+  const active = "bg-[#00008B] border-slate-200 text-[#EFBF04] font-extrabold";
   const idle = "bg-white border-slate-200 hover:bg-slate-50";
 
   return (
@@ -123,7 +123,7 @@ export function Card({
 
 export function Badge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
+    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-base font-semibold text-slate-700">
       {children}
     </span>
   );
@@ -133,7 +133,7 @@ export function Note({ title, bullets }: { title: string; bullets: string[] }) {
   return (
     <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3">
       <div className="font-extrabold">{title}</div>
-      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+      <ul className="mt-2 list-disc space-y-1 pl-5 text-base text-slate-700">
         {bullets.map((b) => (
           <li key={b}>{b}</li>
         ))}
@@ -162,7 +162,7 @@ export function Table({
             {columns.map((c) => (
               <th
                 key={c}
-                className="whitespace-nowrap border-b border-slate-200 px-2 py-1.5 text-left text-[11px] font-extrabold text-slate-600"
+                className="whitespace-nowrap border-b border-slate-200 px-2 py-1.5 text-left text-base font-extrabold text-slate-600"
               >
                 {c}
               </th>
@@ -176,7 +176,7 @@ export function Table({
               {r.map((cell, j) => (
                 <td
                   key={j}
-                  className="border-b border-slate-100 px-2 py-1.5 text-sm text-slate-800 align-middle"
+                  className="border-b border-slate-100 px-2 py-1.5 text-base text-slate-800 align-middle"
                 >
                   {cell}
                 </td>
@@ -188,48 +188,6 @@ export function Table({
     </div>
   );
 }
-
-// export function Table({
-//   columns,
-//   rows,
-// }: {
-//   columns: string[];
-//   rows: Array<Array<string | number | React.ReactNode>>;
-// }) {
-//   return (
-//     <div className="w-full overflow-x-auto">
-//       <table className="w-full border-collapse table-auto">
-//         <thead>
-//           <tr>
-//             {columns.map((c) => (
-//               <th
-//                 key={c}
-//                 className="whitespace-nowrap border-b border-slate-200 px-2 py-2 text-left text-xs font-bold text-slate-600"
-//               >
-//                 {c}
-//               </th>
-//             ))}
-//           </tr>
-//         </thead>
-
-//         <tbody>
-//           {rows.map((r, i) => (
-//             <tr key={i} className="hover:bg-slate-50">
-//               {r.map((cell, j) => (
-//                 <td
-//                   key={j}
-//                   className="border-b border-slate-100 px-2 py-2 text-sm text-slate-800 align-top whitespace-normal wrap-break-words"
-//                 >
-//                   {cell}
-//                 </td>
-//               ))}
-//             </tr>
-//           ))}
-//         </tbody>
-//       </table>
-//     </div>
-//   );
-// }
 
 /* =========================================================
    ✅ NEW: Modal, TextField, SelectField (for geo pages)
@@ -272,7 +230,7 @@ export function Modal({
                   {title}
                 </div>
                 {subtitle ? (
-                  <div className="mt-1 text-sm text-slate-600">{subtitle}</div>
+                  <div className="mt-1 text-base text-slate-600">{subtitle}</div>
                 ) : null}
               </div>
 
@@ -333,11 +291,11 @@ export function TextField({
   return (
     <label className="block">
       <div className="mb-1 flex items-center justify-between">
-        <div className="text-[11px] font-semibold text-slate-600">
+        <div className="text-base font-semibold text-slate-600">
           {label} {required ? <span className="text-red-600">*</span> : null}
         </div>
         {error ? (
-          <div className="text-[11px] font-semibold text-red-600">{error}</div>
+          <div className="text-base font-semibold text-red-600">{error}</div>
         ) : null}
       </div>
 
@@ -355,7 +313,7 @@ export function TextField({
         inputMode={inputMode}
         pattern={pattern}
         className={[
-          "w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2",
+          "w-full rounded-xl border bg-white px-3 py-2 text-base outline-none focus:ring-2",
           error
             ? "border-red-300 focus:ring-red-400"
             : "border-slate-200 focus:ring-(--org-primary)",
@@ -390,11 +348,11 @@ export function SelectField({
   return (
     <label className="block">
       <div className="mb-1 flex items-center justify-between">
-        <div className="text-[11px] font-semibold text-slate-600">
+        <div className="text-base font-semibold text-slate-600">
           {label} {required ? <span className="text-red-600">*</span> : null}
         </div>
         {error ? (
-          <div className="text-[11px] font-semibold text-red-600">{error}</div>
+          <div className="text-base font-semibold text-red-600">{error}</div>
         ) : null}
       </div>
 
@@ -404,7 +362,7 @@ export function SelectField({
         onBlur={onBlur}
         disabled={disabled}
         className={[
-          "w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2",
+          "w-full rounded-xl border bg-white px-3 py-2 text-base outline-none focus:ring-2",
           error
             ? "border-red-300 focus:ring-red-400"
             : "border-slate-200 focus:ring-(--org-primary)",
@@ -419,193 +377,8 @@ export function SelectField({
       </select>
 
       {helper ? (
-        <div className="mt-1 text-[11px] text-slate-500">{helper}</div>
+        <div className="mt-1 text-base text-slate-500">{helper}</div>
       ) : null}
     </label>
   );
 }
-
-// //src/pages/geo-registry/shared/geo-ui.ts
-
-// import React from "react";
-// import { NavLink } from "react-router-dom";
-// import { useAuth } from "../../../auth/useAuth";
-
-// export function PageShell({
-//   title,
-//   subtitle,
-//   right,
-//   children,
-// }: {
-//   title: string;
-//   subtitle?: string;
-//   right?: React.ReactNode;
-//   children: React.ReactNode;
-// }) {
-//   return (
-//     <div className="flex flex-col gap-4">
-//       <div className="flex flex-wrap items-end justify-between gap-3">
-//         <div>
-//           <h1 className="text-xl font-extrabold">{title}</h1>
-//           {subtitle ? (
-//             <p className="mt-1 text-sm text-slate-600">{subtitle}</p>
-//           ) : null}
-//         </div>
-//         {right}
-//       </div>
-//       {children}
-//     </div>
-//   );
-// }
-
-// export function Tabs() {
-//   const { dashboardMode } = useAuth();
-//   const showRegistry = dashboardMode === "NEC" || dashboardMode === "SYSTEM";
-
-//   const base = "rounded-xl border px-3 py-2 text-sm font-semibold";
-//   const active = "bg-slate-100 border-slate-200";
-//   const idle = "bg-white border-slate-200 hover:bg-slate-50";
-
-//   return (
-//     <div className="flex flex-wrap gap-2">
-//       <NavLink
-//         to="/geography-registry/counties"
-//         className={({ isActive }) => `${base} ${isActive ? active : idle}`}
-//       >
-//         Counties
-//       </NavLink>
-//       <NavLink
-//         to="/geography-registry/districts"
-//         className={({ isActive }) => `${base} ${isActive ? active : idle}`}
-//       >
-//         Districts
-//       </NavLink>
-//       <NavLink
-//         to="/geography-registry/polling-centers"
-//         className={({ isActive }) => `${base} ${isActive ? active : idle}`}
-//       >
-//         Polling Centers
-//       </NavLink>
-//       <NavLink
-//         to="/geography-registry/polling-places"
-//         className={({ isActive }) => `${base} ${isActive ? active : idle}`}
-//       >
-//         Polling Places
-//       </NavLink>
-
-//       {showRegistry ? (
-//         <>
-//           <span className="mx-1 self-center text-xs font-bold text-slate-400">
-//             | Registry
-//           </span>
-//           <NavLink
-//             to="/geography-registry/import-batches"
-//             className={({ isActive }) => `${base} ${isActive ? active : idle}`}
-//           >
-//             Import Batches
-//           </NavLink>
-//           <NavLink
-//             to="/geography-registry/voter-staging"
-//             className={({ isActive }) => `${base} ${isActive ? active : idle}`}
-//           >
-//             Voter Staging
-//           </NavLink>
-//           <NavLink
-//             to="/geography-registry/voter-registry"
-//             className={({ isActive }) => `${base} ${isActive ? active : idle}`}
-//           >
-//             Voter Registry
-//           </NavLink>
-//           <NavLink
-//             to="/geography-registry/public-roll"
-//             className={({ isActive }) => `${base} ${isActive ? active : idle}`}
-//           >
-//             Public Roll
-//           </NavLink>
-//         </>
-//       ) : null}
-//     </div>
-//   );
-// }
-
-// export function Card({
-//   title,
-//   right,
-//   children,
-// }: {
-//   title: string;
-//   right?: React.ReactNode;
-//   children: React.ReactNode;
-// }) {
-//   return (
-//     <section className="rounded-2xl border border-slate-200 bg-white">
-//       <div className="flex items-center justify-between gap-3 border-b border-slate-200 p-4">
-//         <div className="font-extrabold">{title}</div>
-//         {right}
-//       </div>
-//       <div className="p-4">{children}</div>
-//     </section>
-//   );
-// }
-
-// export function Badge({ children }: { children: React.ReactNode }) {
-//   return (
-//     <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
-//       {children}
-//     </span>
-//   );
-// }
-
-// export function Note({ title, bullets }: { title: string; bullets: string[] }) {
-//   return (
-//     <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3">
-//       <div className="font-extrabold">{title}</div>
-//       <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
-//         {bullets.map((b) => (
-//           <li key={b}>{b}</li>
-//         ))}
-//       </ul>
-//     </div>
-//   );
-// }
-
-// export function Table({
-//   columns,
-//   rows,
-// }: {
-//   columns: string[];
-//   rows: Array<Array<string | number | React.ReactNode>>;
-// }) {
-//   return (
-//     <div className="w-full overflow-x-auto">
-//       <table className="w-full border-collapse">
-//         <thead>
-//           <tr>
-//             {columns.map((c) => (
-//               <th
-//                 key={c}
-//                 className="whitespace-nowrap border-b border-slate-200 px-2 py-2 text-left text-xs font-bold text-slate-600"
-//               >
-//                 {c}
-//               </th>
-//             ))}
-//           </tr>
-//         </thead>
-//         <tbody>
-//           {rows.map((r, i) => (
-//             <tr key={i} className="hover:bg-slate-50">
-//               {r.map((cell, j) => (
-//                 <td
-//                   key={j}
-//                   className="whitespace-nowrap border-b border-slate-100 px-2 py-2 text-sm text-slate-800"
-//                 >
-//                   {cell}
-//                 </td>
-//               ))}
-//             </tr>
-//           ))}
-//         </tbody>
-//       </table>
-//     </div>
-//   );
-// }

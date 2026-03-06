@@ -1,3 +1,4 @@
+
 // src/pages/elections/shared/elections-ui.tsx
 
 /**
@@ -19,9 +20,9 @@ export function SectionTitle({
 }) {
   return (
     <div>
-      <div style={{ fontSize: 18, fontWeight: 900 }}>{title}</div>
+      <div style={{ fontSize: 28, fontWeight: 900, color:  "#0000CD"}}>{title}</div>
       {subtitle && (
-        <div style={{ fontSize: 13, opacity: 0.75, marginTop: 4 }}>
+        <div style={{ fontSize: 18, color:  "#06089c", fontWeight: 500, opacity: 0.75, marginTop: 4 }}>
           {subtitle}
         </div>
       )}
@@ -56,8 +57,8 @@ export function WorkspaceHeader({
         }}
       >
         <div>
-          <div style={{ fontSize: 18, fontWeight: 900 }}>{electionName}</div>
-          <div style={{ fontSize: 13, opacity: 0.75, marginTop: 4 }}>
+          <div style={{ fontSize: 24, fontWeight: 900,color:  "#0000CD" }}>{electionName}</div>
+          <div style={{ fontSize: 18, opacity: 0.75, marginTop: 4 }}>
             {meta}
           </div>
         </div>
@@ -125,14 +126,15 @@ export function Panel({
           borderBottom: "1px solid #e5e7eb",
           display: "flex",
           justifyContent: "space-between",
-          gap: 12,
+          gap: 16,
           alignItems: "center",
+          fontSize: 20,
         }}
       >
-        <div style={{ fontWeight: 800 }}>{title}</div>
+        <div style={{ fontWeight: 800, fontSize: 28, }}>{title}</div>
         {right}
       </div>
-      <div style={{ padding: 14 }}>{children}</div>
+      <div style={{ padding: 14, fontSize: 20 }}>{children}</div>
     </section>
   );
 }
@@ -141,10 +143,12 @@ export function Badge({ text }: { text: string }) {
   return (
     <span
       style={{
-        fontSize: 12,
+        fontSize: 16,
         padding: "2px 8px",
         borderRadius: 999,
         border: "1px solid #e5e7eb",
+        // color: "#1304eb",
+        fontWeight: 600,
       }}
     >
       {text}
@@ -191,10 +195,11 @@ export function PlaceholderNote({
         borderRadius: 12,
         padding: 12,
         background: "#fafafa",
+        fontSize: 20,
       }}
     >
       <div style={{ fontWeight: 900, marginBottom: 6 }}>{title}</div>
-      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, opacity: 0.85 }}>
+      <ul style={{ margin: 0, paddingLeft: 24, fontSize: 16, opacity: 0.85 }}>
         {bullets.map((b) => (
           <li key={b} style={{ margin: "4px 0" }}>
             {b}
@@ -221,7 +226,7 @@ export function SimpleTable({
             {columns.map((c) => (
               <th
                 key={c}
-                className="text-left text-xs font-semibold text-slate-600/80 whitespace-nowrap
+                className="text-left text-lg font-semibold text-slate-600/80 whitespace-nowrap
                            px-2 py-2 border-b border-slate-200"
               >
                 {c}
@@ -236,7 +241,7 @@ export function SimpleTable({
               {r.map((cell, j) => (
                 <td
                   key={j}
-                  className="text-[13px] text-slate-900 whitespace-nowrap
+                  className="text-xl text-slate-900 whitespace-nowrap
                              px-2 py-1.5 border-b border-slate-100"
                 >
                   {cell as any}

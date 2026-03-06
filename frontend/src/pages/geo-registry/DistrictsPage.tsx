@@ -1,3 +1,5 @@
+
+
 // src/pages/geo-registry/DistrictsPage.tsx
 
 import { useMemo, useState } from "react";
@@ -184,7 +186,7 @@ export default function DistrictsPage() {
             type="button"
             onClick={refreshNow}
             disabled={districtsQ.isFetching}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
           >
             <RefreshCw size={16} />
             Refresh
@@ -194,66 +196,67 @@ export default function DistrictsPage() {
             type="button"
             onClick={openCreate}
             disabled={!canEdit}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-[#0000CD] text-white px-3 py-2 text-base font-semibold hover:bg-slate-500 disabled:opacity-50"
             title={canEdit ? "Add District" : "NEC/SYSTEM only"}
           >
-            <Plus size={16} />
+            <Plus size={22} />
             Add District
           </button>
         </div>
       }
     >
       <Card title="Districts">
-        {/* Filters */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex w-full flex-wrap items-center gap-2 sm:max-w-4xl">
-            <div className="relative w-full sm:max-w-xl">
-              <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                size={16}
-              />
-              <input
-                value={q}
-                onChange={(e) => {
-                  setQ(e.target.value);
-                  setPage(0);
-                }}
-                placeholder="Search districts…"
-                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-(--org-primary)"
-              />
-            </div>
-
-            <select
-              value={countyFilter}
+        {/* ✅ CONDENSED FILTERS - NO LABELS */}
+        <div className="flex items-end gap-2 mb-4">
+          {/* Search */}
+          <div className="relative w-80">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              size={16}
+            />
+            <input
+              value={q}
               onChange={(e) => {
-                setCountyFilter(e.target.value);
+                setQ(e.target.value);
                 setPage(0);
               }}
-              disabled={countiesQ.isLoading || countiesQ.isError}
-              className="w-full sm:w-72 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
-            >
-              <option value="">
-                {countiesQ.isLoading ? "Loading counties…" : "All counties"}
-              </option>
-              {countyOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-
-            <button
-              type="button"
-              onClick={() => {
-                setQ("");
-                setCountyFilter("");
-                setPage(0);
-              }}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50"
-            >
-              Clear
-            </button>
+              placeholder="Search district…"
+              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-base outline-none focus:ring-2 focus:ring-(--org-primary)"
+            />
           </div>
+
+          {/* County */}
+          <select
+            value={countyFilter}
+            onChange={(e) => {
+              setCountyFilter(e.target.value);
+              setPage(0);
+            }}
+            disabled={countiesQ.isLoading || countiesQ.isError}
+            className="w-80 rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
+          >
+            <option value="">
+              {countiesQ.isLoading ? "Loading…" : "All counties"}
+            </option>
+            {countyOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Clear */}
+          <button
+            type="button"
+            onClick={() => {
+              setQ("");
+              setCountyFilter("");
+              setPage(0);
+            }}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 whitespace-nowrap"
+          >
+            Clear All
+          </button>
         </div>
 
         {/* Status */}
@@ -302,18 +305,17 @@ export default function DistrictsPage() {
                     >
                       <button
                         type="button"
-                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-base text-[#008000] font-semibold hover:bg-slate-50 disabled:opacity-50"
                         disabled={!canEdit}
                         title={canEdit ? "Edit" : "NEC/SYSTEM only"}
                         onClick={() => openEdit(d)}
                       >
-                        <Pencil size={16} />
-                        {/* Edit */}
+                        <Pencil size={20} />
                       </button>
 
                       <button
                         type="button"
-                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
                         disabled={!canEdit || deleteM.isPending}
                         title={canEdit ? "Delete" : "NEC/SYSTEM only"}
                         onClick={() => {
@@ -323,8 +325,7 @@ export default function DistrictsPage() {
                           if (ok) deleteM.mutate(d.districtId);
                         }}
                       >
-                        <Trash2 size={16} className="text-red-600" />
-                        {/* Delete */}
+                        <Trash2 size={20} className="text-red-600" />
                       </button>
                     </div>,
                   ])
@@ -334,7 +335,7 @@ export default function DistrictsPage() {
 
         {/* Pagination */}
         <div className="mt-3 flex items-center justify-between">
-          <div className="text-xs text-slate-600">
+          <div className="text-sm text-slate-600">
             Page <span className="font-bold">{page + 1}</span> of{" "}
             <span className="font-bold">{totalPages}</span>
           </div>
@@ -397,7 +398,7 @@ export default function DistrictsPage() {
           <div className="flex items-center justify-end gap-2">
             <button
               type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
               onClick={() => setOpen(false)}
               disabled={saving}
             >
@@ -405,7 +406,7 @@ export default function DistrictsPage() {
             </button>
             <button
               type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
               onClick={save}
               disabled={!canEdit || saving}
               title={canEdit ? "Save" : "NEC/SYSTEM only"}
@@ -417,14 +418,14 @@ export default function DistrictsPage() {
       >
         <div className="grid grid-cols-1 gap-3">
           <label className="block">
-            <div className="mb-1 text-[11px] font-semibold text-slate-600">
+            <div className="mb-1 text-base font-semibold text-slate-600">
               County <span className="text-red-600">*</span>
             </div>
             <select
               value={countyId}
               onChange={(e) => setCountyId(e.target.value)}
               disabled={!canEdit || countiesQ.isLoading || countiesQ.isError}
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
             >
               <option value="">
                 {countiesQ.isLoading
@@ -439,7 +440,7 @@ export default function DistrictsPage() {
             </select>
 
             {touched && !safeStr(countyId).trim() ? (
-              <div className="mt-1 text-[11px] font-semibold text-red-600">
+              <div className="mt-1 text-base font-semibold text-red-600">
                 Required
               </div>
             ) : null}
@@ -456,7 +457,7 @@ export default function DistrictsPage() {
           />
 
           {createM.isError || updateM.isError ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-base text-red-700">
               {(createM.error as any)?.message ??
                 (updateM.error as any)?.message ??
                 "Failed to save district."}
@@ -467,3 +468,4 @@ export default function DistrictsPage() {
     </PageShell>
   );
 }
+

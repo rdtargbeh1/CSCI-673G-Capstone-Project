@@ -277,7 +277,7 @@ export default function TallySheetsPage() {
                   type="button"
                   onClick={() => subsQ.refetch()}
                   disabled={!queueEnabled || subsQ.isFetching}
-                  className={`h-9 rounded-lg border bg-white px-3 text-sm font-extrabold hover:bg-slate-50 inline-flex items-center gap-2 ${
+                  className={`h-9 rounded-lg border bg-white px-3 text-lg font-extrabold hover:bg-slate-50 inline-flex items-center gap-2 ${
                     !queueEnabled || subsQ.isFetching ? "opacity-60" : ""
                   }`}
                 >
@@ -301,13 +301,13 @@ export default function TallySheetsPage() {
             {/* ✅ SYSTEM tenant selector */}
             {mode === "SYSTEM" ? (
               <div className="mb-3">
-                <label className="block text-xs font-extrabold text-slate-600">
+                <label className="block text-sm font-extrabold text-slate-600">
                   Tenant (required in SYSTEM mode)
                 </label>
                 <select
                   value={systemSelectedOrgId}
                   onChange={(e) => setSystemSelectedOrgId(e.target.value)}
-                  className="mt-1 h-10 w-full rounded-xl border px-3 text-sm font-semibold bg-white"
+                  className="mt-1 h-10 w-full rounded-xl border px-3 text-base font-semibold bg-white"
                 >
                   <option value="">-- Select tenant --</option>
                   {orgs.map((o) => (
@@ -320,14 +320,14 @@ export default function TallySheetsPage() {
                 {!effectiveOrgId ? (
                   <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                     <div className="font-extrabold">Tenant required</div>
-                    <div className="mt-1 text-xs">
+                    <div className="mt-1 text-sm">
                       Tally sheets are tenant-scoped. Select a tenant to view submissions and downloads.
                     </div>
                   </div>
                 ) : null}
               </div>
             ) : !effectiveOrgId ? (
-              <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-base text-amber-900">
                 <div className="font-extrabold">Missing org context</div>
                 <div className="mt-1 text-xs">
                   NEC/TENANT mode requires <span className="font-mono">currentOrgId</span>. Fix your org selection / auth context.
@@ -338,11 +338,11 @@ export default function TallySheetsPage() {
             {/* Geo filters (enabled only when org exists) */}
             <div className={`grid grid-cols-1 md:grid-cols-4 gap-2 ${!queueEnabled ? "opacity-60 pointer-events-none" : ""}`}>
               <div>
-                <label className="block text-xs font-extrabold text-slate-600">County</label>
+                <label className="block text-base font-extrabold text-slate-600">County</label>
                 <select
                   value={countyId}
                   onChange={(e) => onCountyChange(e.target.value)}
-                  className="mt-1 h-10 w-full rounded-xl border px-3 text-sm font-semibold bg-white"
+                  className="mt-1 h-10 w-full rounded-xl border px-3 text-base font-semibold bg-white"
                 >
                   <option value="">All Counties</option>
                   {counties.map((c) => (
@@ -354,12 +354,12 @@ export default function TallySheetsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-extrabold text-slate-600">District</label>
+                <label className="block text-base font-extrabold text-slate-600">District</label>
                 <select
                   value={districtId}
                   onChange={(e) => onDistrictChange(e.target.value)}
                   disabled={!countyId}
-                  className={`mt-1 h-10 w-full rounded-xl border px-3 text-sm font-semibold bg-white ${
+                  className={`mt-1 h-10 w-full rounded-xl border px-3 text-base font-semibold bg-white ${
                     !countyId ? "opacity-60" : ""
                   }`}
                 >
@@ -373,12 +373,12 @@ export default function TallySheetsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-extrabold text-slate-600">Center</label>
+                <label className="block text-base font-extrabold text-slate-600">Center</label>
                 <select
                   value={centerId}
                   onChange={(e) => onCenterChange(e.target.value)}
                   disabled={!countyId || !districtId}
-                  className={`mt-1 h-10 w-full rounded-xl border px-3 text-sm font-semibold bg-white ${
+                  className={`mt-1 h-10 w-full rounded-xl border px-3 text-base font-semibold bg-white ${
                     !countyId || !districtId ? "opacity-60" : ""
                   }`}
                 >
@@ -392,12 +392,12 @@ export default function TallySheetsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-extrabold text-slate-600">Place</label>
+                <label className="block text-base font-extrabold text-slate-600">Place</label>
                 <select
                   value={placeId}
                   onChange={(e) => onPlaceChange(e.target.value)}
                   disabled={!centerId}
-                  className={`mt-1 h-10 w-full rounded-xl border px-3 text-sm font-semibold bg-white ${
+                  className={`mt-1 h-10 w-full rounded-xl border px-3 text-base font-semibold bg-white ${
                     !centerId ? "opacity-60" : ""
                   }`}
                 >
@@ -417,7 +417,7 @@ export default function TallySheetsPage() {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Search submissions (agent, contest, center, etc.)"
-                className="h-10 flex-1 rounded-xl border px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-200"
+                className="h-10 flex-1 rounded-xl border px-3 text-base font-semibold outline-none focus:ring-2 focus:ring-blue-200"
               />
               <button
                 type="button"
@@ -425,14 +425,14 @@ export default function TallySheetsPage() {
                   setPage(0);
                   subsQ.refetch();
                 }}
-                className="h-10 rounded-xl bg-slate-900 px-4 text-sm font-extrabold text-white hover:bg-slate-800"
+                className="h-10 rounded-xl bg-slate-900 px-4 text-base font-extrabold text-white hover:bg-slate-800"
               >
                 Search
               </button>
             </div>
 
             <div className="mt-3 rounded-xl border overflow-hidden">
-              <div className="bg-slate-50 px-3 py-2 text-xs font-extrabold text-slate-600">
+              <div className="bg-slate-50 px-3 py-2 text-base font-extrabold text-slate-600">
                 Submissions
               </div>
 
@@ -459,11 +459,11 @@ export default function TallySheetsPage() {
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="text-sm font-extrabold truncate">
+                            <div className="text-lg font-bold truncate">
                               {s.contestName ?? "Contest"} • {s.centerName ?? "Center"}
                             </div>
-                            <div className="mt-1 text-xs text-slate-600">
-                              {s.countyName ?? "—"} • {s.districtName ?? "—"} •{" "}
+                            <div className="mt-1 text-sm text-slate-600">
+                              {/* {s.countyName ?? "—"} • {s.districtName ?? "—"} •{" "} */}
                               {s.placeLabel ?? "—"}
                             </div>
                           </div>
@@ -489,7 +489,7 @@ export default function TallySheetsPage() {
                 Prev
               </button>
 
-              <div className="text-xs text-slate-600">
+              <div className="text-sm text-slate-600">
                 Page {page + 1} / {queueEnabled ? totalPages : 1}
               </div>
 
@@ -536,7 +536,7 @@ export default function TallySheetsPage() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="text-sm font-extrabold">Uploads ({uploads.length})</div>
-                  <span className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-extrabold border bg-green-50 text-green-700 border-green-200">
+                  <span className="inline-flex rounded-full px-2 py-0.5 text-[14px] font-extrabold border bg-green-50 text-green-700 border-green-200">
                     Attached
                   </span>
                 </div>
@@ -557,7 +557,7 @@ export default function TallySheetsPage() {
                         </div>
 
                         <div className="p-3">
-                          <div className="text-xs text-slate-600">
+                          <div className="text-sm text-slate-600">
                             Uploaded: {safeDate(u.dateUploaded)}
                           </div>
 
@@ -566,9 +566,9 @@ export default function TallySheetsPage() {
                               href={u.imageUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="h-9 flex-1 rounded-lg border bg-white px-3 text-sm font-extrabold hover:bg-slate-50 inline-flex items-center justify-center gap-2"
+                              className="h-9 flex-1 rounded-lg border bg-white px-3 text-base font-extrabold hover:bg-slate-50 inline-flex items-center justify-center gap-2"
                             >
-                              <ExternalLink size={16} />
+                              <ExternalLink size={18} />
                               View
                             </a>
 
@@ -581,9 +581,9 @@ export default function TallySheetsPage() {
                                 });
                                 saveBlob(blob, fileName);
                               }}
-                              className="h-9 flex-1 rounded-lg bg-slate-900 px-3 text-sm font-extrabold text-white hover:bg-slate-800 inline-flex items-center justify-center gap-2"
+                              className="h-9 flex-1 rounded-lg bg-slate-900 px-3 text-base font-extrabold text-white hover:bg-slate-800 inline-flex items-center justify-center gap-2"
                             >
-                              <Download size={16} />
+                              <Download size={18} />
                               Download
                             </button>
                           </div>

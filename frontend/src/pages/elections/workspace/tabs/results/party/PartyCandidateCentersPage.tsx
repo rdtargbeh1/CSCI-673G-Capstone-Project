@@ -1,8 +1,11 @@
-// src/pages/elections/workspace/tabs/results/party/PartyCandidateCentersPage.tsx
 
-import { useMemo, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+
+// ✅ FILE: src/pages/elections/workspace/tabs/results/party/PartyCandidateCentersPage.tsx
+
+import { useEffect, useMemo, useState } from "react";
+import { useOutletContext, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { CheckCircle2 } from "lucide-react";
 
 import { useAuth } from "../../../../../../auth/useAuth";
 import { useAuthStore } from "../../../../../../shared/store/authStore";
@@ -17,32 +20,76 @@ import {
   type CandidateCenterStatsPartyRow,
 } from "../../../../../../shared/services/stats/candidateCenterStatsPartyService";
 
-function fmtPct(n: number) {
-  if (n === null || n === undefined) return "—";
+import { fetchCounties, type CountyDto } from "../../../../../../shared/services/countyService";
+import { fetchDistrictsByCounty, type DistrictDto } from "../../../../../../shared/services/districtService";
+import { fetchPollingCenters, type PollingCenterDto } from "../../../../../../shared/services/pollingCenterService";
+
+/** ✅ ResultsTab passes orgId via Outlet context for SYSTEM */
+type ResultsOutletCtx = { orgId?: string };
+
+function fmtPct(n: any) {
   const v = Number(n);
-  if (Number.isNaN(v)) return "—";
+  if (!isFinite(v)) return "—";
   return `${v.toFixed(2)}%`;
 }
+function fmtNum(n: any) {
+  const v = Number(n);
+  if (!isFinite(v)) return "—";
+  return v.toLocaleString();
+}
+
+/** ✅ tighten ratio (NO SPACES) + keep numeric alignment */
+function ratioLabel(votes: any, valid: any) {
+  const v = Number(votes);
+  const t = Number(valid);
+  if (!isFinite(v) || !isFinite(t) || t <= 0) return "—";
+  return `${v.toLocaleString()}/${t.toLocaleString()}`;
+}
+
+function setSP(
+  searchParams: URLSearchParams,
+  setSearchParams: ReturnType<typeof useSearchParams>[1],
+  updates: Record<string, string | undefined | null>,
+  opts?: { resetPage?: boolean }
+) {
+  const sp = new URLSearchParams(searchParams);
+
+  Object.entries(updates).forEach(([k, v]) => {
+    const clean = v == null ? "" : String(v);
+    if (!clean) sp.delete(k);
+    else sp.set(k, clean);
+  });
+
+  if (opts?.resetPage) sp.set("page", "0");
+
+  setSearchParams(sp, { replace: true });
+}
+
+type CandidateOpt = { candidateId: string; candidateName: string };
 
 export default function PartyCandidateCentersPage() {
   const { electionId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-
   const auth: any = useAuth();
 
-  // tenant org
-  const orgId = useAuthStore((s) => s.currentOrgId);
+  // ✅ SYSTEM org scope (match VoteTallyPage exactly)
+  const outlet = useOutletContext<ResultsOutletCtx>();
+  const outletOrgId = String(outlet?.orgId ?? "").trim();
 
-  // token (kept to match your auth pattern; apiClient likely already injects it)
-  const token =
-    auth?.token ??
-    auth?.accessToken ??
-    useAuthStore((s: any) => s.accessToken ?? s.token);
+  const dashboardModeStore = useAuthStore((s: any) => s.dashboardMode);
+  const mode = String((dashboardModeStore ?? auth?.dashboardMode ?? "") as any).toUpperCase(); // NEC | TENANT | SYSTEM
 
-  // Required query param (NOW user selects it)
-  const contestId = searchParams.get("contestId") ?? "";
+  const storeOrgId = String(useAuthStore((s: any) => s.currentOrgId ?? "") ?? "").trim();
 
-  // Optional filters
+  const fallbackOrgId = String(
+    useAuthStore.getState().tenantMeta?.orgId ?? auth?.tenant?.orgId ?? ""
+  ).trim();
+
+  // ✅ effective orgId
+  const orgId = outletOrgId || storeOrgId || fallbackOrgId || "";
+
+  // ✅ Query params
+  const contestId = searchParams.get("contestId") ?? ""; // optional
   const countyId = searchParams.get("countyId") ?? "";
   const districtId = searchParams.get("districtId") ?? "";
   const centerId = searchParams.get("centerId") ?? "";
@@ -55,123 +102,20 @@ export default function PartyCandidateCentersPage() {
 
   // sorting
   const [sort, setSort] = useState<string[]>([
+    "candidateVotes,desc",
+    "voteSharePct,desc",
     "countyName,asc",
     "districtName,asc",
     "centerCode,asc",
-    "candidateVotes,desc",
   ]);
 
-  // ----------------------------
-  // 1) Contest dropdown query
-  // ----------------------------
-  const contestsQ = useQuery({
-    queryKey: ["contests", "by-election", electionId],
-    enabled: Boolean(electionId),
-    queryFn: async () => {
-      return listContestsByElection(String(electionId));
-    },
-  });
-
-  const contests: ContestDto[] = contestsQ.data ?? [];
-
-  const selectedContest = useMemo(() => {
-    if (!contestId) return null;
-    return contests.find((c) => String((c as any).contestId) === String(contestId)) ?? null;
-  }, [contestId, contests]);
-
-  function setParam(key: string, value?: string) {
-    const sp = new URLSearchParams(searchParams);
-    if (!value) sp.delete(key);
-    else sp.set(key, value);
-    setSearchParams(sp);
-  }
-
-  function onContestChange(nextContestId: string) {
-    const sp = new URLSearchParams(searchParams);
-
-    if (!nextContestId) sp.delete("contestId");
-    else sp.set("contestId", nextContestId);
-
-    // reset paging when contest changes
-    sp.set("page", "0");
-
-    setSearchParams(sp);
-  }
-
-  // enable only if electionId AND contest selected
-  const enabled = Boolean(electionId) && Boolean(contestId);
-
-  // ----------------------------
-  // 2) Stats query (contest-based)
-  // ----------------------------
-  const q = useQuery({
-    queryKey: [
-      "stats",
-      "party",
-      "candidate-centers",
-      {
-        orgId,
-        electionId,
-        contestId,
-        countyId,
-        districtId,
-        centerId,
-        candidateId,
-        partyId,
-        page,
-        size,
-        sort,
-      },
-    ],
-    enabled,
-    queryFn: async () => {
-      return searchCandidateCenterStatsParty(
-        {
-          orgId: orgId ?? undefined,
-          electionId: String(electionId),
-          contestId: String(contestId),
-          countyId: countyId || undefined,
-          districtId: districtId || undefined,
-          centerId: centerId || undefined,
-          candidateId: candidateId || undefined,
-          partyId: partyId || undefined,
-          page,
-          size,
-          sort,
-        },
-      );
-    },
-  });
-
-  const rows: CandidateCenterStatsPartyRow[] = q.data?.content ?? [];
-
-  const headerLine = useMemo(() => {
-    const parts = [
-      `Election: ${electionId ?? "—"}`,
-      `Contest: ${selectedContest ? (selectedContest as any).contestName ?? contestId : contestId || "—"}`,
-      countyId ? `County: ${countyId}` : null,
-      districtId ? `District: ${districtId}` : null,
-      centerId ? `Center: ${centerId}` : null,
-      candidateId ? `Candidate: ${candidateId}` : null,
-      partyId ? `Party: ${partyId}` : null,
-    ].filter(Boolean);
-    return parts.join(" • ");
-  }, [
-    electionId,
-    contestId,
-    selectedContest,
-    countyId,
-    districtId,
-    centerId,
-    candidateId,
-    partyId,
-  ]);
-
-  function setPage(next: number) {
-    const sp = new URLSearchParams(searchParams);
-    sp.set("page", String(Math.max(0, next)));
-    setSearchParams(sp);
-  }
+  // ✅ when candidate is selected: district-first, highest votes → lowest within district
+  useEffect(() => {
+    if (!candidateId) return;
+    setSort(["districtName,asc", "candidateVotes,desc", "voteSharePct,desc", "centerCode,asc"]);
+    setSP(searchParams, setSearchParams, {}, { resetPage: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidateId]);
 
   function toggleSort(field: string) {
     const primary = sort?.[0] ?? "";
@@ -180,32 +124,209 @@ export default function PartyCandidateCentersPage() {
       const nextDir = (curDir ?? "asc").toLowerCase() === "asc" ? "desc" : "asc";
       setSort([`${field},${nextDir}`, ...sort.slice(1)]);
     } else {
-      setSort([`${field},asc`, ...sort]);
+      const numeric = new Set([
+        "candidateVotes",
+        "voteSharePct",
+        "ballotsCast",
+        "centerInvalidTotal",
+        "registeredVoters",
+        "centerValidVotes",
+        "marginVotes",
+        "rankInCenter",
+      ]);
+      setSort([`${field},${numeric.has(field) ? "desc" : "asc"}`, ...sort]);
     }
-    setPage(0);
+    setSP(searchParams, setSearchParams, {}, { resetPage: true });
   }
 
-  return (
-    <Panel title="Party Results • Candidates by Center">
-      {/* Top controls: Contest selector */}
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-[280px]">
-          <div className="mb-1 text-xs font-extrabold text-slate-700">Contest</div>
+  // ----------------------------
+  // 1) Contests
+  // ----------------------------
+  const contestsQ = useQuery({
+    queryKey: ["contests", "by-election", electionId],
+    enabled: Boolean(electionId),
+    queryFn: async () => listContestsByElection(String(electionId)),
+    staleTime: 60_000,
+    retry: 1,
+  });
 
+  const contests: ContestDto[] = contestsQ.data ?? [];
+
+  const contestNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of contests as any[]) {
+      m.set(String(c.contestId), String(c.contestName ?? c.name ?? c.contestId));
+    }
+    return m;
+  }, [contests]);
+
+  // ----------------------------
+  // 2) Geo filters
+  // ✅ pass orgId for SYSTEM so geo data is available when org selected (same idea as VoteTally)
+  // ----------------------------
+  const countiesQ = useQuery<CountyDto[]>({
+    queryKey: ["counties", mode, orgId],
+    enabled: Boolean(orgId) || mode !== "SYSTEM",
+    queryFn: async () =>
+      (await fetchCounties({ page: 0, size: 500, orgId: mode === "SYSTEM" ? orgId : undefined } as any))
+        .items as CountyDto[],
+    staleTime: 60_000,
+    retry: 1,
+  });
+  const counties = countiesQ.data ?? [];
+
+  const districtsQ = useQuery<DistrictDto[]>({
+    enabled: Boolean(countyId) && (Boolean(orgId) || mode !== "SYSTEM"),
+    queryKey: ["districts", "by-county", mode, orgId, countyId],
+    queryFn: async () => (await fetchDistrictsByCounty(countyId)) as any,
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+
+  const districts = districtsQ.data ?? [];
+
+  const centersQ = useQuery<PollingCenterDto[]>({
+    enabled: (Boolean(countyId) || Boolean(districtId)) && (Boolean(orgId) || mode !== "SYSTEM"),
+    queryKey: ["polling-centers", "filtered", mode, orgId, countyId, districtId],
+    queryFn: async () => {
+      const p = await fetchPollingCenters({
+        page: 0,
+        size: 500,
+        countyId: countyId || undefined,
+        districtId: districtId || undefined,
+        // ✅ THIS is the missing piece you want: SYSTEM must include orgId
+        orgId: mode === "SYSTEM" ? orgId : undefined,
+      } as any);
+      return p.items as PollingCenterDto[];
+    },
+    staleTime: 60_000,
+    retry: 1,
+  });
+  const centers = centersQ.data ?? [];
+
+  // ----------------------------
+  // 3) Stats query
+  // ----------------------------
+  const enabled = Boolean(electionId) && Boolean(orgId);
+
+  const q = useQuery({
+    queryKey: [
+      "stats",
+      "party",
+      "candidate-centers",
+      orgId,
+      electionId,
+      contestId || "ALL",
+      countyId,
+      districtId,
+      centerId,
+      candidateId,
+      partyId,
+      page,
+      size,
+      sort,
+    ],
+    enabled,
+    queryFn: async () =>
+      searchCandidateCenterStatsParty({
+        orgId,
+        electionId: String(electionId),
+        contestId: contestId ? String(contestId) : undefined,
+        countyId: countyId || undefined,
+        districtId: districtId || undefined,
+        centerId: centerId || undefined,
+        candidateId: candidateId || undefined,
+        partyId: partyId || undefined,
+        page,
+        size,
+        sort,
+      }),
+    staleTime: 10_000,
+    retry: 1,
+  });
+
+  const rows: CandidateCenterStatsPartyRow[] = q.data?.content ?? [];
+
+  // ✅ Candidate dropdown options (enabled only after contest is selected)
+  const candidateOptions: CandidateOpt[] = useMemo(() => {
+    if (!contestId) return [];
+    const m = new Map<string, string>();
+    for (const r of rows as any[]) {
+      const id = String(r.candidateId ?? "");
+      const name = String(r.candidateName ?? "");
+      if (id && name && !m.has(id)) m.set(id, name);
+    }
+    return Array.from(m.entries())
+      .map(([candidateId, candidateName]) => ({ candidateId, candidateName }))
+      .sort((a, b) => a.candidateName.localeCompare(b.candidateName));
+  }, [rows, contestId]);
+
+  if (!orgId) {
+    return (
+      <Panel title="Party Results • Candidates by Center">
+        <PlaceholderNote
+          title="Select an Organization first"
+          bullets={[
+            "This view is tenant-scoped and requires orgId.",
+            "If you are on SYSTEM dashboard, choose an organization from the Results header dropdown.",
+          ]}
+        />
+      </Panel>
+    );
+  }
+
+  // ----------------------------
+  // 4) UI handlers
+  // ----------------------------
+  const onContestChange = (nextContestId: string) =>
+    setSP(
+      searchParams,
+      setSearchParams,
+      { contestId: nextContestId || undefined, candidateId: undefined },
+      { resetPage: true }
+    );
+
+  const onCountyChange = (nextCountyId: string) =>
+    setSP(
+      searchParams,
+      setSearchParams,
+      { countyId: nextCountyId || undefined, districtId: undefined, centerId: undefined },
+      { resetPage: true }
+    );
+
+  const onDistrictChange = (nextDistrictId: string) =>
+    setSP(searchParams, setSearchParams, { districtId: nextDistrictId || undefined, centerId: undefined }, { resetPage: true });
+
+  const onCenterChange = (nextCenterId: string) =>
+    setSP(searchParams, setSearchParams, { centerId: nextCenterId || undefined }, { resetPage: true });
+
+  const onCandidateChange = (nextCandidateId: string) =>
+    setSP(searchParams, setSearchParams, { candidateId: nextCandidateId || undefined }, { resetPage: true });
+
+  const clearGeo = () =>
+    setSP(searchParams, setSearchParams, { countyId: undefined, districtId: undefined, centerId: undefined }, { resetPage: true });
+
+  const clearCandidate = () =>
+    setSP(searchParams, setSearchParams, { candidateId: undefined }, { resetPage: true });
+
+  const setPage = (next: number) => setSP(searchParams, setSearchParams, { page: String(Math.max(0, next)) });
+
+  return (
+    <Panel
+      title="Party Results • Candidates by Center"
+      right={
+        <div className="flex flex-wrap items-center gap-2 justify-end">
           <select
             value={contestId}
             onChange={(e) => onContestChange(e.target.value)}
-            className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-900"
+            className="h-9 min-w-[240px] rounded-xl border border-slate-300 bg-white px-3 text-base font-bold text-slate-900"
             disabled={contestsQ.isLoading || contestsQ.isError || !electionId}
+            title="Filter by contest (optional)"
           >
             <option value="">
-              {contestsQ.isLoading
-                ? "Loading contests…"
-                : !electionId
-                ? "Election not selected"
-                : "Select a contest…"}
+              {contestsQ.isLoading ? "Loading contests…" : !electionId ? "Election not selected" : "All contests"}
             </option>
-
             {contests.map((c: any) => (
               <option key={c.contestId} value={c.contestId}>
                 {c.contestName}
@@ -213,195 +334,273 @@ export default function PartyCandidateCentersPage() {
             ))}
           </select>
 
-          {contestsQ.isError ? (
-            <div className="mt-1 text-xs text-rose-700">
-              {(contestsQ.error as Error)?.message ?? "Failed to load contests."}
-            </div>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => q.refetch()}
+            className="h-9 rounded-xl border bg-white px-3 text-base font-extrabold hover:bg-slate-50"
+            disabled={q.isFetching}
+          >
+            Refresh
+          </button>
         </div>
+      }
+    >
+      {/* Filters row */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <select
+          value={countyId}
+          onChange={(e) => onCountyChange(e.target.value)}
+          className="h-9 rounded-xl border bg-white px-3 text-base font-bold"
+          title="County"
+        >
+          <option value="">All counties</option>
+          {counties.map((c: any) => (
+            <option key={c.countyId} value={c.countyId}>
+              {c.countyName}
+            </option>
+          ))}
+        </select>
 
-        <div className="text-xs text-slate-600">
-          {headerLine}
-          <div className="mt-1 text-xs text-slate-500">
-            Source: <code>v_candidate_center_stats_party</code>
-          </div>
+        <select
+          value={districtId}
+          onChange={(e) => onDistrictChange(e.target.value)}
+          className="h-9 rounded-xl border bg-white px-3 text-base font-bold disabled:bg-slate-50"
+          disabled={!countyId}
+          title="District"
+        >
+          <option value="">All districts</option>
+          {districts.map((d: any) => (
+            <option key={d.districtId} value={d.districtId}>
+              {d.districtName}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={centerId}
+          onChange={(e) => onCenterChange(e.target.value)}
+          className="h-9 min-w-[220px] rounded-xl border bg-white px-3 text-base font-bold disabled:bg-slate-50"
+          disabled={!countyId && !districtId}
+          title="Center"
+        >
+          <option value="">All centers</option>
+          {centers.map((c: any) => (
+            <option key={c.centerId} value={c.centerId}>
+              {c.centerCode ? `${c.centerCode} — ${c.centerName}` : c.centerName}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={candidateId}
+          onChange={(e) => onCandidateChange(e.target.value)}
+          className="h-9 min-w-[240px] rounded-xl border bg-white px-3 text-base font-bold disabled:bg-slate-50"
+          disabled={!contestId || q.isFetching}
+          title={!contestId ? "Select a contest first to filter by candidate" : "Filter centers by a single candidate"}
+        >
+          <option value="">{!contestId ? "Select contest first…" : "All candidates"}</option>
+          {candidateOptions.map((c) => (
+            <option key={c.candidateId} value={c.candidateId}>
+              {c.candidateName}
+            </option>
+          ))}
+        </select>
+
+        {(countyId || districtId || centerId) ? (
+          <button
+            type="button"
+            onClick={clearGeo}
+            className="h-9 rounded-xl border bg-white px-3 text-base font-extrabold hover:bg-slate-50"
+          >
+            Clear Geo
+          </button>
+        ) : null}
+
+        {candidateId ? (
+          <button
+            type="button"
+            onClick={clearCandidate}
+            className="h-9 rounded-xl border bg-white px-3 text-base font-extrabold hover:bg-slate-50"
+          >
+            Clear Candidate
+          </button>
+        ) : null}
+
+        <div className="ml-auto text-sm font-bold text-slate-600">
+          {q.isFetching ? "Loading…" : `Rows: ${rows.length} • Page: ${(q.data?.number ?? page) + 1} / ${q.data?.totalPages ?? "?"}`}
         </div>
       </div>
 
-      {/* If contest not selected, show guidance */}
-      {!enabled ? (
+      {q.isLoading ? (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+          Loading candidate center results…
+        </div>
+      ) : q.isError ? (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-base text-rose-800">
+          {(q.error as any)?.response?.data?.message ?? (q.error as Error)?.message ?? "Failed to load."}
+        </div>
+      ) : rows.length === 0 ? (
         <PlaceholderNote
-          title="Select a contest to view results"
+          title="No results found"
           bullets={[
-            "Party results are contest-based (one contest at a time).",
-            "Choose a contest above; filters like county/district/center can be added later.",
+            "This election may not have verified tallies yet for the selected org/filters.",
+            "Try removing geo filters, or select a contest before filtering by candidate.",
           ]}
         />
       ) : (
         <>
-          {/* Header actions */}
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => q.refetch()}
-              className="h-9 rounded-xl border bg-white px-3 text-sm font-bold hover:bg-slate-50"
-            >
-              Refresh
-            </button>
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            {/* ✅ tighter row height + fixed layout so columns don’t balloon */}
+            <table className="min-w-full table-fixed text-base">
+              <thead className="bg-slate-50 text-slate-700">
+                <tr>
+                  <Th className="w-[120px]"><SortBtn onClick={() => toggleSort("countyName")}>County</SortBtn></Th>
+                  <Th className="w-[110px]"><SortBtn onClick={() => toggleSort("districtName")}>District</SortBtn></Th>
+
+                  <Th className="w-[110px]"><SortBtn onClick={() => toggleSort("centerCode")}>Center Code</SortBtn></Th>
+                  <Th className="w-[180px]"><SortBtn onClick={() => toggleSort("centerName")}>Center Name</SortBtn></Th>
+
+                  <Th className="w-[160px]"><SortBtn onClick={() => toggleSort("candidateName")}>Candidate</SortBtn></Th>
+                  <Th className="w-[150px]"><SortBtn onClick={() => toggleSort("partyName")}>Party</SortBtn></Th>
+
+                  <Th className="w-[95px] text-right"><SortBtn onClick={() => toggleSort("candidateVotes")}>Votes/Valid</SortBtn></Th>
+                  <Th className="w-[70px] text-right"><SortBtn onClick={() => toggleSort("voteSharePct")}>Vote %</SortBtn></Th>
+
+                  <Th className="w-[70px] text-right"><SortBtn onClick={() => toggleSort("ballotsCast")}>Cast</SortBtn></Th>
+                  <Th className="w-[70px] text-right"><SortBtn onClick={() => toggleSort("centerInvalidTotal")}>Invalid</SortBtn></Th>
+                  <Th className="w-[80px] text-right"><SortBtn onClick={() => toggleSort("registeredVoters")}>Registered</SortBtn></Th>
+
+                  <Th className="w-[55px] text-center"><SortBtn onClick={() => toggleSort("rankInCenter")}>Rank</SortBtn></Th>
+                  <Th className="w-[25px] text-center"><SortBtn onClick={() => toggleSort("isCenterWinner")}>Winner</SortBtn></Th>
+                  <Th className="w-[90px] text-right"><SortBtn onClick={() => toggleSort("marginVotes")}>Margin</SortBtn></Th>
+
+                  {!contestId ? <Th className="w-[120px]">Contest</Th> : null}
+                </tr>
+              </thead>
+
+              <tbody>
+                {rows.map((r: any) => {
+                  const isWin = Boolean(r.isCenterWinner) || Number(r.rankInCenter) === 1;
+                  const contestName = contestNameById.get(String(r.contestId)) ?? String(r.contestId);
+
+                  return (
+                    <tr
+                      key={`${r.contestId}-${r.centerId}-${r.candidateId}`}
+                      className="hover:bg-slate-50"
+                    >
+                      <Td className="truncate" title={r.countyName}>{r.countyName}</Td>
+                      <Td className="truncate" title={r.districtName}>{r.districtName}</Td>
+
+                      <Td className="whitespace-nowrap">{r.centerCode}</Td>
+                      <Td className="truncate" title={r.centerName}>{r.centerName}</Td>
+
+                      <Td className="truncate" title={r.candidateName}>{r.candidateName}</Td>
+
+                      <Td className="truncate" title={r.partyName ?? "INDEPENDENT"}>
+                        {r.partyName ?? "INDEPENDENT"} {r.partyCode ? `(${r.partyCode})` : ""}
+                      </Td>
+
+                      {/* ✅ tighter ratio + numeric alignment */}
+                      <Td className="text-right font-bold tabular-nums whitespace-nowrap">
+                        {ratioLabel(r.candidateVotes, r.centerValidVotes)}
+                      </Td>
+
+                      <Td className="text-right tabular-nums whitespace-nowrap">{fmtPct(r.voteSharePct)}</Td>
+
+                      <Td className="text-right tabular-nums whitespace-nowrap">{fmtNum(r.ballotsCast)}</Td>
+                      <Td className="text-right tabular-nums whitespace-nowrap">{fmtNum(r.centerInvalidTotal)}</Td>
+                      <Td className="text-right tabular-nums whitespace-nowrap">{fmtNum(r.registeredVoters)}</Td>
+
+                      <Td className="text-center font-bold tabular-nums whitespace-nowrap">
+                        {r.rankInCenter ?? "—"}
+                      </Td>
+
+                      <Td className="text-center">
+                        {isWin ? (
+                          <span className="inline-flex items-center justify-center" title="Top candidate in this center">
+                            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                          </span>
+                        ) : (
+                          <span className="text-slate-300" title="Not the top candidate">—</span>
+                        )}
+                      </Td>
+
+                      <Td className="text-right font-bold tabular-nums whitespace-nowrap" title="Votes behind winner">
+                        {r.marginVotes == null ? "—" : fmtNum(r.marginVotes)}
+                      </Td>
+
+                      {!contestId ? (
+                        <Td className="truncate" title={contestName}>{contestName}</Td>
+                      ) : null}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
 
-          {/* Loading/Error */}
-          {q.isLoading ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-              Loading candidate center results…
+          {/* Pagination */}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-xs text-slate-600">
+              Page <span className="font-bold">{(q.data?.number ?? 0) + 1}</span> of{" "}
+              <span className="font-bold">{q.data?.totalPages ?? 1}</span> •{" "}
+              <span className="font-bold">{q.data?.totalElements ?? 0}</span> total rows
             </div>
-          ) : q.isError ? (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
-              {(q.error as Error)?.message ?? "Failed to load."}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage(page - 1)}
+                disabled={Boolean(q.data?.first) || q.isFetching}
+                className={`h-9 rounded-xl border bg-white px-3 text-sm font-extrabold ${
+                  q.data?.first || q.isFetching ? "opacity-50" : "hover:bg-slate-50"
+                }`}
+              >
+                Prev
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage(page + 1)}
+                disabled={Boolean(q.data?.last) || q.isFetching}
+                className={`h-9 rounded-xl border bg-white px-3 text-sm font-extrabold ${
+                  q.data?.last || q.isFetching ? "opacity-50" : "hover:bg-slate-50"
+                }`}
+              >
+                Next
+              </button>
             </div>
-          ) : rows.length === 0 ? (
-            <div className="mt-2">
-              <PlaceholderNote
-                title="No results found"
-                bullets={[
-                  "This contest may not have submissions yet for your tenant/org.",
-                  "If you expected data, confirm submissions were verified and tallied.",
-                ]}
-              />
-            </div>
-          ) : (
-            <>
-              {/* Table */}
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="border-b px-3 py-2 text-left">
-                        <button
-                          type="button"
-                          onClick={() => toggleSort("countyName")}
-                          className="font-extrabold hover:underline"
-                        >
-                          County
-                        </button>
-                      </th>
-                      <th className="border-b px-3 py-2 text-left">
-                        <button
-                          type="button"
-                          onClick={() => toggleSort("districtName")}
-                          className="font-extrabold hover:underline"
-                        >
-                          District
-                        </button>
-                      </th>
-                      <th className="border-b px-3 py-2 text-left">
-                        <button
-                          type="button"
-                          onClick={() => toggleSort("centerCode")}
-                          className="font-extrabold hover:underline"
-                        >
-                          Center
-                        </button>
-                      </th>
-                      <th className="border-b px-3 py-2 text-left">
-                        <button
-                          type="button"
-                          onClick={() => toggleSort("candidateName")}
-                          className="font-extrabold hover:underline"
-                        >
-                          Candidate
-                        </button>
-                      </th>
-                      <th className="border-b px-3 py-2 text-left">
-                        <button
-                          type="button"
-                          onClick={() => toggleSort("partyName")}
-                          className="font-extrabold hover:underline"
-                        >
-                          Party
-                        </button>
-                      </th>
-                      <th className="border-b px-3 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => toggleSort("candidateVotes")}
-                          className="font-extrabold hover:underline"
-                        >
-                          Votes
-                        </button>
-                      </th>
-                      <th className="border-b px-3 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => toggleSort("voteSharePct")}
-                          className="font-extrabold hover:underline"
-                        >
-                          Vote %
-                        </button>
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {rows.map((r) => (
-                      <tr key={`${r.centerId}-${r.candidateId}`} className="hover:bg-slate-50">
-                        <td className="border-b px-3 py-2">{r.countyName}</td>
-                        <td className="border-b px-3 py-2">{r.districtName}</td>
-                        <td className="border-b px-3 py-2">
-                          <div className="font-extrabold">{r.centerCode}</div>
-                          <div className="text-xs text-slate-600">{r.centerName}</div>
-                        </td>
-                        <td className="border-b px-3 py-2">{r.candidateName}</td>
-                        <td className="border-b px-3 py-2">
-                          {r.partyName} {r.partyCode ? `(${r.partyCode})` : ""}
-                        </td>
-                        <td className="border-b px-3 py-2 text-right font-bold">
-                          {Number(r.candidateVotes ?? 0).toLocaleString()}
-                        </td>
-                        <td className="border-b px-3 py-2 text-right">
-                          {fmtPct(Number(r.voteSharePct ?? 0))}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Pagination */}
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                <div className="text-xs text-slate-600">
-                  Page <span className="font-bold">{(q.data?.number ?? 0) + 1}</span> of{" "}
-                  <span className="font-bold">{q.data?.totalPages ?? 1}</span> •{" "}
-                  <span className="font-bold">{q.data?.totalElements ?? 0}</span> total rows
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPage(page - 1)}
-                    disabled={Boolean(q.data?.first)}
-                    className={`h-9 rounded-xl border bg-white px-3 text-sm font-extrabold ${
-                      q.data?.first ? "opacity-50" : "hover:bg-slate-50"
-                    }`}
-                  >
-                    Prev
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPage(page + 1)}
-                    disabled={Boolean(q.data?.last)}
-                    className={`h-9 rounded-xl border bg-white px-3 text-sm font-extrabold ${
-                      q.data?.last ? "opacity-50" : "hover:bg-slate-50"
-                    }`}
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
+          </div>
         </>
       )}
     </Panel>
+  );
+}
+
+/** ---------- tiny table helpers (tight padding) ---------- */
+function Th(props: React.ThHTMLAttributes<HTMLTableCellElement>) {
+  return (
+    <th
+      {...props}
+      className={`border-b px-2 py-1 text-left text-base font-extrabold ${props.className ?? ""}`}
+    />
+  );
+}
+function Td(props: React.TdHTMLAttributes<HTMLTableCellElement>) {
+  return (
+    <td
+      {...props}
+      className={`border-b px-2 py-1 align-top ${props.className ?? ""}`}
+    />
+  );
+}
+function SortBtn(props: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      className="font-extrabold hover:underline"
+    >
+      {props.children}
+    </button>
   );
 }

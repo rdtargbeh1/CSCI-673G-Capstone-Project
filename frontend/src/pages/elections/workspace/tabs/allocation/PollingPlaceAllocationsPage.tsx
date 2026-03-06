@@ -311,11 +311,11 @@ export default function PollingPlaceAllocationsPage() {
             setOpenEdit(true);
           }}
           disabled={!canEdit}
-          className={`px-2 py-1 rounded border bg-white ${
+          className={`px-2 py-1 rounded border bg-white text-green-600 ${
             !canEdit ? "opacity-60" : ""
           }`}
         >
-          <Pencil size={14} />
+          <Pencil size={18} />
         </button>
 
         <button
@@ -335,7 +335,7 @@ export default function PollingPlaceAllocationsPage() {
             !canEdit || deleteM.isPending ? "opacity-60" : ""
           }`}
         >
-          <Trash2 size={14} />
+          <Trash2 size={18} />
         </button>
       </div>,
     ]);
@@ -365,10 +365,10 @@ export default function PollingPlaceAllocationsPage() {
                 setBallotsIssued("");
                 setOpenCreate(true);
               }}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border bg-white"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border bg-blue-600 text-white font-bold"
             >
-              <Plus size={16} />
-              Create Allocation
+              <Plus size={18} />
+             Place Allocation
             </button>
           ) : (
             <Badge text="Read-only (Tenant)" />
@@ -378,7 +378,7 @@ export default function PollingPlaceAllocationsPage() {
             type="button"
             onClick={refreshNow}
             disabled={placeAllocQ.isFetching}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border bg-white ${
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border bg-blue-100 ${
               placeAllocQ.isFetching ? "opacity-60" : ""
             }`}
           >
@@ -390,31 +390,16 @@ export default function PollingPlaceAllocationsPage() {
 
       {/* Filters card */}
       <div className="w-full rounded-xl border border-slate-200 bg-white p-2">
-        <div className="flex items-center justify-end">
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-sm"
-            onClick={() => {
-              setFCountyId("");
-              setFDistrictId("");
-              setFCenterId("");
-              setPage(0);
-            }}
-          >
-            <FilterX size={16} />
-            Clear
-          </button>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-2 mt-2">
+        <div className="grid md:grid-cols-4 gap-2">
+          {/* County Filter */}
           <div className="grid gap-1">
-            <div className="text-[11px] font-extrabold text-slate-600">
+            <div className="text-base font-extrabold text-slate-600">
               County
             </div>
             <select
               value={fCountyId}
               onChange={(e) => changeCountyFilter(e.target.value)}
-              className="px-3 py-2 rounded-lg border border-slate-200 outline-none bg-white"
+              className="px-3 py-2 rounded-lg border border-slate-200 outline-none bg-white text-base"
             >
               <option value="">All counties</option>
               {(countiesQ.data ?? []).map((c) => (
@@ -425,16 +410,17 @@ export default function PollingPlaceAllocationsPage() {
             </select>
           </div>
 
+          {/* District Filter */}
           <div className="grid gap-1">
-            <div className="text-[11px] font-extrabold text-slate-600">
+            <div className="text-base font-extrabold text-slate-600">
               District
             </div>
             <select
               value={fDistrictId}
               onChange={(e) => changeDistrictFilter(e.target.value)}
               disabled={!fCountyId}
-              className={`px-3 py-2 rounded-lg border border-slate-200 outline-none bg-white ${
-                !fCountyId ? "opacity-60" : ""
+              className={`px-3 py-2 rounded-lg border border-slate-200 outline-none bg-white text-base ${
+                !fCountyId ? "opacity-60 cursor-not-allowed" : ""
               }`}
             >
               <option value="">
@@ -448,16 +434,17 @@ export default function PollingPlaceAllocationsPage() {
             </select>
           </div>
 
+          {/* Center Filter */}
           <div className="grid gap-1">
-            <div className="text-[11px] font-extrabold text-slate-600">
+            <div className="text-base font-extrabold text-slate-600">
               Center
             </div>
             <select
               value={fCenterId}
               onChange={(e) => changeCenterFilter(e.target.value)}
               disabled={!fCountyId || !fDistrictId}
-              className={`px-3 py-2 rounded-lg border border-slate-200 outline-none bg-white ${
-                !fCountyId || !fDistrictId ? "opacity-60" : ""
+              className={`px-3 py-2 rounded-lg border border-slate-200 outline-none bg-white text-base ${
+                !fCountyId || !fDistrictId ? "opacity-60 cursor-not-allowed" : ""
               }`}
             >
               <option value="">
@@ -471,6 +458,24 @@ export default function PollingPlaceAllocationsPage() {
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Clear Button - Next to Center */}
+          <div className="flex items-end">
+            <button
+              type="button"
+              className="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg border border-slate-200 bg-white text-base font-medium hover:bg-slate-50 transition"
+              onClick={() => {
+                setFCountyId("");
+                setFDistrictId("");
+                setFCenterId("");
+                setPage(0);
+              }}
+              title="Clear all filters"
+            >
+              <FilterX size={16} />
+              Clear
+            </button>
           </div>
         </div>
       </div>
@@ -558,22 +563,22 @@ export default function PollingPlaceAllocationsPage() {
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50"
           onClick={() => {
             if (createM.isPending) return;
             setOpenCreate(false);
           }}
         >
           <div
-            className="w-full max-w-[980px] bg-white rounded-2xl border border-slate-200 p-4 mx-auto shadow-xl"
+            className="w-full max-w-[1100px] bg-white rounded-2xl border border-slate-200 p-4 mx-auto shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center gap-3">
               <div>
-                <div className="font-extrabold text-base">
+                <div className="font-extrabold text-xl">
                   Create Polling Place Allocation
                 </div>
-                <div className="text-xs text-slate-500 mt-0.5">
+                <div className="text-sm text-slate-500 mt-0.5">
                   Select County → District → Center → Place, then provide
                   registered voters and optional ballots issued.
                 </div>
@@ -594,7 +599,7 @@ export default function PollingPlaceAllocationsPage() {
               <div className="grid md:grid-cols-4 gap-2">
                 {/* County */}
                 <div className="grid gap-1">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-base font-extrabold text-slate-600">
                     County <span className="text-red-600">*</span>
                   </div>
                   <select
@@ -619,7 +624,7 @@ export default function PollingPlaceAllocationsPage() {
 
                 {/* District */}
                 <div className="grid gap-1">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-base font-extrabold text-slate-600">
                     District <span className="text-red-600">*</span>
                   </div>
                   <select
@@ -650,7 +655,7 @@ export default function PollingPlaceAllocationsPage() {
 
                 {/* Center */}
                 <div className="grid gap-1">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-base font-extrabold text-slate-600">
                     Center <span className="text-red-600">*</span>
                   </div>
                   <select
@@ -680,7 +685,7 @@ export default function PollingPlaceAllocationsPage() {
 
                 {/* Place (clean label only) */}
                 <div className="grid gap-1">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-base font-extrabold text-slate-600">
                     Place <span className="text-red-600">*</span>
                   </div>
                   <select
@@ -705,7 +710,7 @@ export default function PollingPlaceAllocationsPage() {
 
               <div className="grid md:grid-cols-2 gap-2">
                 <div className="grid gap-1">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-base font-extrabold text-slate-600">
                     Registered Voters <span className="text-red-600">*</span>
                   </div>
                   <input
@@ -725,7 +730,7 @@ export default function PollingPlaceAllocationsPage() {
                 </div>
 
                 <div className="grid gap-1">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-base font-extrabold text-slate-600">
                     Ballots Issued (optional)
                   </div>
                   <input
@@ -818,7 +823,7 @@ export default function PollingPlaceAllocationsPage() {
           >
             <div className="flex justify-between items-center">
               <div>
-                <div className="font-extrabold text-base">
+                <div className="font-extrabold text-xl">
                   Edit Polling Place Allocation
                 </div>
                 <div className="text-xs text-slate-500 mt-0.5">
@@ -841,7 +846,7 @@ export default function PollingPlaceAllocationsPage() {
             </div>
 
             <div className="grid gap-2 mt-3">
-              <div className="text-[11px] font-extrabold text-slate-600">
+              <div className="text-base font-extrabold text-slate-600">
                 Registered Voters
               </div>
               <input
@@ -859,7 +864,7 @@ export default function PollingPlaceAllocationsPage() {
                 className="px-3 py-2 rounded-lg border border-slate-200 outline-none"
               />
 
-              <div className="text-[11px] font-extrabold text-slate-600">
+              <div className="text-base font-extrabold text-slate-600">
                 Ballots Issued
               </div>
               <input

@@ -247,6 +247,8 @@ export default function PollingCenterAllocationsPage() {
       `${a.centerCode ?? ""} ${a.centerName ?? ""}`.trim() || "—",
       String(a.registeredVoters ?? 0),
       a.ballotsIssued != null ? String(a.ballotsIssued) : "—",
+
+      // Edit btn
       <div style={{ display: "flex", gap: 6 }} key={a.allocationId}>
         <button
           type="button"
@@ -258,13 +260,14 @@ export default function PollingCenterAllocationsPage() {
             setOpenEdit(true);
           }}
           disabled={!canEdit}
-          className={`px-2 py-1 rounded border bg-white ${
+          className={`px-2 py-1 rounded border bg-white text-green-600  ${
             !canEdit ? "opacity-60" : ""
           }`}
         >
-          <Pencil size={14} />
+          <Pencil size={18} />
         </button>
-
+        
+        {/*  delete btn */}
         <button
           type="button"
           title={canEdit ? "Delete (SYSTEM/NEC)" : "Read-only"}
@@ -280,7 +283,7 @@ export default function PollingCenterAllocationsPage() {
             !canEdit || deleteM.isPending ? "opacity-60" : ""
           }`}
         >
-          <Trash2 size={14} />
+          <Trash2 size={18} />
         </button>
       </div>,
     ]);
@@ -304,7 +307,7 @@ export default function PollingCenterAllocationsPage() {
       {/* Header actions (tight) */}
       <div className="flex items-center justify-between">
         <div />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 text-xl">
           {canEdit ? (
             <button
               type="button"
@@ -316,9 +319,9 @@ export default function PollingCenterAllocationsPage() {
                 setBallotsIssued("");
                 setOpenCreate(true);
               }}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border bg-white"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border bg-blue-600 text-white font-bold"
             >
-              Create Allocation
+              + Center Allocation
             </button>
           ) : (
             <Badge text="Read-only (Tenant)" />
@@ -328,7 +331,7 @@ export default function PollingCenterAllocationsPage() {
             type="button"
             onClick={refreshNow}
             disabled={allocationsQ.isFetching}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border bg-white ${
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border bg-blue-100 ${
               allocationsQ.isFetching ? "opacity-60" : ""
             }`}
           >
@@ -340,29 +343,15 @@ export default function PollingCenterAllocationsPage() {
 
       {/* Filters card (reduced padding + less whitespace) */}
       <div className="w-full rounded-xl border border-slate-200 bg-white px-2 py-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-[11px] font-extrabold text-slate-600">
+        {/* <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-extrabold text-slate-600">
             Filters
           </div>
+        </div> */}
 
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-200 bg-white text-sm"
-            onClick={() => {
-              setFCountyId("");
-              setFDistrictId("");
-              setFCenterId("");
-              setPage(0);
-            }}
-          >
-            <FilterX size={16} />
-            Clear
-          </button>
-        </div>
-
-        <div className="grid md:grid-cols-3 gap-2 mt-1">
+        <div className="grid md:grid-cols-4 gap-2 mt-1">
           <div className="grid gap-1">
-            <div className="text-[11px] font-extrabold text-slate-600">
+            <div className="text-sm font-extrabold text-slate-600">
               County
             </div>
             {countiesQ.isLoading ? (
@@ -391,7 +380,7 @@ export default function PollingCenterAllocationsPage() {
           </div>
 
           <div className="grid gap-1">
-            <div className="text-[11px] font-extrabold text-slate-600">
+            <div className="text-sm font-extrabold text-slate-600">
               District
             </div>
             <select
@@ -414,7 +403,7 @@ export default function PollingCenterAllocationsPage() {
           </div>
 
           <div className="grid gap-1">
-            <div className="text-[11px] font-extrabold text-slate-600">
+            <div className="text-sm font-extrabold text-slate-600">
               Center
             </div>
             <select
@@ -437,8 +426,26 @@ export default function PollingCenterAllocationsPage() {
               ))}
             </select>
           </div>
+
+          {/* ✅ FIXED: Clear button on the same line, no label */}
+          <div className="flex items-end">
+            <button
+              type="button"
+              className="w-full inline-flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-slate-200 bg-white text-sm font-medium hover:bg-slate-50"
+              onClick={() => {
+                setFCountyId("");
+                setFDistrictId("");
+                setFCenterId("");
+                setPage(0);
+              }}
+            >
+              <FilterX size={18} />
+              Clear
+            </button>
+          </div>
         </div>
       </div>
+    
 
       {allocationsQ.isLoading ? (
         <div style={{ padding: 4, color: "#475569" }}>
@@ -481,7 +488,7 @@ export default function PollingCenterAllocationsPage() {
           type="button"
           onClick={() => setPage((p) => Math.max(0, p - 1))}
           disabled={!pageData || page <= 0 || allocationsQ.isFetching}
-          className="px-3 py-1 rounded border bg-white"
+          className="px-3 py-1 rounded border bg-white text-base"
         >
           Prev
         </button>
@@ -501,7 +508,7 @@ export default function PollingCenterAllocationsPage() {
             pageData.page + 1 >= (pageData?.totalPages ?? 0) ||
             allocationsQ.isFetching
           }
-          className="px-3 py-1 rounded border bg-white"
+          className="px-3 py-1 rounded border bg-white text-base"
         >
           Next
         </button>
@@ -514,7 +521,6 @@ export default function PollingCenterAllocationsPage() {
           bullets={[
             "SYSTEM + NEC can create/edit/delete center allocations; tenants are read-only.",
             "Filters: County → District → Center (dependent dropdowns).",
-            "Create center dropdown shows center name only (no code).",
           ]}
         />
       </div>
@@ -531,15 +537,15 @@ export default function PollingCenterAllocationsPage() {
           }}
         >
           <div
-            className="w-full max-w-[860px] bg-white rounded-2xl border border-slate-200 p-4 mx-auto shadow-xl"
+            className="w-full max-w-[1100px] bg-white rounded-2xl border border-slate-200 p-4 mx-auto shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center gap-3">
               <div>
-                <div className="font-extrabold text-base">
+                <div className="font-extrabold text-xl">
                   Create Polling Center Allocation
                 </div>
-                <div className="text-xs text-slate-500 mt-0.5">
+                <div className="text-sm text-slate-500 mt-0.5">
                   Select County → District → Center, then provide registered
                   voters and optional ballots issued.
                 </div>
@@ -559,7 +565,7 @@ export default function PollingCenterAllocationsPage() {
             <div className="grid gap-3 mt-3">
               <div className="grid md:grid-cols-3 gap-2">
                 <div className="grid gap-1">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-base font-extrabold text-slate-600">
                     County <span className="text-red-600">*</span>
                   </div>
                   <select
@@ -582,7 +588,7 @@ export default function PollingCenterAllocationsPage() {
                 </div>
 
                 <div className="grid gap-1">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-base font-extrabold text-slate-600">
                     District <span className="text-red-600">*</span>
                   </div>
                   <select
@@ -612,7 +618,7 @@ export default function PollingCenterAllocationsPage() {
 
                 {/* ✅ dropdown shows centerName only */}
                 <div className="grid gap-1">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-base font-extrabold text-slate-600">
                     Center <span className="text-red-600">*</span>
                   </div>
                   <select
@@ -639,7 +645,7 @@ export default function PollingCenterAllocationsPage() {
 
               <div className="grid md:grid-cols-2 gap-2">
                 <div className="grid gap-1">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-base font-extrabold text-slate-600">
                     Registered Voters <span className="text-red-600">*</span>
                   </div>
                   <input
@@ -659,7 +665,7 @@ export default function PollingCenterAllocationsPage() {
                 </div>
 
                 <div className="grid gap-1">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-base font-extrabold text-slate-600">
                     Ballots Issued (optional)
                   </div>
                   <input
@@ -751,7 +757,7 @@ export default function PollingCenterAllocationsPage() {
           >
             <div className="flex justify-between items-center">
               <div>
-                <div className="font-extrabold text-base">
+                <div className="font-extrabold text-xl">
                   Edit Polling Center Allocation
                 </div>
                 <div className="text-xs text-slate-500 mt-0.5">
@@ -774,7 +780,7 @@ export default function PollingCenterAllocationsPage() {
             </div>
 
             <div className="grid gap-2 mt-3">
-              <div className="text-[11px] font-extrabold text-slate-600">
+              <div className="text-base font-extrabold text-slate-600">
                 Registered Voters
               </div>
               <input
@@ -792,7 +798,7 @@ export default function PollingCenterAllocationsPage() {
                 className="px-3 py-2 rounded-lg border border-slate-200 outline-none"
               />
 
-              <div className="text-[11px] font-extrabold text-slate-600">
+              <div className="text-base font-extrabold text-slate-600">
                 Ballots Issued
               </div>
               <input

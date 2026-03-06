@@ -717,17 +717,17 @@ export default function SubmissionFormModal(props: {
           <div className="sticky top-0 z-10 border-b bg-white px-3 py-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-[15px] font-extrabold leading-5">
+                <div className="text-xl font-extrabold leading-5 text-blue-600">
                   {isCreate ? "New Vote Submission" : "Edit Submission"}
                 </div>
-                <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                <div className="text-sm text-slate-500 truncate mt-0.5">
                   {headerSubtitle}
                 </div>
 
                 {isCreate &&
                 props.dashboardMode === "SYSTEM" &&
                 !props.effectiveOrgId ? (
-                  <div className="mt-1 text-[11px] font-bold text-red-700">
+                  <div className="mt-1 text-base font-bold text-red-700">
                     Select a tenant (organization) before submitting.
                   </div>
                 ) : null}
@@ -737,7 +737,7 @@ export default function SubmissionFormModal(props: {
                 type="button"
                 onClick={props.onClose}
                 disabled={busy}
-                className={`shrink-0 rounded-full border border-slate-200 bg-white h-9 w-9 grid place-items-center ${
+                className={`shrink-0 rounded-full border border-slate-200 bg-red-600 text-white font-bold h-9 w-9 grid place-items-center ${
                   busy ? "opacity-60" : "hover:bg-slate-50"
                 }`}
                 aria-label="Close"
@@ -749,27 +749,27 @@ export default function SubmissionFormModal(props: {
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
-                <div className="h-7 w-7 rounded-full bg-slate-900 text-white text-xs font-extrabold grid place-items-center">
+                <div className="h-7 w-7 rounded-full bg-slate-900 text-white text-sm font-extrabold grid place-items-center">
                   {agentInitials}
                 </div>
                 <div className="text-sm font-bold">
-                  <span className="text-slate-500 text-xs font-extrabold mr-1">
+                  <span className="text-slate-500 text-sm font-extrabold mr-1">
                     Agent
                   </span>
-                  <span className="font-extrabold">{agentName}</span>
+                  <span className="font-extrabold text-base">{agentName}</span>
                 </div>
               </div>
 
               <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1">
-                <span className="text-[11px] text-slate-500 font-extrabold">
+                <span className="text-sm text-slate-500 font-extrabold">
                   Valid
                 </span>
                 <span className="text-sm font-extrabold">{validVotes}</span>
               </div>
 
               <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1">
-                <span className="text-[11px] text-slate-500 font-extrabold">
-                  In Box
+                <span className="text-sm text-slate-500 font-extrabold">
+                  Ballot In Box
                 </span>
                 <span className="text-sm font-extrabold">
                   {ballotsInBoxNumber}
@@ -777,7 +777,7 @@ export default function SubmissionFormModal(props: {
               </div>
 
               <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1">
-                <span className="text-[11px] text-slate-500 font-extrabold">
+                <span className="text-sm text-slate-500 font-extrabold">
                   Invalid Total
                 </span>
                 <span className="text-sm font-extrabold">
@@ -798,7 +798,7 @@ export default function SubmissionFormModal(props: {
                 </Section>
               ) : editQ.isError ? (
                 <Section>
-                  <div className="text-sm font-bold text-red-700">
+                  <div className="text-base font-bold text-red-700">
                     {friendlyError(editQ.error)}
                   </div>
                 </Section>
@@ -815,7 +815,7 @@ export default function SubmissionFormModal(props: {
                         <select
                           value={mCounty}
                           onChange={(e) => setMCounty(e.target.value)}
-                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold"
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-base font-semibold"
                         >
                           <option value="">Select county</option>
                           {counties.map((c) => (
@@ -831,7 +831,7 @@ export default function SubmissionFormModal(props: {
                           value={mDistrict}
                           onChange={(e) => setMDistrict(e.target.value)}
                           disabled={!mCounty}
-                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold disabled:bg-slate-50"
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-base font-semibold disabled:bg-slate-50"
                         >
                           <option value="">Select district</option>
                           {mDistricts.map((d) => (
@@ -850,7 +850,7 @@ export default function SubmissionFormModal(props: {
                             setSelectedPlace("");
                           }}
                           disabled={!mCounty && !mDistrict}
-                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold disabled:bg-slate-50"
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-base font-semibold disabled:bg-slate-50"
                         >
                           <option value="">Select center</option>
                           {mCenters.map((c) => (
@@ -866,7 +866,7 @@ export default function SubmissionFormModal(props: {
                           value={selectedPlace}
                           onChange={(e) => setSelectedPlace(e.target.value)}
                           disabled={!selectedCenter}
-                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold disabled:bg-slate-50"
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-base font-semibold disabled:bg-slate-50"
                         >
                           <option value="">Select place</option>
                           {mPlaces.map((p) => (
@@ -899,7 +899,7 @@ export default function SubmissionFormModal(props: {
                 >
                   <div className="space-y-2.5">
                     <div>
-                      <div className="mb-1 text-[11px] font-extrabold text-slate-600">
+                      <div className="mb-1 text-sm font-extrabold text-slate-600">
                         Contest
                       </div>
                       <select
@@ -908,7 +908,7 @@ export default function SubmissionFormModal(props: {
                         disabled={
                           isEdit && Boolean((editQ.data as any)?.contestId)
                         }
-                        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold disabled:bg-slate-50"
+                        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-base font-semibold disabled:bg-slate-50"
                       >
                         <option value="">Select contest</option>
                         {props.contests.map((ct: ContestDto) => (
@@ -925,15 +925,15 @@ export default function SubmissionFormModal(props: {
                         Select a contest to enter candidate votes.
                       </div>
                     ) : contestOptionsQ.isLoading ? (
-                      <div className="text-sm text-slate-600">
+                      <div className="text-base text-slate-600">
                         Loading candidates…
                       </div>
                     ) : contestOptionsQ.isError ? (
-                      <div className="text-sm font-bold text-red-700">
+                      <div className="text-base font-bold text-red-700">
                         {friendlyError(contestOptionsQ.error)}
                       </div>
                     ) : !candidateOptions.length ? (
-                      <div className="text-sm text-slate-600">
+                      <div className="text-base text-slate-600">
                         No candidate options assigned to this contest yet.
                       </div>
                     ) : (
@@ -942,13 +942,13 @@ export default function SubmissionFormModal(props: {
                           <table className="w-full min-w-[480px]">
                             <thead className="bg-slate-50">
                               <tr className="text-left">
-                                <th className="px-2.5 py-2 text-[11px] font-extrabold text-slate-600">
+                                <th className="px-2.5 py-2 text-base font-extrabold text-slate-600">
                                   Candidate
                                 </th>
-                                <th className="px-2.5 py-2 text-[11px] font-extrabold text-slate-600 w-[110px]">
+                                <th className="px-2.5 py-2 text-base font-extrabold text-slate-600 w-[110px]">
                                   Party
                                 </th>
-                                <th className="px-2.5 py-2 text-[11px] font-extrabold text-slate-600 w-[110px] text-right">
+                                <th className="px-2.5 py-2 text-base font-extrabold text-slate-600 w-[110px] text-right">
                                   Votes
                                 </th>
                               </tr>
@@ -983,13 +983,13 @@ export default function SubmissionFormModal(props: {
                                     }`}
                                   >
                                     <td className="px-2.5 py-2 align-middle">
-                                      <div className="text-sm font-extrabold leading-5 break-words">
+                                      <div className="text-base font-bold leading-5 break-words">
                                         {name}
                                       </div>
                                     </td>
                                     <td className="px-2.5 py-2 align-middle">
                                       <span
-                                        className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-extrabold ${
+                                        className={`inline-flex rounded-full px-2 py-0.5 text-base font-bold ${
                                           party
                                             ? "bg-slate-100 text-slate-700"
                                             : "bg-slate-100 text-slate-500"
@@ -1012,7 +1012,7 @@ export default function SubmissionFormModal(props: {
                                               [voteKey]: n,
                                             }));
                                           }}
-                                          className="h-7 w-[64px] rounded-md border border-slate-200 bg-white px-1.5 text-right text-[12px] font-extrabold leading-none focus:outline-none focus:ring-2 focus:ring-slate-200"
+                                          className="h-7 w-[64px] rounded-md border border-slate-200 bg-white px-1.5 text-right text-base font-extrabold leading-none focus:outline-none focus:ring-2 focus:ring-slate-200"
                                         />
                                       </div>
                                     </td>
@@ -1081,13 +1081,13 @@ export default function SubmissionFormModal(props: {
                     </div>
 
                     {exceedsIssued ? (
-                      <div className="col-span-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-extrabold text-red-700">
+                      <div className="col-span-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-extrabold text-red-700">
                         Ballots In Box cannot exceed Ballots Issued.
                       </div>
                     ) : null}
 
                     {exceedsRegistered ? (
-                      <div className="col-span-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-extrabold text-red-700">
+                      <div className="col-span-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-extrabold text-red-700">
                         Ballots In Box cannot exceed Registered Voters.
                       </div>
                     ) : null}
@@ -1137,15 +1137,15 @@ export default function SubmissionFormModal(props: {
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <div className="text-sm font-extrabold leading-5">
+                        <div className="text-base font-extrabold leading-5">
                           Upload
                         </div>
-                        <div className="text-[11px] text-slate-600">
+                        <div className="text-sm text-slate-600">
                           PNG / JPG / PDF
                         </div>
                       </div>
 
-                      <div className="text-[11px] font-bold text-slate-600">
+                      <div className="text-sm font-bold text-slate-600">
                         {files.length ? `${files.length}` : "0"}
                       </div>
                     </div>
@@ -1167,7 +1167,7 @@ export default function SubmissionFormModal(props: {
                         className="hidden"
                         onChange={handleFileInputChange}
                       />
-                      <div className="h-8 w-full rounded-lg border border-slate-200 bg-white grid place-items-center text-[12px] font-semibold text-slate-600 hover:bg-slate-50">
+                      <div className="h-8 w-full rounded-lg border border-slate-200 bg-white grid place-items-center text-sm font-semibold text-slate-600 hover:bg-slate-50">
                         Tap to choose or drop
                       </div>
                     </div>
@@ -1196,7 +1196,7 @@ export default function SubmissionFormModal(props: {
                             </div>
 
                             <div className="min-w-0 flex-1">
-                              <div className="text-[12px] font-bold truncate">
+                              <div className="text-base font-bold truncate">
                                 {p.name}
                               </div>
                             </div>
@@ -1238,7 +1238,7 @@ export default function SubmissionFormModal(props: {
                         <span>Flag this submission</span>
                       </label>
 
-                      <div className="text-[11px] font-extrabold text-slate-600">
+                      <div className="text-sm font-extrabold text-slate-600">
                         Actor:{" "}
                         <span className="text-slate-900">{agentName}</span>
                       </div>
@@ -1246,7 +1246,7 @@ export default function SubmissionFormModal(props: {
 
                     {flagChecked && (
                       <div className="mt-2">
-                        <div className="mb-1 text-[11px] font-extrabold text-slate-600">
+                        <div className="mb-1 text-sm font-extrabold text-slate-600">
                           Flag Reason (required)
                         </div>
                         <textarea
@@ -1257,7 +1257,7 @@ export default function SubmissionFormModal(props: {
                           placeholder="Why are you flagging this submission?"
                         />
                         {!flagReason.trim() ? (
-                          <div className="mt-1 text-xs font-bold text-red-700">
+                          <div className="mt-1 text-sm font-bold text-red-700">
                             Reason is required when flagging.
                           </div>
                         ) : null}
@@ -1669,7 +1669,7 @@ function Section(props: {
 function Field(props: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1 text-[11px] font-extrabold text-slate-600">
+      <div className="mb-1 text-sm font-extrabold text-slate-600">
         {props.label}
       </div>
       {props.children}
@@ -1680,7 +1680,7 @@ function Field(props: { label: string; children: React.ReactNode }) {
 function ReadOnlyStat(props: { label: string; value: string }) {
   return (
     <div>
-      <div className="mb-1 text-[11px] font-extrabold text-slate-600">
+      <div className="mb-1 text-sm font-extrabold text-slate-600">
         {props.label}
       </div>
       <div className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 grid items-center">
@@ -1699,7 +1699,7 @@ function NumberField(props: {
 }) {
   return (
     <div>
-      <div className="mb-1 text-[11px] font-extrabold text-slate-600">
+      <div className="mb-1 text-sm font-extrabold text-slate-600">
         {props.label}
       </div>
       <input

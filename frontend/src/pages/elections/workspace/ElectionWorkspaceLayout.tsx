@@ -66,7 +66,7 @@ async function fetchElectionById(id: string): Promise<ElectionDto> {
 /** ---------------- tab styles (active indicator) ---------------- */
 function tabClass(active: boolean) {
   return [
-    "relative inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-extrabold transition",
+    "relative inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-lg font-extrabold transition",
     active
       ? "border-indigo-200 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-100"
       : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
@@ -111,6 +111,7 @@ export default function ElectionWorkspaceLayout() {
   const nav = useNavigate();
   const loc = useLocation();
 
+  
   const { dashboardMode } = useAuth();
   const isNecOrSystem = dashboardMode === "NEC" || dashboardMode === "SYSTEM";
 
@@ -207,6 +208,7 @@ export default function ElectionWorkspaceLayout() {
       ].filter((t) => !t.hidden),
     [isNecOrSystem]
   );
+console.log("DEBUG - Final tabs:", tabs.map(t => t.label));
 
   const refreshAll = async () => {
     await Promise.allSettled([electionQ.refetch(), activeElectionsQ.refetch()]);
@@ -234,7 +236,7 @@ export default function ElectionWorkspaceLayout() {
               type="button"
               onClick={() => nav("/elections")}
               title="Back to Elections list"
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-extrabold hover:bg-slate-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xl font-extrabold hover:bg-slate-50"
             >
               <ArrowLeft size={16} />
               Back
@@ -244,7 +246,7 @@ export default function ElectionWorkspaceLayout() {
             {election ? (
               <span
                 title={election.isActive ? "Active election" : "Inactive election"}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-extrabold text-slate-800"
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-extrabold text-slate-800"
               >
                 {statusDot(!!election.isActive)}
                 {election.isActive ? "ACTIVE" : "INACTIVE"}
@@ -259,7 +261,7 @@ export default function ElectionWorkspaceLayout() {
                 type="button"
                 onClick={() => setSwitchOpen((s) => !s)}
                 title="Switch to another active election"
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-extrabold hover:bg-slate-50"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-lg font-extrabold hover:bg-slate-50"
               >
                 <Repeat2 size={16} />
                 Switch Election
@@ -269,7 +271,7 @@ export default function ElectionWorkspaceLayout() {
                 <div
                   className="absolute right-0 top-[calc(100%+8px)] z-50 w-[420px] max-w-[80vw] rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
                 >
-                  <div className="text-sm font-extrabold text-slate-900">
+                  <div className="text-lg font-extrabold text-slate-900">
                     Switch election
                   </div>
 
@@ -310,7 +312,7 @@ export default function ElectionWorkspaceLayout() {
                     )}
                   </div>
 
-                  <div className="mt-2 text-xs text-slate-500">
+                  <div className="mt-2 text-xl text-slate-500">
                     Active elections are available for quick switching. Current
                     election is shown even if inactive.
                   </div>

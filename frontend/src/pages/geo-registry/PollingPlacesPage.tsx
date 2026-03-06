@@ -1,6 +1,6 @@
+
+
 // src/pages/geo-registry/PollingPlacesPage.tsx
-// ✅ ONLY CHANGE: add inline alerts when user clicks District without County,
-//   and Center without District (County->District->Center). No logic changed.
 
 import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -463,7 +463,7 @@ export default function PollingPlacesPage() {
       setCenterId("");
     } else if (next === "DISTRICT") {
       setQPlace("");
-      // district depends on county; keep countyId (don’t clear)
+      // district depends on county; keep countyId (don't clear)
       setCenterId("");
     } else {
       // CENTER
@@ -501,9 +501,9 @@ export default function PollingPlacesPage() {
             type="button"
             onClick={refreshNow}
             disabled={placesQ.isFetching}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-blue-100 px-3 py-2 text-bases font-semibold hover:bg-slate-50 disabled:opacity-50"
           >
-            <RefreshCw size={16} />
+            <RefreshCw size={18} />
             Refresh
           </button>
 
@@ -511,99 +511,95 @@ export default function PollingPlacesPage() {
             type="button"
             onClick={openCreate}
             disabled={!canEdit}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200  bg-[#0000CD] text-white px-3 py-2 text-lg font-semibold hover:bg-slate-500 disabled:opacity-50"
             title={canEdit ? "Add Place" : "NEC/SYSTEM only"}
           >
-            <Plus size={16} />
+            <Plus size={18} />
             Add Place
           </button>
         </div>
       }
     >
       <Card title="Polling Places">
-        {/* 4 filters */}
-        <div className="grid grid-cols-1 gap-2 lg:grid-cols-4">
+        {/* ✅ CONDENSED FILTERS ON LEFT - NO LABELS */}
+        <div className="flex items-end gap-2 mb-4">
           {/* 1) Search place */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-xs font-extrabold text-slate-700">
-                Search Place
-              </div>
-              <button
-                type="button"
-                onClick={() => setModeAndReset("PLACE")}
-                className={[
-                  "rounded-xl border px-2 py-1 text-xs font-bold",
-                  mode === "PLACE"
-                    ? "border-slate-200 bg-slate-100"
-                    : "border-slate-200 bg-white hover:bg-slate-50",
-                ].join(" ")}
-              >
-                Use
-              </button>
-            </div>
-
-            <div className="relative">
-              <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                size={16}
-              />
-              <input
-                value={qPlace}
-                onChange={(e) => {
-                  setQPlace(e.target.value);
-                  setPage(0);
-                  setMode("PLACE");
-                }}
-                placeholder="Search code, label, center…"
-                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-(--org-primary)"
-              />
-            </div>
+          <div className="relative w-80">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              size={16}
+            />
+            <input
+              value={qPlace}
+              onChange={(e) => {
+                setQPlace(e.target.value);
+                setPage(0);
+                setMode("PLACE");
+              }}
+              placeholder="Search place…"
+              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-base outline-none focus:ring-2 focus:ring-(--org-primary)"
+            />
           </div>
 
           {/* 2) County */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-xs font-extrabold text-slate-700">
-                By County
-              </div>
-              <button
-                type="button"
-                onClick={() => setModeAndReset("COUNTY")}
-                className={[
-                  "rounded-xl border px-2 py-1 text-xs font-bold",
-                  mode === "COUNTY"
-                    ? "border-slate-200 bg-slate-100"
-                    : "border-slate-200 bg-white hover:bg-slate-50",
-                ].join(" ")}
-              >
-                Use
-              </button>
-            </div>
+          <select
+            value={countyId}
+            onChange={(e) => {
+              setMode("COUNTY");
+              setCountyId(e.target.value);
+              setDistrictPrereqAlert(false);
+              setCenterPrereqAlert(false);
+              setDistrictId("");
+              setCenterId("");
+              setPage(0);
+            }}
+            disabled={countiesQ.isLoading || countiesQ.isError}
+            className="w-80 rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
+          >
+            <option value="">
+              {countiesQ.isLoading ? "Loading…" : "County"}
+            </option>
+            {countyOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
 
+          {/* 3) District (requires county) */}
+          <div
+            className="relative w-80"
+            onMouseDown={() => {
+              if (!countyId) setDistrictPrereqAlert(true);
+            }}
+            onTouchStart={() => {
+              if (!countyId) setDistrictPrereqAlert(true);
+            }}
+          >
             <select
-              value={countyId}
+              value={districtId}
               onChange={(e) => {
-                setMode("COUNTY");
-                setCountyId(e.target.value);
-
-                // clear inline alerts when user complies
-                setDistrictPrereqAlert(false);
-                setCenterPrereqAlert(false);
-
-                setDistrictId("");
+                setMode("DISTRICT");
+                setDistrictId(e.target.value);
                 setCenterId("");
+                setCenterPrereqAlert(false);
                 setPage(0);
               }}
-              disabled={countiesQ.isLoading || countiesQ.isError}
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
+              disabled={districtDisabled || districtsByCountyQ.isError}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
+              title={
+                districtDisabled ? "Select county first" : "Select district"
+              }
             >
               <option value="">
-                {countiesQ.isLoading
-                  ? "Loading counties…"
-                  : "— Select County —"}
+                {!countyId
+                  ? "Select county…"
+                  : districtsByCountyQ.isLoading
+                  ? "Loading…"
+                  : "District"}
               </option>
-              {countyOptions.map((o) => (
+
+              {districtOptions.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
@@ -611,171 +607,63 @@ export default function PollingPlacesPage() {
             </select>
           </div>
 
-          {/* 3) District (requires county) */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-xs font-extrabold text-slate-700">
-                By District
-              </div>
-              <button
-                type="button"
-                onClick={() => setModeAndReset("DISTRICT")}
-                className={[
-                  "rounded-xl border px-2 py-1 text-xs font-bold",
-                  mode === "DISTRICT"
-                    ? "border-slate-200 bg-slate-100"
-                    : "border-slate-200 bg-white hover:bg-slate-50",
-                ].join(" ")}
-              >
-                Use
-              </button>
-            </div>
-
-            {/* ✅ wrapper to detect click even if select is disabled */}
-            <div
-              className="relative"
-              onMouseDown={() => {
-                if (!countyId) setDistrictPrereqAlert(true);
-              }}
-              onTouchStart={() => {
-                if (!countyId) setDistrictPrereqAlert(true);
-              }}
-            >
-              <select
-                value={districtId}
-                onChange={(e) => {
-                  setMode("DISTRICT");
-                  setDistrictId(e.target.value);
-                  setCenterId("");
-
-                  // clear center alert since district is now chosen
-                  setCenterPrereqAlert(false);
-
-                  setPage(0);
-                }}
-                disabled={districtDisabled || districtsByCountyQ.isError}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
-                title={
-                  districtDisabled ? "Select county first" : "Select district"
-                }
-              >
-                <option value="">
-                  {!countyId
-                    ? "Select county first…"
-                    : districtsByCountyQ.isLoading
-                    ? "Loading districts…"
-                    : "— Select District —"}
-                </option>
-
-                {districtOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* ✅ inline alert */}
-            {districtPrereqAlert && !countyId ? (
-              <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-                Please select a <b>County</b> first before choosing a{" "}
-                <b>District</b>.
-              </div>
-            ) : null}
-          </div>
-
           {/* 4) Center (requires county + district) */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-xs font-extrabold text-slate-700">
-                By Center
-              </div>
-              <button
-                type="button"
-                onClick={() => setModeAndReset("CENTER")}
-                className={[
-                  "rounded-xl border px-2 py-1 text-xs font-bold",
-                  mode === "CENTER"
-                    ? "border-slate-200 bg-slate-100"
-                    : "border-slate-200 bg-white hover:bg-slate-50",
-                ].join(" ")}
-              >
-                Use
-              </button>
-            </div>
-
-            {/* ✅ wrapper to detect click even if select is disabled */}
-            <div
-              className="relative"
-              onMouseDown={() => {
-                if (!districtId) setCenterPrereqAlert(true);
-              }}
-              onTouchStart={() => {
-                if (!districtId) setCenterPrereqAlert(true);
-              }}
-            >
-              <select
-                value={centerId}
-                onChange={(e) => {
-                  setMode("CENTER");
-                  setCenterId(e.target.value);
-                  setPage(0);
-                }}
-                disabled={centerDisabled || centersByDistrictQ.isError}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
-                title={
-                  centerDisabled
-                    ? "Select county + district first"
-                    : "Select center"
-                }
-              >
-                <option value="">
-                  {!districtId
-                    ? "Select district first…"
-                    : centersByDistrictQ.isLoading
-                    ? "Loading centers…"
-                    : "— Select Center —"}
-                </option>
-
-                {centerOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* ✅ inline alert */}
-            {centerPrereqAlert && (!countyId || !districtId) ? (
-              <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-                Please select a <b>County</b> first, then a <b>District</b>,
-                before choosing a <b>Center</b>.
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        {/* Clear all + ✅ NEW Active filter */}
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className="text-xs font-extrabold text-slate-700">
-              Active Filter
-            </div>
+          <div
+            className="relative w-80"
+            onMouseDown={() => {
+              if (!districtId) setCenterPrereqAlert(true);
+            }}
+            onTouchStart={() => {
+              if (!districtId) setCenterPrereqAlert(true);
+            }}
+          >
             <select
-              value={activeFilter}
+              value={centerId}
               onChange={(e) => {
-                setActiveFilter(e.target.value as any);
+                setMode("CENTER");
+                setCenterId(e.target.value);
                 setPage(0);
               }}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-(--org-primary)"
-              title="Filter by active status"
+              disabled={centerDisabled || centersByDistrictQ.isError}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
+              title={
+                centerDisabled
+                  ? "Select county + district first"
+                  : "Select center"
+              }
             >
-              <option value="">All</option>
-              <option value="true">Active only</option>
-              <option value="false">Inactive only</option>
+              <option value="">
+                {!districtId
+                  ? "Select district…"
+                  : centersByDistrictQ.isLoading
+                  ? "Loading…"
+                  : "Center"}
+              </option>
+
+              {centerOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
             </select>
           </div>
 
+          {/* Active Filter */}
+          <select
+            value={activeFilter}
+            onChange={(e) => {
+              setActiveFilter(e.target.value as any);
+              setPage(0);
+            }}
+            className="w-40 rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary)"
+            title="Filter by active status"
+          >
+            <option value="">All</option>
+            <option value="true">Active</option>
+            <option value="false">Inactive</option>
+          </select>
+
+          {/* Clear All */}
           <button
             type="button"
             onClick={() => {
@@ -785,18 +673,28 @@ export default function PollingPlacesPage() {
               setDistrictId("");
               setCenterId("");
               setActiveFilter("");
-
-              // ✅ clear alerts too
               setDistrictPrereqAlert(false);
               setCenterPrereqAlert(false);
-
               setPage(0);
             }}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold hover:bg-slate-50"
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 whitespace-nowrap"
           >
             Clear All
           </button>
         </div>
+
+        {/* ✅ Prerequisites alerts below filters */}
+        {districtPrereqAlert && !countyId ? (
+          <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+            Please select a <b>County</b> first before choosing a <b>District</b>.
+          </div>
+        ) : null}
+
+        {centerPrereqAlert && (!countyId || !districtId) ? (
+          <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+            Please select a <b>County</b> first, then a <b>District</b>, before choosing a <b>Center</b>.
+          </div>
+        ) : null}
 
         {/* Status */}
         <div className="mt-3">
@@ -847,7 +745,7 @@ export default function PollingPlacesPage() {
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+                          className="inline-flex items-center gap-2 rounded-xl border border-slate-200  bg-white px-3 py-1.5 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
                           disabled={!canEdit || setActiveM.isPending}
                           title={
                             canEdit
@@ -859,19 +757,19 @@ export default function PollingPlacesPage() {
                           onClick={() => setActiveM.mutate(p)}
                         >
                           {active ? (
-                            <PowerOff size={16} className="text-amber-600" />
+                            <PowerOff size={18} className="text-[#B80000]" />
                           ) : (
-                            <Power size={16} className="text-emerald-600" />
+                            <Power size={20} className="text-[#028EFB] font-extrabold" />
                           )}
                         </button>
 
                         <button
                           type="button"
-                          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+                          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 text-[#008000] bg-white px-3 py-1.5 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
                           disabled={!canEdit}
                           onClick={() => openEdit(p)}
                         >
-                          <Pencil size={16} />
+                          <Pencil size={18} />
                         </button>
 
                         <button
@@ -885,7 +783,7 @@ export default function PollingPlacesPage() {
                             if (ok) deleteM.mutate(p.placeId);
                           }}
                         >
-                          <Trash2 size={16} className="text-red-600" />
+                          <Trash2 size={18} className="text-red-600" />
                         </button>
                       </div>
                     );
@@ -979,7 +877,7 @@ export default function PollingPlacesPage() {
           <div className="flex items-center justify-end gap-2">
             <button
               type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
               onClick={() => setOpen(false)}
               disabled={saving}
             >
@@ -987,7 +885,7 @@ export default function PollingPlacesPage() {
             </button>
             <button
               type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
               onClick={save}
               disabled={!canEdit || saving}
               title={canEdit ? "Save" : "NEC/SYSTEM only"}
@@ -1000,7 +898,7 @@ export default function PollingPlacesPage() {
         <div className="grid grid-cols-1 gap-3">
           {/* County */}
           <label className="block">
-            <div className="mb-1 text-[11px] font-semibold text-slate-600">
+            <div className="mb-1 text-base font-semibold text-slate-600">
               County <span className="text-red-600">*</span>
             </div>
 
@@ -1018,7 +916,7 @@ export default function PollingPlacesPage() {
                 countiesQ.isError ||
                 !!editing // readonly on edit
               }
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
             >
               <option value="">
                 {countiesQ.isLoading
@@ -1035,7 +933,7 @@ export default function PollingPlacesPage() {
 
           {/* District */}
           <label className="block">
-            <div className="mb-1 text-[11px] font-semibold text-slate-600">
+            <div className="mb-1 text-base font-semibold text-slate-600">
               District <span className="text-red-600">*</span>
             </div>
 
@@ -1053,7 +951,7 @@ export default function PollingPlacesPage() {
                 districtsForModalQ.isError ||
                 !!editing // readonly on edit
               }
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
               title={
                 !formCountyId ? "Select a county first" : "Select district"
               }
@@ -1075,7 +973,7 @@ export default function PollingPlacesPage() {
 
           {/* Center */}
           <label className="block">
-            <div className="mb-1 text-[11px] font-semibold text-slate-600">
+            <div className="mb-1 text-base font-semibold text-slate-600">
               Center <span className="text-red-600">*</span>
             </div>
 
@@ -1092,7 +990,7 @@ export default function PollingPlacesPage() {
                 centersForModalQ.isError ||
                 !!editing // readonly on edit
               }
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
               title={
                 !formDistrictId ? "Select district first" : "Select center"
               }
@@ -1124,13 +1022,13 @@ export default function PollingPlacesPage() {
           />
 
           {!editing && touched && !safeStr(formCenterId).trim() ? (
-            <div className="text-[11px] font-semibold text-red-600">
+            <div className="text-sm font-semibold text-red-600">
               Center is required.
             </div>
           ) : null}
 
           {createM.isError || updateM.isError ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-base text-red-700">
               {createM.isError
                 ? friendlyPollingPlaceSaveError(createM.error)
                 : friendlyPollingPlaceSaveError(updateM.error)}
@@ -1141,3 +1039,4 @@ export default function PollingPlacesPage() {
     </PageShell>
   );
 }
+

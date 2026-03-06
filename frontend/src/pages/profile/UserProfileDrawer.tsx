@@ -1,3 +1,5 @@
+
+
 // src/pages/profile/UserProfileDrawer.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,6 +9,7 @@ import {
   fetchMeProfile,
   updateMyProfile,
 } from "../../shared/services/profileService";
+import { changePassword as changePasswordApi } from "../../shared/services/userService";
 
 /** =========================
  *  Helpers
@@ -100,6 +103,19 @@ async function uploadUserProfilePhoto(args: {
   );
 
   return data;
+}
+
+function fmtHumanDateTime(v?: string | null) {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(d);
 }
 
 /** =========================
@@ -234,12 +250,9 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
       });
     },
     onSuccess: async (dto) => {
-      // If your backend automatically maps the uploaded file to me.profilePhotoUrl,
-      // the refetch below is enough. If not, see the note right under this file.
       await qc.invalidateQueries({ queryKey: ["meProfile"] });
       await qc.invalidateQueries({ queryKey: ["me"] });
 
-      // Optional: if API returns a public url, keep it as immediate preview
       const u = pickUploadUrl(dto);
       if (u) setPhotoPreview(u);
     },
@@ -298,6 +311,93 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
 
   const roleLabel = safeStr(me?.roleName) || "—";
 
+  /** =========================
+   *  NEW: Security / Change Password
+   *  ========================= */
+  const [securityOpen, setSecurityOpen] = useState(false);
+  const [pwDraft, setPwDraft] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [pwShow, setPwShow] = useState({
+    current: false,
+    next: false,
+    confirm: false,
+  });
+  const [pwSuccess, setPwSuccess] = useState<string>("");
+
+  useEffect(() => {
+    if (!open) {
+      setSecurityOpen(false);
+      setPwDraft({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setPwShow({ current: false, next: false, confirm: false });
+      setPwSuccess("");
+    }
+  }, [open]);
+
+  const lastPwChange =
+    safeStr(me?.lastPasswordChange) ||
+    safeStr(me?.lastPasswordChangeAt) ||
+    safeStr(me?.last_password_change) ||
+    safeStr(me?.last_password_change_at) ||
+    "";
+
+  const pwValidation = useMemo(() => {
+    const current = pwDraft.currentPassword.trim();
+    const next = pwDraft.newPassword.trim();
+    const confirm = pwDraft.confirmPassword.trim();
+
+    const hasAll = !!current && !!next && !!confirm;
+    const minLenOk = next.length >= 8;
+    const sameAsCurrent = !!current && !!next && current === next;
+    const matchOk = next === confirm;
+
+    return {
+      hasAll,
+      minLenOk,
+      sameAsCurrent,
+      matchOk,
+      canSubmit: hasAll && minLenOk && matchOk && !sameAsCurrent,
+    };
+  }, [pwDraft]);
+
+  const changePasswordM = useMutation({
+    mutationFn: async () => {
+      const orgId = String(currentOrgId ?? "").trim();
+      if (!orgId) {
+        // Your userService enforces X-Org-Id, so fail loudly
+        throw new Error("Select an organization before changing your password.");
+      }
+      if (!userId) throw new Error("Missing userId from profile.");
+      if (!pwValidation.canSubmit) {
+        throw new Error("Fix the password fields before submitting.");
+      }
+
+      setPwSuccess("");
+
+      await changePasswordApi(orgId, userId, {
+        currentPassword: pwDraft.currentPassword,
+        newPassword: pwDraft.newPassword,
+      });
+    },
+    onSuccess: () => {
+      setPwDraft({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setPwShow({ current: false, next: false, confirm: false });
+      setPwSuccess("Password updated successfully.");
+      // optional: refresh me
+      qc.invalidateQueries({ queryKey: ["meProfile"] });
+      qc.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+
+  function resetPwForm() {
+    setPwDraft({ currentPassword: "", newPassword: "", confirmPassword: "" });
+    setPwShow({ current: false, next: false, confirm: false });
+    setPwSuccess("");
+    changePasswordM.reset();
+  }
+
   if (!open) return null;
 
   return (
@@ -326,9 +426,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
             <div className="text-base font-extrabold text-slate-900">
               User Profile
             </div>
-            <div className="text-[11px] text-slate-500">
-              Your account details
-            </div>
+            <div className="text-[11px] text-slate-500">Your account details</div>
           </div>
 
           <button
@@ -551,6 +649,218 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
                       }
                     />
                   </>
+                ) : null}
+              </div>
+
+              {/* ✅ NEW: Security */}
+              <div className="rounded-2xl border border-slate-200 p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-slate-900 text-sm">
+                      Security
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      Manage your account password
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSecurityOpen((v) => !v);
+                      setPwSuccess("");
+                      changePasswordM.reset();
+                    }}
+                    className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50"
+                  >
+                    {securityOpen ? "Hide" : "Change Password"}
+                  </button>
+                </div>
+
+                <div className="mt-2">
+                  <ReadOnlyRow
+                    label="Last password change"
+                    value={lastPwChange ? fmtHumanDateTime(lastPwChange) : "—"}
+                  />
+                </div>
+
+                {securityOpen ? (
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    {pwSuccess ? (
+                      <div className="mb-2 rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-xs font-semibold text-emerald-800">
+                        ✓ {pwSuccess}
+                      </div>
+                    ) : null}
+
+                    {changePasswordM.isError ? (
+                      <div className="mb-2 rounded-xl border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+                        {(changePasswordM.error as any)?.message ??
+                          "Password update failed."}
+                      </div>
+                    ) : null}
+
+                    {!currentOrgId ? (
+                      <div className="mb-2 rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                        Select an organization first (X-Org-Id is required).
+                      </div>
+                    ) : null}
+
+                    <div className="space-y-2">
+                      {/* Current password */}
+                      <div>
+                        <div className="text-[11px] font-semibold text-slate-700 mb-1">
+                          Current Password
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type={pwShow.current ? "text" : "password"}
+                            value={pwDraft.currentPassword}
+                            onChange={(e) =>
+                              setPwDraft((p) => ({
+                                ...p,
+                                currentPassword: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                            autoComplete="current-password"
+                            disabled={changePasswordM.isPending}
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPwShow((p) => ({ ...p, current: !p.current }))
+                            }
+                            className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs hover:bg-slate-50"
+                            disabled={changePasswordM.isPending}
+                          >
+                            {pwShow.current ? "Hide" : "Show"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* New password */}
+                      <div>
+                        <div className="text-[11px] font-semibold text-slate-700 mb-1">
+                          New Password
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type={pwShow.next ? "text" : "password"}
+                            value={pwDraft.newPassword}
+                            onChange={(e) =>
+                              setPwDraft((p) => ({
+                                ...p,
+                                newPassword: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                            autoComplete="new-password"
+                            disabled={changePasswordM.isPending}
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPwShow((p) => ({ ...p, next: !p.next }))
+                            }
+                            className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs hover:bg-slate-50"
+                            disabled={changePasswordM.isPending}
+                          >
+                            {pwShow.next ? "Hide" : "Show"}
+                          </button>
+                        </div>
+
+                        <div className="mt-1 text-[11px] text-slate-600">
+                          Must be at least <b>8</b> characters and different from
+                          your current password.
+                        </div>
+
+                        {!pwValidation.minLenOk && pwDraft.newPassword ? (
+                          <div className="mt-1 text-[11px] font-semibold text-rose-700">
+                            New password is too short.
+                          </div>
+                        ) : null}
+
+                        {pwValidation.sameAsCurrent &&
+                        pwDraft.currentPassword &&
+                        pwDraft.newPassword ? (
+                          <div className="mt-1 text-[11px] font-semibold text-rose-700">
+                            New password must be different from current password.
+                          </div>
+                        ) : null}
+                      </div>
+
+                      {/* Confirm */}
+                      <div>
+                        <div className="text-[11px] font-semibold text-slate-700 mb-1">
+                          Confirm New Password
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type={pwShow.confirm ? "text" : "password"}
+                            value={pwDraft.confirmPassword}
+                            onChange={(e) =>
+                              setPwDraft((p) => ({
+                                ...p,
+                                confirmPassword: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                            autoComplete="new-password"
+                            disabled={changePasswordM.isPending}
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPwShow((p) => ({ ...p, confirm: !p.confirm }))
+                            }
+                            className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs hover:bg-slate-50"
+                            disabled={changePasswordM.isPending}
+                          >
+                            {pwShow.confirm ? "Hide" : "Show"}
+                          </button>
+                        </div>
+
+                        {pwDraft.confirmPassword && !pwValidation.matchOk ? (
+                          <div className="mt-1 text-[11px] font-semibold text-rose-700">
+                            Passwords do not match.
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={resetPwForm}
+                          className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs hover:bg-white disabled:opacity-60"
+                          disabled={changePasswordM.isPending}
+                        >
+                          Cancel
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => changePasswordM.mutate()}
+                          className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                          disabled={
+                            changePasswordM.isPending ||
+                            !pwValidation.canSubmit ||
+                            !currentOrgId
+                          }
+                          title={
+                            !currentOrgId
+                              ? "Select an organization first"
+                              : !pwValidation.canSubmit
+                              ? "Complete the password fields"
+                              : ""
+                          }
+                        >
+                          {changePasswordM.isPending
+                            ? "Updating…"
+                            : "Update Password"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 ) : null}
               </div>
             </>

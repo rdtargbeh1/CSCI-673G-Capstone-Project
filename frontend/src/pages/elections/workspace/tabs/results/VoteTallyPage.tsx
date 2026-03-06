@@ -1,22 +1,25 @@
-// src/pages/elections/workspace/tabs/results/VoteTallyPage.tsx
 
-import { useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+
+// ✅ FILE: src/pages/elections/workspace/tabs/results/VoteTallyPage.tsx
+
+import { useEffect, useMemo, useState } from "react";
+import { useOutletContext, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { useAuth } from "../../../../../auth/useAuth";
 import { useAuthStore } from "../../../../../shared/store/authStore";
-import {
-  Panel,
-  Badge,
-  SimpleTable,
-  PlaceholderNote,
-} from "../../../shared/elections-ui";
+import { Panel, Badge, SimpleTable, PlaceholderNote } from "../../../shared/elections-ui";
 
 import {
   searchVoteTallies,
   type VoteTallyDto,
 } from "../../../../../shared/services/voteTallyService";
+
+import { listContestsByElection } from "../../../../../shared/services/contestService";
+import type { ContestDto } from "../../../../../auth/contestTypes";
+
+/** ✅ ResultsTab passes this when nested under Results workspace */
+type ResultsOutletCtx = { orgId?: string };
 
 function fmtTime(s?: string | null) {
   if (!s) return "—";
@@ -31,30 +34,60 @@ function partyLabel(r: VoteTallyDto) {
 
 export default function VoteTallyPage() {
   const { electionId } = useParams();
+
+  // ✅ if this page is nested under ResultsTab, we receive orgId here
+  const outlet = useOutletContext<ResultsOutletCtx>();
+  const outletOrgId = String(outlet?.orgId ?? "").trim();
+
   const auth: any = useAuth();
 
-  const mode = String(auth?.dashboardMode ?? "").toUpperCase(); // NEC | TENANT | SYSTEM
+  // ✅ match SubmissionsTab source of truth
+  const dashboardModeStore = useAuthStore((s: any) => s.dashboardMode);
+  const mode = String((dashboardModeStore ?? auth?.dashboardMode ?? "") as any).toUpperCase(); // NEC | TENANT | SYSTEM
 
-  // ✅ vote_tally is tenant scoped => orgId REQUIRED
-  const orgId =
-    useAuthStore((s) => s.currentOrgId) ||
-    useAuthStore.getState().tenantMeta?.orgId ||
-    auth?.tenant?.orgId ||
-    "";
+  // ✅ store org scope (reactive)
+  const storeOrgId = String(useAuthStore((s: any) => s.currentOrgId ?? "") ?? "").trim();
+
+  // ✅ fallback org sources (non-reactive but safe)
+  const fallbackOrgId = String(
+    useAuthStore.getState().tenantMeta?.orgId ?? auth?.tenant?.orgId ?? ""
+  ).trim();
+
+  // ✅ effective org scope:
+  const orgId = outletOrgId || storeOrgId || fallbackOrgId || "";
 
   const [page, setPage] = useState(0);
   const size = 25;
 
+  /** ---------------- Contests (filter) ---------------- */
+  const contestsQ = useQuery<ContestDto[]>({
+    enabled: Boolean(electionId),
+    queryKey: ["election-contests", electionId],
+    queryFn: () => listContestsByElection(electionId as string),
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const contests = contestsQ.data ?? [];
+  const [contestId, setContestId] = useState<string>("");
+
+  // ✅ reset paging when scope changes (org/election/contest)
+  useEffect(() => {
+    setPage(0);
+  }, [orgId, electionId, contestId]);
+
+  /** ---------------- Vote tallies ---------------- */
   const q = useQuery({
-    queryKey: ["vote-tally", "search", orgId, electionId, page, size],
-    enabled: !!orgId && !!electionId,
+    queryKey: ["vote-tally", "search", orgId, electionId, contestId, page, size],
+    enabled: Boolean(orgId) && Boolean(electionId),
     queryFn: () =>
       searchVoteTallies({
         orgId,
         electionId: electionId as string,
+        contestId: contestId || undefined, // ✅ NEW
         page,
         size,
-      }),
+      } as any),
     staleTime: 10_000,
     retry: 1,
   });
@@ -97,18 +130,27 @@ export default function VoteTallyPage() {
       <Panel
         title="Vote Tally (Verified)"
         right={
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {/* ✅ Contest filter */}
+            <select
+              value={contestId}
+              onChange={(e) => setContestId(e.target.value)}
+              disabled={!electionId || contestsQ.isLoading}
+              className="px-2.5 py-1.5 rounded-md border bg-white text-base disabled:bg-slate-50"
+              title="Filter by contest"
+            >
+              <option value="">
+                {contestsQ.isLoading ? "Loading contests…" : "All contests"}
+              </option>
+              {contests.map((c) => (
+                <option key={(c as any).contestId} value={(c as any).contestId}>
+                  {(c as any).contestName ?? "—"}
+                </option>
+              ))}
+            </select>
+
             <Badge text={mode || "—"} />
-            <Badge
-              text={q.isFetching ? "Loading…" : `Rows: ${q.data?.items?.length ?? 0}`}
-            />
+            <Badge text={q.isFetching ? "Loading…" : `Rows: ${q.data?.items?.length ?? 0}`} />
             <Badge text={`Page: ${(q.data?.page ?? page) + 1} / ${q.data?.totalPages ?? "?"}`} />
           </div>
         }
@@ -146,11 +188,7 @@ export default function VoteTallyPage() {
 
           <button
             type="button"
-            onClick={() =>
-              setPage((p) =>
-                q.data && p + 1 < q.data.totalPages ? p + 1 : p
-              )
-            }
+            onClick={() => setPage((p) => (q.data && p + 1 < q.data.totalPages ? p + 1 : p))}
             disabled={!q.data || q.isFetching || page + 1 >= (q.data?.totalPages ?? 0)}
             style={btn()}
           >
@@ -172,3 +210,5 @@ function btn() {
     cursor: "pointer",
   } as const;
 }
+
+

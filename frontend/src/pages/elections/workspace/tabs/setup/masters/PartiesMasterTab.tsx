@@ -68,13 +68,13 @@ function CompactTable(props: { columns: string[]; rows: React.ReactNode[][] }) {
   const { columns, rows } = props;
   return (
     <div className="w-full overflow-auto rounded-xl border border-slate-200 bg-white">
-      <table className="w-full border-collapse text-sm">
+      <table className="w-full border-collapse text-base">
         <thead>
           <tr className="bg-slate-50">
             {columns.map((c) => (
               <th
                 key={c}
-                className="text-left px-3 py-1.5 text-[11px] font-extrabold text-slate-600 border-b border-slate-200"
+                className="text-left px-3 py-1.5 text-base font-extrabold text-slate-600 border-b border-slate-200"
               >
                 {c}
               </th>
@@ -227,13 +227,13 @@ export default function PartiesMasterTab() {
           <button
             type="button"
             disabled={!canEdit}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-600 ${
               !canEdit ? "opacity-60" : ""
             }`}
             title={canEdit ? "Edit party (SYSTEM/NEC)" : "Read-only (Tenant)"}
             onClick={() => openEdit(p)}
           >
-            <Pencil size={16} />
+            <Pencil size={18} />
           </button>
 
           <button
@@ -250,7 +250,7 @@ export default function PartiesMasterTab() {
               if (ok) deleteM.mutate(p.partyId);
             }}
           >
-            <Trash2 size={16} className="text-red-600" />
+            <Trash2 size={18} className="text-red-600" />
           </button>
         </div>
       );
@@ -268,16 +268,16 @@ export default function PartiesMasterTab() {
             href={p.logoUrl}
             target="_blank"
             rel="noreferrer"
-            className="text-xs font-bold text-slate-700 underline underline-offset-2"
+            className="text-base font-bold text-slate-700 underline underline-offset-2"
           >
             View
           </a>
         ) : (
-          <span key="no" className="text-xs text-slate-400">
+          <span key="no" className="text-base text-slate-400">
             —
           </span>
         ),
-        <span key="created" className="text-xs text-slate-600">
+        <span key="created" className="text-base text-slate-600">
           {/* ✅ use dateCreated only */}
           {fmtDate(p.dateCreated)}
         </span>,
@@ -332,11 +332,11 @@ export default function PartiesMasterTab() {
             <button
               type="button"
               onClick={openCreate}
-              className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white"
+              className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-600 text-white font-bold"
               title="Create party (SYSTEM/NEC)"
             >
               <Plus size={16} />
-              Create
+             Add New
             </button>
           ) : (
             <Badge text="Read-only (Tenant)" />
@@ -346,7 +346,7 @@ export default function PartiesMasterTab() {
             type="button"
             onClick={refreshNow}
             disabled={partiesQ.isFetching}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-100 ${
               partiesQ.isFetching ? "opacity-60" : ""
             }`}
             title="Refresh parties"
@@ -388,7 +388,7 @@ export default function PartiesMasterTab() {
 
       {/* Pagination */}
       <div className="flex justify-between items-center gap-2">
-        <div className="text-xs text-slate-500">
+        <div className="text-sm text-slate-500">
           Page <b>{page + 1}</b> of <b>{totalPages}</b>
         </div>
         <div className="flex gap-2">
@@ -417,12 +417,12 @@ export default function PartiesMasterTab() {
         </div>
       </div>
 
+      {/* Note */}
       <div className="mt-1">
         <PlaceholderNote
           title="Notes"
           bullets={[
             "SYSTEM/NEC can create/edit/delete party master (global).",
-            "If you later want ‘soft delete’, change delete to ‘deactivate’ and keep referenced parties safe.",
             "Search is server-side via ?q= and paged.",
           ]}
         />
@@ -440,12 +440,12 @@ export default function PartiesMasterTab() {
           }}
         >
           <div
-            className="w-full max-w-[620px] bg-white rounded-2xl border border-slate-200 p-4 mx-auto shadow-xl"
+            className="w-full max-w-[720px] bg-white rounded-2xl border border-slate-200 p-4 mx-auto shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between gap-3">
               <div>
-                <div className="font-extrabold text-base">
+                <div className="font-extrabold text-xl">
                   {editing ? "Edit Party" : "Create Party"}
                 </div>
                 <div className="text-xs text-slate-500 mt-0.5">
@@ -471,7 +471,7 @@ export default function PartiesMasterTab() {
             <div className="grid gap-2.5 mt-3">
               {/* Party name */}
               <div className="grid gap-1.5">
-                <div className="text-[11px] font-extrabold text-slate-600">
+                <div className="text-base font-extrabold text-slate-600">
                   Party Name <span className="text-red-600">*</span>
                 </div>
                 <input
@@ -493,7 +493,7 @@ export default function PartiesMasterTab() {
               {/* Abbrev + logo */}
               <div className="grid grid-cols-2 gap-2.5">
                 <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-base font-extrabold text-slate-600">
                     Abbreviation <span className="text-red-600">*</span>
                   </div>
                   <input
@@ -513,7 +513,7 @@ export default function PartiesMasterTab() {
                 </div>
 
                 <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-base font-extrabold text-slate-600">
                     Logo URL
                   </div>
                   <input

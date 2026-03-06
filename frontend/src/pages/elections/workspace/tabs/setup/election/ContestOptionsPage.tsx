@@ -15,7 +15,6 @@ import {
 import { useAuthStore } from "../../../../../../shared/store/authStore";
 import {
   Panel,
-  PlaceholderNote,
   Badge,
   ReadOnlyBanner,
 } from "../../../../shared/elections-ui";
@@ -59,13 +58,13 @@ function CompactTable(props: { columns: string[]; rows: React.ReactNode[][] }) {
   const { columns, rows } = props;
   return (
     <div className="w-full overflow-auto rounded-xl border border-slate-200 bg-white">
-      <table className="w-full border-collapse text-sm">
+      <table className="w-full border-collapse text-base">
         <thead>
           <tr className="bg-slate-50">
             {columns.map((c) => (
               <th
                 key={c}
-                className="text-left px-3 py-1.5 text-[11px] font-extrabold text-slate-600 border-b border-slate-200"
+                className="text-left px-3 py-1.5 text-base font-extrabold text-slate-600 border-b border-slate-200"
               >
                 {c}
               </th>
@@ -328,13 +327,13 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
           <button
             type="button"
             disabled={!canEdit}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-600 ${
               !canEdit ? "opacity-60" : ""
             }`}
             onClick={() => openEditOption(o)}
             title={canEdit ? "Edit option" : "Read-only"}
           >
-            <Pencil size={16} />
+            <Pencil size={20} />
           </button>
 
           <button
@@ -351,7 +350,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
               if (ok) optionDeleteM.mutate(o.optionId);
             }}
           >
-            <Trash2 size={16} className="text-red-600" />
+            <Trash2 size={20} className="text-red-600" />
           </button>
         </div>
       );
@@ -363,12 +362,12 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
         <span key="type" className="text-slate-700">
           {o.optionType}
         </span>,
-        <span key="val" className="text-xs text-slate-700 break-words">
+        <span key="val" className="text-base text-slate-700 break-words">
           {displayValue}
         </span>,
         <span
           key="act"
-          className={`text-xs font-bold ${
+          className={`text-base font-bold ${
             activeVal ? "text-emerald-700" : "text-slate-500"
           }`}
         >
@@ -401,9 +400,9 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white"
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-red-200"
         >
-          <ArrowLeft size={16} /> Back to Contests
+          <ArrowLeft size={26} /> Back to Contests
         </button>
 
         <Badge text={`Contest: ${contestId}`} />
@@ -416,11 +415,11 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
             optionsQ.isFetching ? "opacity-60" : ""
           }`}
         >
-          <RefreshCw size={16} /> Refresh
+          <RefreshCw size={18} /> Refresh
         </button>
 
         <div className="ml-auto flex items-center gap-2">
-          <label className="inline-flex items-center gap-2 text-xs text-slate-700">
+          <label className="inline-flex items-center gap-2 text-sm text-slate-700">
             <input
               type="checkbox"
               checked={onlyActiveOptions}
@@ -434,11 +433,11 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
             type="button"
             disabled={!canEdit}
             onClick={openCreateOption}
-            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white ${
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-blue-600 text-white font-bold ${
               !canEdit ? "opacity-60" : ""
             }`}
           >
-            <Plus size={16} />
+            <Plus size={18} />
             Add Option
           </button>
 
@@ -446,7 +445,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
             type="button"
             disabled={!canEdit}
             onClick={openBulkAssign}
-            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white ${
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-red-900 text-white font-bold ${
               !canEdit ? "opacity-60" : ""
             }`}
           >
@@ -505,7 +504,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
                 <div className="font-extrabold text-base">
                   {optionEditing ? "Edit Option" : "Add Option"}
                 </div>
-                <div className="text-xs text-slate-500 mt-0.5">
+                <div className="text-sm text-slate-500 mt-0.5">
                   Contest: {contestId}
                 </div>
               </div>
@@ -525,7 +524,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
             <div className="grid gap-2.5 mt-3">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                 <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-base font-extrabold text-slate-600">
                     Option Type
                   </div>
                   <select
@@ -548,7 +547,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
                 </div>
 
                 <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-base font-extrabold text-slate-600">
                     Option Order
                   </div>
                   <input
@@ -565,7 +564,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
 
               {optionType === "LABEL" ? (
                 <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-sm font-extrabold text-slate-600">
                     Option Label <span className="text-red-600">*</span>
                   </div>
                   <input
@@ -584,7 +583,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
                 </div>
               ) : (
                 <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-[18px] font-extrabold text-slate-600">
                     Election Candidate <span className="text-red-600">*</span>
                   </div>
 
@@ -629,7 +628,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
               )}
 
               <div className="grid gap-1.5">
-                <div className="text-[11px] font-extrabold text-slate-600">
+                <div className="text-sm font-extrabold text-slate-600">
                   Active
                 </div>
                 <label className="inline-flex items-center gap-2 text-sm text-slate-700">
@@ -701,10 +700,10 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
           >
             <div className="flex justify-between gap-3">
               <div>
-                <div className="font-extrabold text-base">
+                <div className="font-extrabold text-lg">
                   Bulk Assign Election Candidates
                 </div>
-                <div className="text-xs text-slate-500 mt-0.5">
+                <div className="text-sm text-slate-500 mt-0.5">
                   Contest: {contestId}
                 </div>
               </div>
@@ -723,7 +722,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
 
             <div className="grid gap-3 mt-3">
               <div className="flex flex-wrap items-center gap-4">
-                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                <label className="inline-flex items-center gap-2 text-base text-slate-700">
                   <input
                     type="radio"
                     name="bulkMode"
@@ -734,7 +733,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
                   Assign ALL (filtered list)
                 </label>
 
-                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                <label className="inline-flex items-center gap-2 text-base text-slate-700">
                   <input
                     type="radio"
                     name="bulkMode"
@@ -745,7 +744,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
                   Select manually
                 </label>
 
-                <label className="inline-flex items-center gap-2 text-sm text-slate-700 ml-auto">
+                <label className="inline-flex items-center gap-2 text-base text-slate-700 ml-auto">
                   <input
                     type="checkbox"
                     checked={bulkReplace}
@@ -780,14 +779,14 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
               </div>
 
               <div className="rounded-xl border border-slate-200 overflow-hidden">
-                <div className="bg-slate-50 px-3 py-2 text-xs font-extrabold text-slate-600 flex items-center justify-between">
+                <div className="bg-slate-50 px-3 py-2 text-base font-extrabold text-slate-600 flex items-center justify-between">
                   <span>
                     Candidates: <b>{electionCandidatesFiltered.length}</b>
                   </span>
                   {bulkMode === "MANUAL" ? (
                     <button
                       type="button"
-                      className="text-xs font-bold underline"
+                      className="text-sm font-bold underline"
                       onClick={() => {
                         const all = electionCandidatesFiltered.map(
                           (x) => x.electId
@@ -840,15 +839,15 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
                               className="mt-1 h-4 w-4 accent-emerald-600"
                             />
                             <div className="grid">
-                              <span className="text-sm font-bold text-slate-800">
+                              <span className="text-base font-bold text-slate-800">
                                 {ec.fullName}
                               </span>
-                              <span className="text-xs text-slate-500">
+                              <span className="text-base text-slate-500">
                                 {meta || "—"}
                               </span>
-                              <span className="text-[11px] text-slate-400 break-all">
+                              {/* <span className="text-sm text-slate-400 break-all">
                                 electId: {ec.electId}
-                              </span>
+                              </span> */}
                             </div>
                           </label>
                         );
@@ -863,7 +862,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
               </div>
 
               {bulkAssignM.isError ? (
-                <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm font-bold">
+                <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-base font-bold">
                   {friendlySaveError(bulkAssignM.error)}
                 </div>
               ) : null}

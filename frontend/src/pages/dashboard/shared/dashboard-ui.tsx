@@ -1,3 +1,7 @@
+
+// src/pages/dashboard/shared/dashboard-ui.ts
+
+
 import React from "react";
 
 /* =========================
@@ -37,11 +41,11 @@ export function StatCard({
   right?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border  border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-slate-700">{label}</div>
-          <div className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900">
+          <div className="text-lg font-semibold  text-slate-700">{label}</div>
+          <div className="mt-1 text-2xl text-center font-extrabold tracking-tight text-slate-900">
             {value}
           </div>
           {helper ? (
@@ -69,12 +73,12 @@ export function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm ">
       <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4">
         <div className="min-w-0">
-          <div className="text-sm font-extrabold text-slate-900">{title}</div>
+          <div className="text-2xl font-extrabold text-slate-900">{title}</div>
           {subtitle ? (
-            <div className="mt-1 text-xs text-slate-500">{subtitle}</div>
+            <div className="mt-1 text-sm text-slate-500">{subtitle}</div>
           ) : null}
         </div>
         {right ? <div className="shrink-0">{right}</div> : null}

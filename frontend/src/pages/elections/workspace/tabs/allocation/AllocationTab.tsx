@@ -12,9 +12,9 @@ export default function AllocationTab() {
   const canEdit = dashboardMode === "NEC" || dashboardMode === "SYSTEM";
 
   const [tab, setTab] = useState<SubTab>("CENTERS");
-
+ 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 16}}>
       <Panel
         title="Allocation"
         right={
@@ -24,6 +24,7 @@ export default function AllocationTab() {
               gap: 8,
               alignItems: "center",
               flexWrap: "wrap",
+              fontSize: 14
             }}
           >
             <button
@@ -35,6 +36,7 @@ export default function AllocationTab() {
                 border: "1px solid #e5e7eb",
                 background: tab === "CENTERS" ? "#f8fafc" : "#fff",
                 fontWeight: 700,
+                fontSize: 20,
               }}
             >
               Centers
@@ -49,14 +51,15 @@ export default function AllocationTab() {
                 border: "1px solid #e5e7eb",
                 background: tab === "PLACES" ? "#f8fafc" : "#fff",
                 fontWeight: 700,
+                fontSize: 20,
               }}
             >
               Places
             </button>
 
-            <Badge
+            {/* <Badge
               text={canEdit ? "Editable (NEC/SYSTEM)" : "Read-only (Tenant)"}
-            />
+            /> */}
 
             {canEdit && (
               <button
@@ -75,6 +78,7 @@ export default function AllocationTab() {
         }
       >
         {tab === "CENTERS" ? (
+          
           <PollingCenterAllocationsPage />
         ) : (
           <PollingPlaceAllocationsPage />

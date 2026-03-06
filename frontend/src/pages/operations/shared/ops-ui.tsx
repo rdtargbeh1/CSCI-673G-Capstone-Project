@@ -31,7 +31,7 @@ export function OpsPageShell({
         <div>
           <h1 className="text-xl font-extrabold">{title}</h1>
           {subtitle ? (
-            <p className="mt-1 text-sm text-slate-600">{subtitle}</p>
+            <p className="mt-1 text-base text-slate-600">{subtitle}</p>
           ) : null}
         </div>
         {right}
@@ -42,8 +42,8 @@ export function OpsPageShell({
 }
 
 export function OpsTabs() {
-  const base = "rounded-xl border px-3 py-2 text-sm font-semibold";
-  const active = "bg-slate-100 border-slate-200";
+  const base = "rounded-xl border px-3 py-2 text-xl font-semibold";
+  const active = "bg-[#00008B] border-slate-200 text-[#EFBF04] font-extrabold";
   const idle = "bg-white border-slate-200 hover:bg-slate-50";
 
   return (
@@ -102,7 +102,7 @@ export function Card({
 
 export function Badge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
+    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-base font-semibold text-slate-700">
       {children}
     </span>
   );
@@ -112,7 +112,7 @@ export function Note({ title, bullets }: { title: string; bullets: string[] }) {
   return (
     <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3">
       <div className="font-extrabold">{title}</div>
-      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+      <ul className="mt-2 list-disc space-y-1 pl-5 text-base text-slate-700">
         {bullets.map((b) => (
           <li key={b}>{b}</li>
         ))}
@@ -136,7 +136,7 @@ export function Table({
             {columns.map((c) => (
               <th
                 key={c}
-                className="whitespace-nowrap border-b border-slate-200 px-2 py-2 text-left text-xs font-bold text-slate-600"
+                className="whitespace-nowrap border-b border-slate-200 px-2 py-2 text-left text-base font-bold text-slate-600"
               >
                 {c}
               </th>
@@ -149,7 +149,7 @@ export function Table({
               {r.map((cell, j) => (
                 <td
                   key={j}
-                  className="whitespace-nowrap border-b border-slate-100 px-2 py-2 text-sm text-slate-800"
+                  className="whitespace-nowrap border-b border-slate-100 px-2 py-2 text-base text-slate-800"
                 >
                   {cell}
                 </td>
@@ -173,9 +173,9 @@ export function StatPill({
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className="mt-1 text-xl font-extrabold">{value}</div>
-      {hint ? <div className="mt-1 text-xs text-slate-500">{hint}</div> : null}
+      <div className="text-xl text-slate-500">{label}</div>
+      <div className="mt-1 text-sm font-extrabold">{value}</div>
+      {hint ? <div className="mt-1 text-sm text-slate-500">{hint}</div> : null}
     </div>
   );
 }

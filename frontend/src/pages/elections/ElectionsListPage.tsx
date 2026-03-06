@@ -309,14 +309,14 @@ export default function ElectionsListPage() {
 
       const ruleNode = (
         <span
-          className={`text-[11px] font-extrabold px-2 py-1 rounded-lg border ${
+          className={`text-base font-extrabold px-2 py-1 rounded-lg border ${
             enforce === false
               ? "border-slate-200 text-slate-500 bg-white"
               : "border-emerald-200 text-emerald-700 bg-emerald-50"
           }`}
           title="Election-level rule: ballotsIssued must be >= registeredVoters"
         >
-          {enforce === false ? "OFF" : "ENFORCE"}
+          {enforce === false ? "OFF" : "ENFORCED"}
         </span>
       );
 
@@ -333,7 +333,7 @@ export default function ElectionsListPage() {
             }}
             className="h-4 w-4 rounded border-slate-300"
           />
-          <span className="text-xs font-bold text-slate-700">
+          <span className="text-sm font-bold">
             {e.isActive ? "ACTIVE" : "INACTIVE"}
           </span>
         </label>
@@ -343,7 +343,7 @@ export default function ElectionsListPage() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-sm"
+            className="px-5 py-1.5 rounded-lg border border-slate-200 bg-blue-800 text-lg text-white font-bold"
             title="Open election workspace"
             onClick={() => nav(`/elections/${e.electionId}/overview`)}
           >
@@ -366,22 +366,22 @@ export default function ElectionsListPage() {
             onClick={() => setActiveM.mutate(e)}
           >
             {e.isActive ? (
-              <PowerOff size={16} className="text-amber-600" />
+              <PowerOff size={24} className="text-amber-600" />
             ) : (
-              <Power size={16} className="text-emerald-600" />
+              <Power size={24} className="text-emerald-600" />
             )}
           </button>
 
           <button
             type="button"
             disabled={!canEdit}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-700 ${
               !canEdit ? "opacity-60" : ""
             }`}
             title={canEdit ? "Edit election (SYSTEM/NEC)" : "Read-only (Tenant)"}
             onClick={() => openEdit(e)}
           >
-            <Pencil size={16} />
+            <Pencil size={24} />
           </button>
 
           <button
@@ -402,7 +402,7 @@ export default function ElectionsListPage() {
               if (ok) deleteM.mutate(e.electionId);
             }}
           >
-            <Trash2 size={16} className="text-red-600" />
+            <Trash2 size={24} className="text-red-600" />
           </button>
         </div>
       );
@@ -424,7 +424,7 @@ export default function ElectionsListPage() {
   }, [elections, nav, canEdit, setActiveM.isPending, deleteM.isPending]);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 text-xl">
       <SectionTitle
         title="Elections"
         subtitle="Official elections (global). Tenants can view read-only; NEC/SYSTEM can manage elections."
@@ -438,11 +438,11 @@ export default function ElectionsListPage() {
               <button
                 type="button"
                 onClick={openCreate}
-                className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white"
+                className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-700 text-xl text-white font-bold"
                 title="Create new election (SYSTEM/NEC)"
               >
                 <Plus size={16} />
-                Create
+                New Election
               </button>
             ) : (
               <Badge text="Read-only (Tenant)" />
@@ -452,7 +452,7 @@ export default function ElectionsListPage() {
               type="button"
               onClick={refreshNow}
               disabled={electionsQ.isFetching}
-              className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white ${
+              className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-100 ${
                 electionsQ.isFetching ? "opacity-60" : ""
               }`}
               title="Refresh elections"
@@ -464,6 +464,7 @@ export default function ElectionsListPage() {
         }
       >
         {/* Filters */}
+        <div className=" ">
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <div className="relative">
             <Search
@@ -514,7 +515,7 @@ export default function ElectionsListPage() {
             className="inline-flex items-center gap-3 px-3 py-2 rounded-lg border border-slate-200 bg-white"
             title="Filter by status"
           >
-            <span className="text-xs font-extrabold text-slate-600/80">
+            <span className="text-lg font-extrabold text-slate-600/800">
               Status:
             </span>
 
@@ -528,7 +529,7 @@ export default function ElectionsListPage() {
                   setPage(0);
                 }}
               />
-              <span className="text-sm">Active</span>
+              <span className="text-lg">Active</span>
             </label>
 
             <label className="inline-flex items-center gap-1.5 text-sm">
@@ -541,10 +542,10 @@ export default function ElectionsListPage() {
                   setPage(0);
                 }}
               />
-              <span className="text-sm">Inactive</span>
+              <span className="text-lg">Inactive</span>
             </label>
 
-            <label className="inline-flex items-center gap-1.5 text-sm">
+            <label className="inline-flex items-center gap-1.5 text-base">
               <input
                 type="radio"
                 name="election-status"
@@ -554,7 +555,7 @@ export default function ElectionsListPage() {
                   setPage(0);
                 }}
               />
-              <span className="text-sm">All</span>
+              <span className="text-lg">All</span>
             </label>
           </div>
 
@@ -572,6 +573,8 @@ export default function ElectionsListPage() {
           >
             Clear
           </button>
+        </div>
+        
         </div>
 
         {/* Status */}
@@ -600,7 +603,7 @@ export default function ElectionsListPage() {
               ? rows
               : [
                   [
-                    <span key="empty" className="text-slate-500">
+                    <span key="empty" className="text-slate-00">
                       No elections found.
                     </span>,
                     "",
@@ -613,11 +616,12 @@ export default function ElectionsListPage() {
                   ],
                 ]
           }
+          
         />
 
         {/* Pagination */}
         <div className="mt-3 flex justify-between gap-2">
-          <div className="text-xs text-slate-500">
+          <div className="text-sm text-slate-500">
             Page <b>{page + 1}</b> of <b>{totalPages}</b>
           </div>
           <div className="flex gap-2">
@@ -646,7 +650,7 @@ export default function ElectionsListPage() {
           </div>
         </div>
 
-        <div className="mt-3">
+        <div className="mt-3 text-lg ">
           <PlaceholderNote
             title="Behavior"
             bullets={[
@@ -672,15 +676,15 @@ export default function ElectionsListPage() {
           }}
         >
           <div
-            className="w-full max-w-[640px] bg-white rounded-2xl border border-slate-200 p-4 mx-auto shadow-xl"
+            className="w-full max-w-[840px] bg-white rounded-2xl border border-slate-200 p-4 mx-auto shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between gap-3">
               <div>
-                <div className="font-extrabold text-base">
+                <div className="font-extrabold text-2xl">
                   {editing ? "Edit Election" : "Create Election"}
                 </div>
-                <div className="text-xs text-slate-500 mt-0.5">
+                <div className="text-sm text-slate-500 mt-0.5">
                   {editing
                     ? "Update election master data."
                     : "Create a new official election."}
@@ -703,7 +707,7 @@ export default function ElectionsListPage() {
             <div className="grid gap-2.5 mt-3">
               {/* Name */}
               <div className="grid gap-1.5">
-                <div className="text-[11px] font-extrabold text-slate-600">
+                <div className="text-base font-extrabold text-slate-600">
                   Election Name <span className="text-red-600">*</span>
                 </div>
                 <input
@@ -725,7 +729,7 @@ export default function ElectionsListPage() {
               <div className="grid grid-cols-2 gap-2.5">
                 {/* Year */}
                 <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-base font-extrabold text-slate-600">
                     Year <span className="text-red-600">*</span>
                   </div>
                   <input
@@ -741,7 +745,7 @@ export default function ElectionsListPage() {
 
                 {/* Type */}
                 <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                  <div className="text-base font-extrabold text-slate-600">
                     Type <span className="text-red-600">*</span>
                   </div>
                   <select
@@ -769,21 +773,21 @@ export default function ElectionsListPage() {
                   onChange={(e) => setFormActive(e.target.checked)}
                   className="h-4 w-4 rounded border-slate-300"
                 />
-                <span className="text-sm text-slate-900">Active</span>
+                <span className="text-base text-slate-900">Active</span>
               </label>
 
               {/* ✅ NEC Ballot Policy */}
               <div className="rounded-xl border border-slate-200 bg-white p-3">
-                <div className="text-sm font-extrabold text-slate-900">
+                <div className="text-base font-extrabold text-slate-900">
                   Ballot Policy (NEC)
                 </div>
-                <div className="text-xs text-slate-500 mt-0.5">
+                <div className="text-sm text-slate-500 mt-0.5">
                   Configure spare ballot percent and enforcement rule for allocations.
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                   <div className="grid gap-1.5">
-                    <div className="text-[11px] font-extrabold text-slate-600">
+                    <div className="text-lg font-extrabold text-slate-600">
                       Spare Ballots Percent
                     </div>
                     <input
@@ -802,17 +806,17 @@ export default function ElectionsListPage() {
                       placeholder="e.g., 20"
                       className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
                     />
-                    <div className="text-[11px] text-slate-500">
+                    <div className="text-sm text-slate-500">
                       Optional. Leave empty if NEC has not set a spare cap yet.
                     </div>
                   </div>
 
                   <div className="grid gap-1.5">
-                    <div className="text-[11px] font-extrabold text-slate-600">
+                    <div className="text-base font-extrabold text-slate-600">
                       Enforce ballotsIssued ≥ registeredVoters
                     </div>
 
-                    <div className="flex items-center gap-6 text-sm text-slate-700">
+                    <div className="flex items-center gap-6 text-lg text-slate-700">
                       <label className="inline-flex items-center gap-2">
                         <input
                           type="radio"
@@ -842,7 +846,7 @@ export default function ElectionsListPage() {
                       </label>
                     </div>
 
-                    <div className="text-[11px] text-slate-500">
+                    <div className="text-sm text-slate-500">
                       Recommended: <b>Yes</b> (to prevent ballot shortage).
                     </div>
                   </div>
@@ -851,7 +855,7 @@ export default function ElectionsListPage() {
 
               {/* Errors */}
               {createM.isError || updateM.isError ? (
-                <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm font-bold">
+                <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-lg font-bold">
                   {createM.isError
                     ? friendlySaveError(createM.error)
                     : friendlySaveError(updateM.error)}
