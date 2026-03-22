@@ -30,7 +30,7 @@ function linkClass(isActive: boolean) {
   return [
     "flex items-center gap-4 px-4 py-4 text-[26px] font-semibold",
     isActive
-      ? "text-red-600 border-slate-400 br-slate-400" // ✅ Keep original active state
+      ? "text-green-600 border-slate-400 br-slate-400" // ✅ Keep original active state
       : "border-transparent text-slate-200 hover:border-slate-400 hover:bg-slate-700", // ✅ Light text for dark bg
   ].join(" ");
 }
@@ -145,7 +145,8 @@ export default function SidebarNav() {
           </div>
 
           <div>
-            <span className="font-bold text-2xl text-red-500">{tenantName}</span>
+            {/* Tenant name */}
+            <span className="font-bold text-2xl text-[#FFA500]">{tenantName}</span>  
           </div>
 
           {user?.tenantRole ? (

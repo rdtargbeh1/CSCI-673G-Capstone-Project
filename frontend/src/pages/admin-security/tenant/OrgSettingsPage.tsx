@@ -228,7 +228,7 @@ export default function OrgSettingsPage() {
               disabled={
                 !hasOrgContext || settingsQ.isFetching || orgQ.isFetching
               }
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-blue-100 px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
               title={
                 !hasOrgContext ? "Select an organization first" : "Refresh"
               }
@@ -253,9 +253,9 @@ export default function OrgSettingsPage() {
                 });
               }}
               disabled={!hasOrgContext || settingsQ.isLoading || orgQ.isLoading}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-[#F08080] text-white px-3 py-2 text-lg font-bold hover:bg-slate-500 disabled:opacity-50"
             >
-              <RotateCcw size={16} />
+              <RotateCcw size={18} />
               Reset
             </button>
 
@@ -263,9 +263,9 @@ export default function OrgSettingsPage() {
               type="button"
               onClick={() => saveM.mutate()}
               disabled={!canEdit || saveM.isPending}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-[#0000CD] text-white px-3 py-2 text-lg font-semibold hover:bg-slate-500 disabled:opacity-50"
             >
-              <Save size={16} />
+              <Save size={18} />
               Save
             </button>
           </div>
@@ -275,14 +275,14 @@ export default function OrgSettingsPage() {
         {isSystemMode ? (
           <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label className="block">
-              <div className="mb-1 text-[11px] font-semibold text-slate-600">
+              <div className="mb-1 text-base font-semibold text-slate-600">
                 Organization <span className="text-red-600">*</span>
               </div>
               <select
                 value={selectedOrgId}
                 onChange={(e) => setSelectedOrgId(e.target.value)}
                 disabled={orgsQ.isLoading || orgsQ.isError}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary)"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary)"
               >
                 <option value="">
                   {orgsQ.isLoading
@@ -296,7 +296,7 @@ export default function OrgSettingsPage() {
                 ))}
               </select>
               {orgsQ.isError ? (
-                <div className="mt-1 text-[11px] font-semibold text-red-600">
+                <div className="mt-1 text-base font-semibold text-red-600">
                   Failed to load organizations
                 </div>
               ) : null}
@@ -306,7 +306,7 @@ export default function OrgSettingsPage() {
 
         {/* Status messages */}
         {!hasOrgContext ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-base text-amber-800">
             {isSystemMode
               ? "Select an organization to manage its settings."
               : "Missing organization context."}
@@ -314,7 +314,7 @@ export default function OrgSettingsPage() {
         ) : settingsQ.isLoading || orgQ.isLoading ? (
           <div className="text-sm text-slate-600">Loading settings…</div>
         ) : settingsQ.isError || orgQ.isError ? (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-base text-red-700">
             {(settingsQ.error as any)?.message ||
               (orgQ.error as any)?.message ||
               "Failed to load org settings."}
@@ -326,12 +326,12 @@ export default function OrgSettingsPage() {
            ========================= */}
         <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
           <section className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="text-sm font-extrabold text-slate-900">
+            <div className="text-xl font-extrabold text-slate-900">
               Branding (Organization)
             </div>
             <div className="mt-3 grid grid-cols-1 gap-3">
               <label className="block">
-                <div className="mb-1 text-[11px] font-semibold text-slate-600">
+                <div className="mb-1 text-base font-semibold text-slate-600">
                   Logo URL
                 </div>
                 <input
@@ -341,13 +341,13 @@ export default function OrgSettingsPage() {
                   }
                   placeholder="https://..."
                   disabled={!canEdit}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
                 />
               </label>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="block">
-                  <div className="mb-1 text-[11px] font-semibold text-slate-600">
+                  <div className="mb-1 text-base font-semibold text-slate-600">
                     Primary Color
                   </div>
                   <input
@@ -357,7 +357,7 @@ export default function OrgSettingsPage() {
                     }
                     placeholder="#1d4ed8"
                     disabled={!canEdit}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
                   />
                   <div className="mt-2 flex items-center gap-2">
                     <div
@@ -365,12 +365,12 @@ export default function OrgSettingsPage() {
                       style={{ background: form.primaryColor || "#ffffff" }}
                       title="Preview"
                     />
-                    <div className="text-[11px] text-slate-600">Preview</div>
+                    <div className="text-base text-slate-600">Preview</div>
                   </div>
                 </label>
 
                 <label className="block">
-                  <div className="mb-1 text-[11px] font-semibold text-slate-600">
+                  <div className="mb-1 text-base font-semibold text-slate-600">
                     Subdomain
                   </div>
                   <input
@@ -380,14 +380,14 @@ export default function OrgSettingsPage() {
                     }
                     placeholder="unity-party"
                     disabled={!canEdit}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
                   />
                 </label>
               </div>
 
               {form.logoUrl ? (
                 <div className="mt-1 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="text-[11px] font-semibold text-slate-600">
+                  <div className="text-base font-semibold text-slate-600">
                     Logo Preview
                   </div>
                   <img
@@ -399,7 +399,7 @@ export default function OrgSettingsPage() {
                         "none";
                     }}
                   />
-                  <div className="mt-2 text-[11px] text-slate-500">
+                  <div className="mt-2 text-base text-slate-500">
                     (If the image fails to load, the preview hides
                     automatically.)
                   </div>
@@ -412,13 +412,13 @@ export default function OrgSettingsPage() {
               Security / Policies (org_setting jsonb)
              ========================= */}
           <section className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="text-sm font-extrabold text-slate-900">
+            <div className="text-xl font-extrabold text-slate-900">
               Security & Policy Defaults (Org Setting)
             </div>
 
             <div className="mt-3 grid grid-cols-1 gap-3">
               <label className="block">
-                <div className="mb-1 text-[11px] font-semibold text-slate-600">
+                <div className="mb-1 text-base font-semibold text-slate-600">
                   Rate limit per minute
                 </div>
                 <input
@@ -429,9 +429,9 @@ export default function OrgSettingsPage() {
                   placeholder="e.g., 600"
                   disabled={!canEdit}
                   inputMode="numeric"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
                 />
-                <div className="mt-1 text-[11px] text-slate-500">
+                <div className="mt-1 text-base text-slate-500">
                   Allowed range enforced by backend (example: 60..10000).
                 </div>
               </label>
@@ -445,14 +445,14 @@ export default function OrgSettingsPage() {
                   }
                   disabled={!canEdit}
                 />
-                <div className="text-sm text-slate-800">
+                <div className="text-base text-slate-800">
                   Show official results / indicators
                 </div>
               </label>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="block">
-                  <div className="mb-1 text-[11px] font-semibold text-slate-600">
+                  <div className="mb-1 text-base font-semibold text-slate-600">
                     Lockout threshold
                   </div>
                   <input
@@ -466,12 +466,12 @@ export default function OrgSettingsPage() {
                     placeholder="e.g., 5"
                     disabled={!canEdit}
                     inputMode="numeric"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
                   />
                 </label>
 
                 <label className="block">
-                  <div className="mb-1 text-[11px] font-semibold text-slate-600">
+                  <div className="mb-1 text-base font-semibold text-slate-600">
                     Lockout minutes
                   </div>
                   <input
@@ -482,19 +482,19 @@ export default function OrgSettingsPage() {
                     placeholder="e.g., 30"
                     disabled={!canEdit}
                     inputMode="numeric"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
                   />
                 </label>
               </div>
 
               {saveM.isError ? (
-                <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-base text-red-700">
                   {(saveM.error as any)?.message ?? "Failed to save settings."}
                 </div>
               ) : null}
 
               {saveM.isSuccess ? (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-base text-emerald-800">
                   Saved successfully.
                 </div>
               ) : null}

@@ -1,32 +1,8 @@
 
 
-//// SubmissionFormModal.tsx
-// ✅ FULL FINAL UPDATED CODE
-//
-// ✅ NEW RULE ALIGNMENT (BallotsInBox)
-// - ballotsInBox = validVotes + invalid + rejected + unmarked
-// - spoiledBallots is OUTSIDE the box (NOT part of ballotsInBox, NOT part of invalidTotal)
-// - invalidTotal = invalid + rejected + unmarked
-// - outsideBox = unused + spoiled
-// - UI labels updated (Cast -> In Box)
-// - Payload updated to send ballotsInBox (not ballotsCast)
-//
-// ✅ UI (NO SCROLL IMPROVEMENTS)
-// - Invalid Total (auto) + Outside Box (auto) are on SAME ROW (side-by-side)
-// - Ballots Issued (expected) + Registered Voters (expected) are on SAME ROW (side-by-side)
-//
-// ✅ FIX
-// - Fixed missing closing `}` after previews ternary (Vite/SWC Unterminated regexp literal)
-//
-// ✅ OTHER FIXES KEPT
-// - Flag UI in form (checkbox + reason textarea) for CREATE + EDIT
-// - Sends required backend fields: actorUserId + flagged + comments
-// - Shows Actor name (from /users/me when possible)
-// - CREATE: if “Flag this submission” is checked, it flags immediately AFTER create succeeds
-// - EDIT: Apply Flag / Unflag uses the checkbox + reason (no prompt)
-// - FIX: typo flagded -> flagged
-// - Keeps previous logic + validations
-// - Keeps edit first-open candidate votes fix (only clear votes on contest change in CREATE mode)
+
+
+// //// SubmissionFormModal.tsx
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -86,7 +62,7 @@ import {
   type PollingPlaceAllocationDto,
 } from "../../../../../shared/services/pollingPlaceAllocationService";
 
-/** ---------------- helpers ---------------- */
+/** helpers */
 function safeStr(v: any) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
@@ -108,12 +84,8 @@ function userFullName(u: any) {
   return nm || String(u?.userName ?? "—");
 }
 function initials(u: any) {
-  const a = String(u?.firstName ?? "")
-    .trim()
-    .slice(0, 1);
-  const b = String(u?.lastName ?? "")
-    .trim()
-    .slice(0, 1);
+  const a = String(u?.firstName ?? "").trim().slice(0, 1);
+  const b = String(u?.lastName ?? "").trim().slice(0, 1);
   const s = `${a}${b}`.toUpperCase();
   return s || "U";
 }
@@ -138,28 +110,21 @@ export default function SubmissionFormModal(props: {
   mode: SubmissionFormMode;
   open: boolean;
   onClose: () => void;
-
   effectiveOrgId?: string;
   dashboardMode?: string;
-
   user: any;
   agentId: string;
-
   canCreate: boolean;
-
   electionId: string;
   elections: ElectionDto[];
   contests: ContestDto[];
-
   submissionId?: string;
-
   onSaved: () => void | Promise<void>;
 }) {
   const isCreate = props.mode === "create";
   const isEdit = props.mode === "edit";
   const visible = Boolean(props.open);
 
-  /** ---------------- Agent (try /users/me when org provided) ---------------- */
   const meQ = useQuery<UserDto>({
     enabled: visible && Boolean(props.effectiveOrgId),
     queryKey: ["users", "me", props.effectiveOrgId],
@@ -173,7 +138,6 @@ export default function SubmissionFormModal(props: {
   const agentInitials = initials(agentUser);
   const actorUserId = (agentUser as any)?.userId ?? props.agentId;
 
-  /** ---------------- Location chain (create only) ---------------- */
   const countiesQ = useQuery<CountyDto[]>({
     enabled: visible && isCreate,
     queryKey: ["counties", "modal-all"],
@@ -231,7 +195,6 @@ export default function SubmissionFormModal(props: {
   const mPlaces = mPlacesQ.data ?? [];
   const [selectedPlace, setSelectedPlace] = useState<string>("");
 
-  /** ---------------- Contest + candidates ---------------- */
   const [selectedContest, setSelectedContest] = useState<string>("");
   const contestOptionsQ = useQuery<ContestOptionDto[]>({
     enabled: visible && Boolean(selectedContest),
@@ -252,7 +215,6 @@ export default function SubmissionFormModal(props: {
       .sort((a, b) => (a.optionOrder ?? 0) - (b.optionOrder ?? 0));
   }, [contestOptionsQ.data]);
 
-  /** ---------------- Shared fields ---------------- */
   const [candidateVotes, setCandidateVotes] = useState<Record<string, number>>(
     {}
   );
@@ -262,7 +224,6 @@ export default function SubmissionFormModal(props: {
   const [unmarkedBallots, setUnmarkedBallots] = useState<number | "">("");
   const [unusedBallots, setUnusedBallots] = useState<number | "">("");
 
-  // ✅ allocation read-only
   const [expectedRegisteredVoters, setExpectedRegisteredVoters] = useState<
     number | null
   >(null);
@@ -270,7 +231,6 @@ export default function SubmissionFormModal(props: {
     number | null
   >(null);
 
-  // ✅ flag UI
   const [flagChecked, setFlagChecked] = useState(false);
   const [flagReason, setFlagReason] = useState("");
 
@@ -280,7 +240,6 @@ export default function SubmissionFormModal(props: {
   const [geoStatus, setGeoStatus] = useState<string>("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  /** ---------------- Evidence uploader ---------------- */
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<
     Array<{ name: string; url?: string; type: string }>
@@ -321,32 +280,37 @@ export default function SubmissionFormModal(props: {
       return out;
     });
   }
+
   function handleFileInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     addFiles(Array.from(e.target.files ?? []));
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
+
   function onDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     setIsDragging(false);
     addFiles(Array.from(e.dataTransfer.files ?? []));
   }
+
   function onDragOver(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     setIsDragging(true);
   }
+
   function onDragLeave() {
     setIsDragging(false);
   }
+
   function removeFile(index: number) {
     setFiles((cur) => cur.filter((_, i) => i !== index));
   }
+
   function openFileDialog() {
     fileInputRef.current?.click();
   }
 
   const validVotes = useMemo(() => sumVotes(candidateVotes), [candidateVotes]);
 
-  // ✅ NEW RULE: ballotsInBox EXCLUDES spoiled (spoiled is outside the box)
   const ballotsInBoxNumber = useMemo(() => {
     return (
       validVotes +
@@ -356,7 +320,6 @@ export default function SubmissionFormModal(props: {
     );
   }, [validVotes, invalidBallots, rejectedBallots, unmarkedBallots]);
 
-  // ✅ invalidTotal (in-box non-valid)
   const invalidTotalNumber = useMemo(() => {
     return (
       (Number(invalidBallots) || 0) +
@@ -365,7 +328,6 @@ export default function SubmissionFormModal(props: {
     );
   }, [invalidBallots, rejectedBallots, unmarkedBallots]);
 
-  // ✅ outside box = unused + spoiled
   const outsideBoxNumber = useMemo(() => {
     return (Number(unusedBallots) || 0) + (Number(spoiledBallots) || 0);
   }, [unusedBallots, spoiledBallots]);
@@ -377,7 +339,6 @@ export default function SubmissionFormModal(props: {
     expectedRegisteredVoters != null &&
     ballotsInBoxNumber > expectedRegisteredVoters;
 
-  /** ---------------- Auto geolocation on create open */
   useEffect(() => {
     if (!visible || !isCreate) return;
     setGeoStatus("");
@@ -398,7 +359,6 @@ export default function SubmissionFormModal(props: {
     );
   }, [visible, isCreate]);
 
-  /** ---------------- Reset on open */
   useEffect(() => {
     if (!visible) return;
     setAdvancedOpen(false);
@@ -419,8 +379,6 @@ export default function SubmissionFormModal(props: {
       setComments("");
       setExpectedRegisteredVoters(null);
       setExpectedBallotsIssued(null);
-
-      // ✅ reset flag UI for new create
       setFlagChecked(false);
       setFlagReason("");
     }
@@ -443,14 +401,12 @@ export default function SubmissionFormModal(props: {
     setExpectedBallotsIssued(null);
   }, [mDistrict, visible, isCreate]);
 
-  // ✅ FIX: only clear votes when contest changes in CREATE mode.
   useEffect(() => {
     if (!visible) return;
     if (!isCreate) return;
     setCandidateVotes({});
   }, [selectedContest, visible, isCreate]);
 
-  /** ---------------- Edit: load + hydrate */
   const editQ = useQuery<VoteSubmissionDto>({
     enabled: visible && isEdit && Boolean(props.submissionId),
     queryKey: ["vote-submission", "detail", props.submissionId],
@@ -488,7 +444,6 @@ export default function SubmissionFormModal(props: {
       typeof s.ballotsIssued === "number" ? s.ballotsIssued : null
     );
 
-    // ✅ hydrate flag UI from status/comments
     const st = String(s.status ?? "").toUpperCase();
     const flaggedNow = st === "FLAGGED";
     setFlagChecked(flaggedNow);
@@ -501,7 +456,6 @@ export default function SubmissionFormModal(props: {
     }
   }, [visible, isEdit, editQ.data]);
 
-  /** ---------------- Place allocation (CREATE) */
   const placeAllocQ = useQuery<PollingPlaceAllocationDto | null>({
     enabled:
       visible &&
@@ -550,12 +504,10 @@ export default function SubmissionFormModal(props: {
     }
   }, [visible, isCreate, selectedPlace]);
 
-  /** ---------------- Mutations */
   const createM = useMutation({
     mutationFn: async (req: VoteSubmissionCreateRequest) =>
       createSubmissionMultipart({ payload: req, files }),
     onSuccess: async (created: any) => {
-      // ✅ if checkbox checked, flag immediately after create
       if (flagChecked) {
         const reason = flagReason.trim();
         const newId = String(created?.submissionId ?? "");
@@ -595,8 +547,8 @@ export default function SubmissionFormModal(props: {
     mutationFn: async (p: { id: string; flagged: boolean; comments?: string }) =>
       flagSubmission(p.id, {
         actorUserId,
-        flagged: p.flagged, // ✅ FIXED
-        comments: p.comments, // ✅ plural
+        flagged: p.flagged,
+        comments: p.comments,
       }),
     onSuccess: async () => {
       await editQ.refetch();
@@ -605,7 +557,6 @@ export default function SubmissionFormModal(props: {
   });
 
   const busy = createM.isPending || updateM.isPending || flagM.isPending;
-
   const orgIdForCreate = props.effectiveOrgId || "";
 
   const baseReady =
@@ -618,10 +569,7 @@ export default function SubmissionFormModal(props: {
     Boolean(selectedContest);
 
   const flagReasonOk = !flagChecked || Boolean(flagReason.trim());
-
-  // ✅ must never exceed issued/registered when known
   const reconcileOk = !exceedsIssued && !exceedsRegistered;
-
   const canActuallySubmit =
     baseReady && files.length > 0 && flagReasonOk && reconcileOk;
   const canSaveDraft = baseReady && flagReasonOk;
@@ -658,10 +606,7 @@ export default function SubmissionFormModal(props: {
       agentId: props.agentId,
       contestId: selectedContest,
       candidateVotes,
-
-      // ✅ NEW: send ballotsInBox (auto) — excludes spoiled
       ballotsInBox: ballotsInBoxNumber,
-
       invalidBallots: invalidBallots === "" ? undefined : Number(invalidBallots),
       rejectedBallots:
         rejectedBallots === "" ? undefined : Number(rejectedBallots),
@@ -670,7 +615,6 @@ export default function SubmissionFormModal(props: {
       unmarkedBallots:
         unmarkedBallots === "" ? undefined : Number(unmarkedBallots),
       unusedBallots: unusedBallots === "" ? undefined : Number(unusedBallots),
-
       comments: comments || undefined,
       latitude: latitude === "" ? undefined : Number(latitude),
       longitude: longitude === "" ? undefined : Number(longitude),
@@ -682,10 +626,7 @@ export default function SubmissionFormModal(props: {
   const buildUpdateReq = (): VoteSubmissionUpdateRequest => {
     return {
       candidateVotes,
-
-      // ✅ NEW: send ballotsInBox (auto) — excludes spoiled
       ballotsInBox: ballotsInBoxNumber,
-
       invalidBallots: invalidBallots === "" ? undefined : Number(invalidBallots),
       rejectedBallots:
         rejectedBallots === "" ? undefined : Number(rejectedBallots),
@@ -694,7 +635,6 @@ export default function SubmissionFormModal(props: {
       unmarkedBallots:
         unmarkedBallots === "" ? undefined : Number(unmarkedBallots),
       unusedBallots: unusedBallots === "" ? undefined : Number(unusedBallots),
-
       comments: comments || undefined,
       latitude: latitude === "" ? undefined : Number(latitude),
       longitude: longitude === "" ? undefined : Number(longitude),
@@ -712,23 +652,23 @@ export default function SubmissionFormModal(props: {
       />
 
       <div className="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-4">
-        <div className="w-full sm:max-w-3xl md:max-w-5xl lg:max-w-6xl bg-white rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col h-[calc(100vh-8px)] sm:h-auto sm:max-h-[82vh] overflow-hidden">
-          {/* header */}
-          <div className="sticky top-0 z-10 border-b bg-white px-3 py-3">
+        <div className="w-full sm:max-w-2xl md:max-w-5xl lg:max-w-6xl bg-white rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col h-[calc(100vh-8px)] sm:h-auto sm:max-h-[82vh] overflow-hidden">
+          {/* header - Blue Gradient */}
+          <div className="sticky top-0 z-10 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-xl font-extrabold leading-5 text-blue-600">
+                <div className="text-2xl font-bold">
                   {isCreate ? "New Vote Submission" : "Edit Submission"}
                 </div>
-                <div className="text-sm text-slate-500 truncate mt-0.5">
+                <div className="text-sm text-blue-100 mt-0.5">
                   {headerSubtitle}
                 </div>
 
                 {isCreate &&
                 props.dashboardMode === "SYSTEM" &&
                 !props.effectiveOrgId ? (
-                  <div className="mt-1 text-base font-bold text-red-700">
-                    Select a tenant (organization) before submitting.
+                  <div className="mt-1 text-base font-bold text-yellow-200">
+                    Select a tenant first
                   </div>
                 ) : null}
               </div>
@@ -737,87 +677,67 @@ export default function SubmissionFormModal(props: {
                 type="button"
                 onClick={props.onClose}
                 disabled={busy}
-                className={`shrink-0 rounded-full border border-slate-200 bg-red-600 text-white font-bold h-9 w-9 grid place-items-center ${
-                  busy ? "opacity-60" : "hover:bg-slate-50"
-                }`}
-                aria-label="Close"
-                title="Close"
+                className="shrink-0 rounded-full bg-white/20 hover:bg-white/30 text-white font-bold h-9 w-9 grid place-items-center disabled:opacity-60 transition"
               >
-                <X className="h-4 w-4" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
+            {/* Quick Stats - Larger */}
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
-                <div className="h-7 w-7 rounded-full bg-slate-900 text-white text-sm font-extrabold grid place-items-center">
+              <div className="inline-flex items-center gap-2 rounded-full bg-red/20 backdrop-blur-sm border border-white/30 px-2.5 py-1.5">
+                <div className="h-7 w-7 rounded-full bg-white text-blue-600 text-xs font-bold grid place-items-center">
                   {agentInitials}
                 </div>
-                <div className="text-sm font-bold">
-                  <span className="text-slate-500 text-sm font-extrabold mr-1">
-                    Agent
-                  </span>
-                  <span className="font-extrabold text-base">{agentName}</span>
-                </div>
+                <span className="text-sm font-bold">{agentName}</span>
               </div>
 
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1">
-                <span className="text-sm text-slate-500 font-extrabold">
-                  Valid
-                </span>
-                <span className="text-sm font-extrabold">{validVotes}</span>
+              <div className="inline-flex items-center gap-2 rounded-full bg-red/20 backdrop-blur-sm border border-white/30 px-2.5 py-1.5">
+                <span className="text-base font-bold text-white">Valid</span>
+                <span className="text-xl font-bold">{validVotes}</span>
               </div>
 
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1">
-                <span className="text-sm text-slate-500 font-extrabold">
-                  Ballot In Box
-                </span>
-                <span className="text-sm font-extrabold">
-                  {ballotsInBoxNumber}
-                </span>
+              <div className="inline-flex items-center gap-2 rounded-full bg-red/20 backdrop-blur-sm border border-white/30 px-2.5 py-1.5">
+                <span className="text-base font-bold text-white">In Box</span>
+                <span className="text-xl font-bold">{ballotsInBoxNumber}</span>
               </div>
 
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1">
-                <span className="text-sm text-slate-500 font-extrabold">
-                  Invalid Total
-                </span>
-                <span className="text-sm font-extrabold">
-                  {invalidTotalNumber}
-                </span>
+              <div className="inline-flex items-center gap-2 rounded-full bg-red/20 backdrop-blur-sm border border-white/30 px-2.5 py-1.5">
+                <span className="text-base font-bold text-white">Invalid</span>
+                <span className="text-xl font-bold">{invalidTotalNumber}</span>
               </div>
             </div>
           </div>
 
-          {/* body */}
-          <div className="flex-1 overflow-y-auto px-3 py-3 pb-28">
-            {isEdit ? (
-              editQ.isLoading ? (
-                <Section>
-                  <div className="text-sm text-slate-600">
-                    Loading submission…
-                  </div>
-                </Section>
-              ) : editQ.isError ? (
-                <Section>
-                  <div className="text-base font-bold text-red-700">
-                    {friendlyError(editQ.error)}
-                  </div>
-                </Section>
-              ) : null
-            ) : null}
+          {/* body - 60/30 split */}
+          <div className="flex-1 overflow-y-auto px-3 py-3 pb-24 bg-slate-100">
+            {isEdit && editQ.isLoading && (
+              <div className="text-sm text-slate-600">Loading…</div>
+            )}
+            {isEdit && editQ.isError && (
+              <div className="text-base font-bold text-red-700">
+                {friendlyError(editQ.error)}
+              </div>
+            )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-3">
-              {/* LEFT */}
+            <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr_0.8fr] gap-3">
+              {/* LEFT - 60% */}
               <div className="space-y-3">
                 {isCreate && (
-                  <Section title="Location">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <Section
+                  //  Location container  +++++++++++++++++++++++++==
+                    title="📍 Location"
+                    bgColor="bg-red-400/10"
+                    borderColor="border-amber-200"
+                  >
+                    <div className="grid grid-cols-2 gap-2.5">
                       <Field label="County">
                         <select
                           value={mCounty}
                           onChange={(e) => setMCounty(e.target.value)}
                           className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-base font-semibold"
                         >
-                          <option value="">Select county</option>
+                          <option value="">Select</option>
                           {counties.map((c) => (
                             <option key={c.countyId} value={c.countyId}>
                               {c.countyName}
@@ -833,7 +753,7 @@ export default function SubmissionFormModal(props: {
                           disabled={!mCounty}
                           className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-base font-semibold disabled:bg-slate-50"
                         >
-                          <option value="">Select district</option>
+                          <option value="">Select</option>
                           {mDistricts.map((d) => (
                             <option key={d.districtId} value={d.districtId}>
                               {d.districtName}
@@ -842,7 +762,7 @@ export default function SubmissionFormModal(props: {
                         </select>
                       </Field>
 
-                      <Field label="Polling Center">
+                      <Field label="Center">
                         <select
                           value={selectedCenter}
                           onChange={(e) => {
@@ -852,7 +772,7 @@ export default function SubmissionFormModal(props: {
                           disabled={!mCounty && !mDistrict}
                           className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-base font-semibold disabled:bg-slate-50"
                         >
-                          <option value="">Select center</option>
+                          <option value="">Select</option>
                           {mCenters.map((c) => (
                             <option key={c.centerId} value={c.centerId}>
                               {c.centerName}
@@ -861,19 +781,16 @@ export default function SubmissionFormModal(props: {
                         </select>
                       </Field>
 
-                      <Field label="Polling Place">
+                      <Field label="Place">
                         <select
                           value={selectedPlace}
                           onChange={(e) => setSelectedPlace(e.target.value)}
                           disabled={!selectedCenter}
                           className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-base font-semibold disabled:bg-slate-50"
                         >
-                          <option value="">Select place</option>
+                          <option value="">Select</option>
                           {mPlaces.map((p) => (
-                            <option
-                              key={(p as any).placeId}
-                              value={(p as any).placeId}
-                            >
+                            <option key={(p as any).placeId} value={(p as any).placeId}>
                               {placeLabel(p) || "—"}
                             </option>
                           ))}
@@ -884,280 +801,204 @@ export default function SubmissionFormModal(props: {
                 )}
 
                 <Section
-                  title="Votes Sheet"
+                // Vote Sheet container  ++++++++++++++++++++++++++++++==
+                  title="👥 Votes Sheet"
+                  bgColor="bg-blue-600/10"
+                  borderColor="border-purple-200"
                   right={
                     selectedContest ? (
                       <button
                         type="button"
-                        className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-xs font-extrabold hover:bg-slate-50"
+                        className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-bold hover:bg-slate-50"
                         onClick={() => setCandidateVotes({})}
                       >
-                        Clear all
+                        Clear
                       </button>
                     ) : null
                   }
                 >
-                  <div className="space-y-2.5">
-                    <div>
-                      <div className="mb-1 text-sm font-extrabold text-slate-600">
-                        Contest
-                      </div>
+                  <div>
+                    <Field label="Contest">
                       <select
                         value={selectedContest}
                         onChange={(e) => setSelectedContest(e.target.value)}
-                        disabled={
-                          isEdit && Boolean((editQ.data as any)?.contestId)
-                        }
+                        disabled={isEdit && Boolean((editQ.data as any)?.contestId)}
                         className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-base font-semibold disabled:bg-slate-50"
                       >
-                        <option value="">Select contest</option>
+                        <option value="">Select</option>
                         {props.contests.map((ct: ContestDto) => (
                           <option key={ct.contestId} value={ct.contestId}>
-                            {ct.contestName}{" "}
-                            {ct.category ? `(${ct.category})` : ""}
+                            {ct.contestName}
                           </option>
                         ))}
                       </select>
-                    </div>
+                    </Field>
 
                     {!selectedContest ? (
-                      <div className="text-sm text-slate-600">
-                        Select a contest to enter candidate votes.
-                      </div>
+                      <div className="mt-2 text-sm text-slate-600">Select contest</div>
                     ) : contestOptionsQ.isLoading ? (
-                      <div className="text-base text-slate-600">
-                        Loading candidates…
-                      </div>
+                      <div className="mt-2 text-sm text-slate-600">Loading…</div>
                     ) : contestOptionsQ.isError ? (
-                      <div className="text-base font-bold text-red-700">
+                      <div className="mt-2 text-sm font-bold text-red-700">
                         {friendlyError(contestOptionsQ.error)}
                       </div>
                     ) : !candidateOptions.length ? (
-                      <div className="text-base text-slate-600">
-                        No candidate options assigned to this contest yet.
-                      </div>
+                      <div className="mt-2 text-sm text-slate-600">No candidates</div>
                     ) : (
-                      <div className="rounded-xl border border-slate-200 overflow-hidden">
-                        <div className="overflow-x-auto">
-                          <table className="w-full min-w-[480px]">
-                            <thead className="bg-slate-50">
-                              <tr className="text-left">
-                                <th className="px-2.5 py-2 text-base font-extrabold text-slate-600">
-                                  Candidate
-                                </th>
-                                <th className="px-2.5 py-2 text-base font-extrabold text-slate-600 w-[110px]">
-                                  Party
-                                </th>
-                                <th className="px-2.5 py-2 text-base font-extrabold text-slate-600 w-[110px] text-right">
-                                  Votes
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {candidateOptions.map((o: any, idx: number) => {
-                                const voteKey = String(
-                                  o.electId ?? o.optionId ?? o.id ?? o.key
-                                );
-                                const votes = candidateVotes[voteKey] ?? 0;
-                                const name =
-                                  o.electionCandidate ??
-                                  o.candidateName ??
-                                  o.optionLabel ??
-                                  o.label ??
-                                  o.name ??
-                                  voteKey;
-                                const party =
-                                  o.abbreviation ??
-                                  o.partyAbbreviation ??
-                                  o.partyCode ??
-                                  o.partyName ??
-                                  "";
+                      <div className="mt-2 rounded-lg border border-slate-200 overflow-hidden max-h-[350px] overflow-y-auto bg-white">
+                        <table className="w-full text-base">
+                          <thead className="bg-purple-100 sticky top-0">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-bold text-slate-600">
+                                Candidate
+                              </th>
+                              <th className="px-3 py-2 text-left font-bold text-slate-600 w-24">
+                                Party
+                              </th>
+                              <th className="px-3 py-2 text-right font-bold text-slate-600 w-20">
+                                Votes
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {candidateOptions.map((o: any, idx: number) => {
+                              const voteKey = String(o.electId ?? o.optionId ?? o.id ?? o.key);
+                              const votes = candidateVotes[voteKey] ?? 0;
+                              const name = o.electionCandidate || o.candidateName || o.label || voteKey;
+                              const party = o.abbreviation || o.partyAbbreviation || "";
 
-                                return (
-                                  <tr
-                                    key={voteKey}
-                                    className={`border-t border-slate-200 ${
-                                      idx % 2 === 0
-                                        ? "bg-white"
-                                        : "bg-slate-50/40"
-                                    }`}
-                                  >
-                                    <td className="px-2.5 py-2 align-middle">
-                                      <div className="text-base font-bold leading-5 break-words">
-                                        {name}
-                                      </div>
-                                    </td>
-                                    <td className="px-2.5 py-2 align-middle">
-                                      <span
-                                        className={`inline-flex rounded-full px-2 py-0.5 text-base font-bold ${
-                                          party
-                                            ? "bg-slate-100 text-slate-700"
-                                            : "bg-slate-100 text-slate-500"
-                                        }`}
-                                      >
-                                        {party || "—"}
-                                      </span>
-                                    </td>
-                                    <td className="px-2.5 py-1.5 align-middle">
-                                      <div className="flex justify-end">
-                                        <input
-                                          type="number"
-                                          min={0}
-                                          inputMode="numeric"
-                                          value={String(votes)}
-                                          onChange={(e) => {
-                                            const n = clampNum(e.target.value);
-                                            setCandidateVotes((s) => ({
-                                              ...s,
-                                              [voteKey]: n,
-                                            }));
-                                          }}
-                                          className="h-7 w-[64px] rounded-md border border-slate-200 bg-white px-1.5 text-right text-base font-extrabold leading-none focus:outline-none focus:ring-2 focus:ring-slate-200"
-                                        />
-                                      </div>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
+                              return (
+                                <tr
+                                  key={voteKey}
+                                  className={`border-t border-slate-200 ${
+                                    idx % 2 === 0 ? "bg-white" : "bg-purple-50/30"
+                                  }`}
+                                >
+                                  <td className="px-3 py-2 font-semibold text-slate-900">
+                                    {name}
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <span className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-base font-bold text-slate-700">
+                                      {party || "—"}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2 text-right">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      inputMode="numeric"
+                                      value={String(votes)}
+                                      onChange={(e) => {
+                                        const n = clampNum(e.target.value);
+                                        setCandidateVotes((s) => ({ ...s, [voteKey]: n }));
+                                      }}
+                                      // candidate votes +++++++++++++++++++++++++++++=
+                                      className="h-7 w-14 rounded-md border border-slate-200 bg-white px-2 text-right text-xl font-bold focus:outline-none focus:ring-2 focus:ring-purple-400"
+                                    />
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
                       </div>
                     )}
                   </div>
                 </Section>
               </div>
 
-              {/* RIGHT */}
+              {/* CENTER - 30% */}
               <div className="space-y-3">
-                <Section title="Ballots Summary">
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div className="col-span-2">
-                      <ReadOnlyStat
-                        label="Ballots In Box (auto)"
-                        value={String(ballotsInBoxNumber)}
-                      />
-                    </div>
+                <Section
+                  title="📦 Ballots"
+                  bgColor="bg-red-100/50"
+                  borderColor="border-green-200"
+                >
+                  <div className="space-y-2">
+                    <Stat label="In Box" value={String(ballotsInBoxNumber)} />
+                    <Stat label="Invalid" value={String(invalidTotalNumber)} />
+                    <Stat label="Outside" value={String(outsideBoxNumber)} />
+                    <Stat
+                      label="Issued"
+                      value={
+                        placeAllocQ.isFetching
+                          ? "…"
+                          : expectedBallotsIssued == null
+                          ? "—"
+                          : String(expectedBallotsIssued)
+                      }
+                    />
+                    <Stat
+                      label="Voters"
+                      value={
+                        placeAllocQ.isFetching
+                          ? "…"
+                          : expectedRegisteredVoters == null
+                          ? "—"
+                          : String(expectedRegisteredVoters)
+                      }
+                    />
 
-                    {/* ✅ SAME ROW */}
-                    <div className="col-span-1">
-                      <ReadOnlyStat
-                        label="Invalid Total (auto)"
-                        value={String(invalidTotalNumber)}
-                      />
-                    </div>
-                    <div className="col-span-1">
-                      <ReadOnlyStat
-                        label="Outside Box (auto)"
-                        value={String(outsideBoxNumber)}
-                      />
-                    </div>
-
-                    {/* ✅ SAME ROW */}
-                    <div className="col-span-1">
-                      <ReadOnlyStat
-                        label="Ballots Issued (expected)"
-                        value={
-                          placeAllocQ.isFetching
-                            ? "Loading…"
-                            : expectedBallotsIssued == null
-                            ? "—"
-                            : String(expectedBallotsIssued)
-                        }
-                      />
-                    </div>
-
-                    <div className="col-span-1">
-                      <ReadOnlyStat
-                        label="Registered Voters (expected)"
-                        value={
-                          placeAllocQ.isFetching
-                            ? "Loading…"
-                            : expectedRegisteredVoters == null
-                            ? "—"
-                            : String(expectedRegisteredVoters)
-                        }
-                      />
-                    </div>
-
-                    {exceedsIssued ? (
-                      <div className="col-span-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-extrabold text-red-700">
-                        Ballots In Box cannot exceed Ballots Issued.
+                    {(exceedsIssued || exceedsRegistered) && (
+                      <div className="rounded-lg bg-red-50 border border-red-200 p-2 text-sm font-bold text-red-700">
+                        ⚠️ Exceeds limit
                       </div>
-                    ) : null}
+                    )}
 
-                    {exceedsRegistered ? (
-                      <div className="col-span-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-extrabold text-red-700">
-                        Ballots In Box cannot exceed Registered Voters.
-                      </div>
-                    ) : null}
-
-                    <NumberField
-                      label="Invalid (In Box)"
-                      value={invalidBallots}
-                      onChange={setInvalidBallots}
-                    />
-                    <NumberField
-                      label="Rejected (In Box)"
-                      value={rejectedBallots}
-                      onChange={setRejectedBallots}
-                    />
-                    <NumberField
-                      label="Spoiled (Outside Box)"
-                      value={spoiledBallots}
-                      onChange={setSpoiledBallots}
-                    />
-                    <NumberField
-                      label="Unmarked (In Box)"
-                      value={unmarkedBallots}
-                      onChange={setUnmarkedBallots}
-                    />
-
-                    <div className="col-span-2">
-                      <NumberField
-                        label="Unused (Outside Box)"
+                    <div className="space-y-1.5 pt-2 border-t border-green-600">
+                      <SmallNumberField
+                        label="Invalid"
+                        value={invalidBallots}
+                        onChange={setInvalidBallots}
+                      />
+                      <SmallNumberField
+                        label="Rejected"
+                        value={rejectedBallots}
+                        onChange={setRejectedBallots}
+                      />
+                    
+                      <SmallNumberField
+                        label="Unmarked"
+                        value={unmarkedBallots}
+                        onChange={setUnmarkedBallots}
+                      />
+                        <SmallNumberField
+                        label="Spoiled"
+                        value={spoiledBallots}
+                        onChange={setSpoiledBallots}
+                      />
+                      
+                      <SmallNumberField
+                        label="Unused"
                         value={unusedBallots}
                         onChange={setUnusedBallots}
                       />
                     </div>
                   </div>
                 </Section>
+              </div>
 
-                <Section title="Tally Sheet (Required)">
+              {/* RIGHT - 20% (sidebar) */}
+              <div className="space-y-3">
+                <Section
+                //  Evidence container +++++++++++++++++++=
+                  title="📷 Evidence"
+                  bgColor="bg-slate-200"
+                  borderColor="border-cyan-200"
+                >
                   <div
-                    className={`rounded-xl border ${
+                    className={`rounded-lg border p-2.5 transition ${
                       isDragging
-                        ? "border-blue-300 bg-blue-50"
+                        ? "border-blue-300 bg-blue-500"
                         : "border-slate-200 bg-slate-50"
-                    } p-2`}
+                    }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <div className="h-7 w-7 rounded-lg bg-white border border-slate-200 grid place-items-center">
-                        <UploadCloud className="h-4 w-4" />
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="text-base font-extrabold leading-5">
-                          Upload
-                        </div>
-                        <div className="text-sm text-slate-600">
-                          PNG / JPG / PDF
-                        </div>
-                      </div>
-
-                      <div className="text-sm font-bold text-slate-600">
-                        {files.length ? `${files.length}` : "0"}
-                      </div>
-                    </div>
-
                     <div
-                      className="mt-2 w-full"
+                      className="text-center cursor-pointer"
                       onClick={openFileDialog}
                       onDrop={onDrop}
                       onDragOver={onDragOver}
                       onDragLeave={onDragLeave}
-                      role="button"
-                      tabIndex={0}
                     >
                       <input
                         ref={fileInputRef}
@@ -1167,479 +1008,263 @@ export default function SubmissionFormModal(props: {
                         className="hidden"
                         onChange={handleFileInputChange}
                       />
-                      <div className="h-8 w-full rounded-lg border border-slate-200 bg-white grid place-items-center text-sm font-semibold text-slate-600 hover:bg-slate-50">
-                        Tap to choose or drop
-                      </div>
+                      <UploadCloud className="h-5 w-5 mx-auto mb-1 text-slate-600" />
+                      <div className="text-base font-bold text-slate-600">Drop here</div>
+                      <div className="text-xs text-slate-500">{files.length} file(s)</div>
                     </div>
 
-                    {isCreate && !files.length && (
-                      <div className="mt-2 text-xs font-bold text-red-700">
-                        Tally sheet is required to Submit. (Draft can be saved
-                        without evidence.)
-                      </div>
-                    )}
-
-                    {/* ✅ FIXED: proper closing } for ternary */}
-                    {previews.length ? (
-                      <div className="mt-2 grid grid-cols-1 gap-1.5">
+                    {previews.length > 0 && (
+                      <div className="mt-2 space-y-1.5 max-h-[120px] overflow-y-auto">
                         {previews.map((p, i) => (
                           <div
                             key={`${p.name}-${i}`}
                             className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 flex items-center gap-2"
                           >
-                            <div className="h-7 w-7 rounded-lg bg-slate-50 border border-slate-200 grid place-items-center shrink-0">
+                            <div className="h-6 w-6 rounded-lg bg-slate-50 border border-slate-200 grid place-items-center flex-shrink-0">
                               {p.type.includes("pdf") ? (
-                                <FileText className="h-4 w-4" />
+                                <FileText className="h-3 w-3" />
                               ) : (
-                                <ImageIcon className="h-4 w-4" />
+                                <ImageIcon className="h-3 w-3" />
                               )}
                             </div>
-
-                            <div className="min-w-0 flex-1">
-                              <div className="text-base font-bold truncate">
-                                {p.name}
-                              </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-base font-bold truncate">{p.name}</div>
                             </div>
-
-                            {p.url ? (
-                              <img
-                                src={p.url}
-                                alt={p.name}
-                                className="h-7 w-7 rounded-lg object-cover border border-slate-200"
-                              />
-                            ) : null}
-
                             <button
                               type="button"
-                              title="Remove file"
-                              className="rounded-lg border border-slate-200 bg-white p-1 hover:bg-slate-50"
+                              className="p-0.5 hover:bg-slate-100 rounded"
                               onClick={() => removeFile(i)}
                             >
-                              <X className="h-4 w-4" />
+                              <X className="h-3 w-3" />
                             </button>
                           </div>
                         ))}
                       </div>
-                    ) : null}
+                    )}
                   </div>
                 </Section>
 
-                <Section title="Notes">
-                  {/* ✅ FLAG UI (checkbox + actor + reason) */}
-                  <div className="mb-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <label className="flex items-center gap-2 text-sm font-extrabold">
-                        <input
-                          type="checkbox"
-                          checked={flagChecked}
-                          onChange={(e) => setFlagChecked(e.target.checked)}
-                          className="h-4 w-4"
-                        />
-                        <span>Flag this submission</span>
-                      </label>
-
-                      <div className="text-sm font-extrabold text-slate-600">
-                        Actor:{" "}
-                        <span className="text-slate-900">{agentName}</span>
-                      </div>
-                    </div>
-
-                    {flagChecked && (
-                      <div className="mt-2">
-                        <div className="mb-1 text-sm font-extrabold text-slate-600">
-                          Flag Reason (required)
-                        </div>
-                        <textarea
-                          value={flagReason}
-                          onChange={(e) => setFlagReason(e.target.value)}
-                          rows={2}
-                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold"
-                          placeholder="Why are you flagging this submission?"
-                        />
-                        {!flagReason.trim() ? (
-                          <div className="mt-1 text-sm font-bold text-red-700">
-                            Reason is required when flagging.
-                          </div>
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
-
+                <Section
+                //  Note container ++++++++++++++++++++
+                  title="📝 Notes"
+                  bgColor="bg-orange-50"
+                  borderColor="border-orange-200"
+                >
                   <textarea
                     value={comments}
                     onChange={(e) => setComments(e.target.value)}
                     rows={3}
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold"
-                    placeholder="Write notes..."
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-base font-semibold"
+                    placeholder="Notes"
                   />
+
+                  <label className="mt-2 flex items-center gap-2 text-base font-bold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={flagChecked}
+                      onChange={(e) => setFlagChecked(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    <span>Flag</span>
+                  </label>
+
+                  {flagChecked && (
+                    <textarea
+                      value={flagReason}
+                      onChange={(e) => setFlagReason(e.target.value)}
+                      rows={2}
+                      className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-base font-semibold"
+                      placeholder="Reason"
+                    />
+                  )}
 
                   <button
                     type="button"
-                    className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-extrabold flex items-center justify-between hover:bg-slate-50"
+                    className="mt-2 w-full text-left px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-bold text-sm flex items-center justify-between"
                     onClick={() => setAdvancedOpen((s) => !s)}
                   >
-                    <span>Advanced (Location)</span>
-                    {advancedOpen ? (
-                      <ChevronUp className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )}
+                    <span>🗺️ GPS</span>
+                    {advancedOpen ? <ChevronUp size={16} /> : <ChevronDown size={14} />}
                   </button>
 
                   {advancedOpen && (
-                    <div className="mt-2 space-y-2">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <Field label="Latitude">
-                          <input
-                            type="number"
-                            step="any"
-                            value={String(latitude)}
-                            onChange={(e) =>
-                              setLatitude(
-                                e.target.value === ""
-                                  ? ""
-                                  : Number(e.target.value)
-                              )
-                            }
-                            className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold"
-                          />
-                        </Field>
-                        <Field label="Longitude">
-                          <input
-                            type="number"
-                            step="any"
-                            value={String(longitude)}
-                            onChange={(e) =>
-                              setLongitude(
-                                e.target.value === ""
-                                  ? ""
-                                  : Number(e.target.value)
-                              )
-                            }
-                            className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold"
-                          />
-                        </Field>
-                      </div>
-
-                      {geoStatus && (
-                        <div className="text-xs font-bold text-slate-600">
-                          {geoStatus}
-                        </div>
-                      )}
-
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold"
-                          onClick={() => {
-                            setGeoStatus("");
-                            if (!("geolocation" in navigator)) {
-                              setGeoStatus("Geolocation not supported.");
-                              return;
-                            }
-                            navigator.geolocation.getCurrentPosition(
-                              (pos) => {
-                                setLatitude(Number(pos.coords.latitude));
-                                setLongitude(Number(pos.coords.longitude));
-                                setGeoStatus("Location captured.");
-                              },
-                              (err) =>
-                                setGeoStatus(
-                                  err?.message || "Location unavailable."
-                                ),
-                              {
-                                enableHighAccuracy: true,
-                                timeout: 8000,
-                                maximumAge: 10_000,
-                              }
-                            );
-                          }}
-                        >
-                          Use my location
-                        </button>
-                        <button
-                          type="button"
-                          className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold"
-                          onClick={() => {
-                            setLatitude("");
-                            setLongitude("");
-                            setGeoStatus("Location cleared.");
-                          }}
-                        >
-                          Clear
-                        </button>
-                      </div>
+                    <div className="mt-2 space-y-1.5 pt-2 border-t border-slate-200">
+                      <SmallField label="Lat">
+                        <input
+                          type="number"
+                          step="any"
+                          value={String(latitude)}
+                          onChange={(e) =>
+                            setLatitude(e.target.value === "" ? "" : Number(e.target.value))
+                          }
+                          className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-base font-semibold"
+                        />
+                      </SmallField>
+                      <SmallField label="Lon">
+                        <input
+                          type="number"
+                          step="any"
+                          value={String(longitude)}
+                          onChange={(e) =>
+                            setLongitude(e.target.value === "" ? "" : Number(e.target.value))
+                          }
+                          className="h-8 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold"
+                        />
+                      </SmallField>
+                      <button
+                        type="button"
+                        className="w-full h-8 rounded-lg border border-slate-200 bg-white text-sm font-bold hover:bg-slate-50"
+                        onClick={() => {
+                          if (!("geolocation" in navigator)) {
+                            setGeoStatus("N/A");
+                            return;
+                          }
+                          navigator.geolocation.getCurrentPosition(
+                            (pos) => {
+                              setLatitude(Number(pos.coords.latitude));
+                              setLongitude(Number(pos.coords.longitude));
+                              setGeoStatus("✓");
+                            },
+                            () => setGeoStatus("✕"),
+                            { enableHighAccuracy: true, timeout: 8000, maximumAge: 10_000 }
+                          );
+                        }}
+                      >
+                        Use GPS
+                      </button>
                     </div>
                   )}
                 </Section>
               </div>
             </div>
 
-            {meQ.isError && (
-              <div className="mt-3 text-[11px] font-bold text-amber-700">
-                Could not load agent via /users/me (missing tenant header or
-                backend restriction). Showing auth user fallback.
-              </div>
-            )}
-            {placeAllocQ.isError && isCreate && selectedPlace ? (
-              <div className="mt-3 text-[11px] font-bold text-amber-700">
-                Could not load Polling Place Allocation for this place. Ballots
-                Issued / Registered Voters will show as —.
-              </div>
-            ) : null}
             {isCreate && createM.isError && (
-              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-base font-bold text-red-700">
                 {friendlyError(createM.error)}
               </div>
             )}
-            {isEdit && updateM.isError && (
-              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
-                {friendlyError(updateM.error)}
-              </div>
-            )}
-            {isEdit && flagM.isError && (
-              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-700">
-                {friendlyError(flagM.error)}
+            {isEdit && (updateM.isError || flagM.isError) && (
+              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-base font-bold text-red-700">
+                {friendlyError(updateM.error || flagM.error)}
               </div>
             )}
           </div>
 
           {/* footer */}
-          <div className="sticky bottom-0 z-10 border-t bg-white px-3 py-3">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          <div className="sticky bottom-0 border-t bg-white px-3 py-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={props.onClose}
+              disabled={busy}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-4 text-base font-bold hover:bg-slate-50 disabled:opacity-60"
+            >
+              Cancel
+            </button>
+
+            {isEdit && (
               <button
                 type="button"
-                onClick={props.onClose}
-                disabled={busy}
-                className={`h-10 w-full sm:w-auto rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold ${
-                  busy ? "opacity-60" : "hover:bg-slate-50"
-                }`}
-              >
-                Cancel
-              </button>
-
-              {/* ✅ EDIT: Apply Flag / Unflag based on checkbox */}
-              {isEdit ? (
-                <button
-                  type="button"
-                  disabled={
-                    busy ||
-                    !props.submissionId ||
-                    editQ.isLoading ||
-                    (flagChecked && !flagReason.trim())
-                  }
-                  onClick={() => {
-                    if (!props.submissionId) return;
-
-                    if (flagChecked) {
-                      const reason = flagReason.trim();
-                      if (!reason) {
-                        alert("Reason is required when flagging.");
-                        return;
-                      }
-                      flagM.mutate({
-                        id: props.submissionId,
-                        flagged: true,
-                        comments: reason,
-                      });
+                disabled={
+                  busy || !props.submissionId || editQ.isLoading || (flagChecked && !flagReason.trim())
+                }
+                onClick={() => {
+                  if (!props.submissionId) return;
+                  if (flagChecked) {
+                    if (!flagReason.trim()) {
+                      alert("Reason required");
                       return;
                     }
+                    flagM.mutate({ id: props.submissionId, flagged: true, comments: flagReason });
+                    return;
+                  }
+                  if (!confirm("Unflag?")) return;
+                  flagM.mutate({ id: props.submissionId, flagged: false });
+                }}
+                className={`h-9 rounded-lg px-4 text-base font-bold text-white ${
+                  busy ? "bg-slate-400" : isFlagged ? "bg-red-600 hover:bg-red-700" : "bg-slate-900 hover:bg-black"
+                }`}
+              >
+                {flagChecked ? "Flag" : "Unflag"}
+              </button>
+            )}
 
-                    if (!confirm("Unflag this submission?")) return;
-                    flagM.mutate({
-                      id: props.submissionId,
-                      flagged: false,
-                      comments: undefined,
-                    });
+            {isCreate && (
+              <>
+                <button
+                  type="button"
+                  disabled={!canSaveDraft}
+                  onClick={() => {
+                    if (!orgIdForCreate) {
+                      alert("Select tenant");
+                      return;
+                    }
+                    const req = buildCreateReq(true);
+                    createM.mutate(req, { onSuccess: () => props.onClose() });
                   }}
-                  className={`h-10 w-full sm:w-auto rounded-xl px-4 text-sm font-extrabold text-white ${
-                    busy || !props.submissionId
-                      ? "bg-slate-400"
-                      : isFlagged
-                      ? "bg-slate-700 hover:bg-slate-800"
-                      : "bg-slate-900 hover:bg-black"
-                  }`}
+                  className="h-9 rounded-lg border border-slate-200 bg-white px-4 text-base font-bold hover:bg-slate-50 disabled:opacity-60"
                 >
-                  {flagChecked ? "Apply Flag" : "Unflag"}
+                  Draft
                 </button>
-              ) : null}
 
-              {isCreate ? (
-                <>
+                <button
+                  type="button"
+                  disabled={!canActuallySubmit}
+                  onClick={() => {
+                    if (!orgIdForCreate || exceedsIssued || exceedsRegistered) return;
+                    const req = buildCreateReq(false);
+                    createM.mutate(req, { onSuccess: () => props.onClose() });
+                  }}
+                  className="h-9 rounded-lg bg-slate-900 hover:bg-black text-white px-4 text-base font-bold disabled:bg-slate-400"
+                >
+                  Submit
+                </button>
+              </>
+            )}
+
+            {isEdit && (
+              <>
+                {isDraft && (
                   <button
                     type="button"
-                    disabled={!canSaveDraft}
+                    disabled={!canSubmitEditDraft}
                     onClick={() => {
-                      if (!orgIdForCreate) {
-                        alert("Select a tenant (org) first.");
-                        return;
-                      }
-                      if (flagChecked && !flagReason.trim()) {
-                        alert("Reason is required when flagging.");
-                        return;
-                      }
-                      const req = buildCreateReq(true);
-                      createM.mutate(req, { onSuccess: () => props.onClose() });
+                      if (!props.submissionId) return;
+                      const req = buildUpdateReq();
+                      updateM.mutate(
+                        {
+                          id: props.submissionId,
+                          req,
+                          files: files.length ? files : undefined,
+                        },
+                        { onSuccess: () => props.onClose() }
+                      );
                     }}
-                    className={`h-10 w-full sm:w-auto rounded-xl border border-slate-200 bg-white px-4 text-sm font-extrabold ${
-                      !canSaveDraft || createM.isPending
-                        ? "opacity-60"
-                        : "hover:bg-slate-50"
-                    }`}
-                  >
-                    Save Draft
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={!canActuallySubmit}
-                    onClick={() => {
-                      if (!orgIdForCreate) {
-                        alert("Select a tenant (org) first.");
-                        return;
-                      }
-                      if (flagChecked && !flagReason.trim()) {
-                        alert("Reason is required when flagging.");
-                        return;
-                      }
-                      if (exceedsIssued) {
-                        alert("Ballots In Box cannot exceed Ballots Issued.");
-                        return;
-                      }
-                      if (exceedsRegistered) {
-                        alert(
-                          "Ballots In Box cannot exceed Registered Voters."
-                        );
-                        return;
-                      }
-                      const req = buildCreateReq(false);
-                      createM.mutate(req, { onSuccess: () => props.onClose() });
-                    }}
-                    className={`h-10 w-full sm:w-auto rounded-xl px-4 text-sm font-extrabold text-white ${
-                      !canActuallySubmit || createM.isPending
-                        ? "bg-slate-400"
-                        : "bg-slate-900 hover:bg-black"
-                    }`}
+                    className="h-9 rounded-lg bg-slate-900 hover:bg-black text-white px-4 text-base font-bold disabled:bg-slate-400"
                   >
                     Submit
                   </button>
-                </>
-              ) : (
-                <>
-                  {isDraft ? (
-                    <button
-                      type="button"
-                      disabled={updateM.isPending || !props.submissionId}
-                      onClick={() => {
-                        if (!props.submissionId) return;
-                        const req = buildUpdateReq();
-                        updateM.mutate(
-                          {
-                            id: props.submissionId,
-                            req,
-                            files: files.length ? files : undefined,
-                          },
-                          { onSuccess: () => props.onClose() }
-                        );
-                      }}
-                      className={`h-10 w-full sm:w-auto rounded-xl px-4 text-sm font-extrabold text-white ${
-                        updateM.isPending
-                          ? "bg-slate-400"
-                          : "bg-slate-900 hover:bg-black"
-                      }`}
-                    >
-                      Save Draft
-                    </button>
-                  ) : null}
-
-                  {isDraft ? (
-                    <button
-                      type="button"
-                      disabled={!canSubmitEditDraft}
-                      onClick={() => {
-                        if (!props.submissionId) return;
-                        if (!files.length) {
-                          alert("Upload tally sheet to submit this draft.");
-                          return;
-                        }
-                        if (exceedsIssued) {
-                          alert("Ballots In Box cannot exceed Ballots Issued.");
-                          return;
-                        }
-                        if (exceedsRegistered) {
-                          alert(
-                            "Ballots In Box cannot exceed Registered Voters."
-                          );
-                          return;
-                        }
-                        const req = buildUpdateReq();
-                        updateM.mutate(
-                          {
-                            id: props.submissionId,
-                            req,
-                            files: files.length ? files : undefined,
-                          },
-                          { onSuccess: () => props.onClose() }
-                        );
-                      }}
-                      className={`h-10 w-full sm:w-auto rounded-xl px-4 text-sm font-extrabold text-white ${
-                        !canSubmitEditDraft
-                          ? "bg-slate-400"
-                          : "bg-slate-900 hover:bg-black"
-                      }`}
-                    >
-                      Submit
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={updateM.isPending || !props.submissionId}
-                      onClick={() => {
-                        if (!props.submissionId) return;
-                        if (exceedsIssued) {
-                          alert("Ballots In Box cannot exceed Ballots Issued.");
-                          return;
-                        }
-                        if (exceedsRegistered) {
-                          alert(
-                            "Ballots In Box cannot exceed Registered Voters."
-                          );
-                          return;
-                        }
-                        const req = buildUpdateReq();
-                        updateM.mutate(
-                          {
-                            id: props.submissionId,
-                            req,
-                            files: files.length ? files : undefined,
-                          },
-                          { onSuccess: () => props.onClose() }
-                        );
-                      }}
-                      className={`h-10 w-full sm:w-auto rounded-xl px-4 text-sm font-extrabold text-white ${
-                        updateM.isPending
-                          ? "bg-slate-400"
-                          : "bg-slate-900 hover:bg-black"
-                      }`}
-                    >
-                      Save Changes
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-
-            {isCreate && (!props.effectiveOrgId || !files.length) && (
-              <div className="mt-2 text-[11px] text-slate-600">
-                Tip: Draft can be saved without evidence. Submit requires tally
-                sheet.
-              </div>
+                )}
+                <button
+                  type="button"
+                  disabled={updateM.isPending || !props.submissionId}
+                  onClick={() => {
+                    if (!props.submissionId) return;
+                    const req = buildUpdateReq();
+                    updateM.mutate(
+                      {
+                        id: props.submissionId,
+                        req,
+                        files: files.length ? files : undefined,
+                      },
+                      { onSuccess: () => props.onClose() }
+                    );
+                  }}
+                  className="h-9 rounded-lg bg-slate-900 hover:bg-black text-white px-4 text-base font-bold disabled:bg-slate-400"
+                >
+                  Save
+                </button>
+              </>
             )}
-            {isEdit && isDraft && !files.length ? (
-              <div className="mt-2 text-[11px] text-slate-600">
-                Tip: Upload tally sheet to enable Submit for this draft.
-              </div>
-            ) : null}
           </div>
         </div>
       </div>
@@ -1647,20 +1272,25 @@ export default function SubmissionFormModal(props: {
   );
 }
 
-/** ---------- small components ---------- */
+/** components */
 function Section(props: {
   title?: string;
+  bgColor?: string;
+  borderColor?: string;
   right?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  const bg = props.bgColor || "bg-white";
+  const border = props.borderColor || "border-slate-200";
+
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
-      {props.title ? (
-        <div className="flex items-center justify-between gap-3 mb-2">
-          <div className="text-sm font-extrabold">{props.title}</div>
-          {props.right ? <div className="shrink-0">{props.right}</div> : null}
+    <div className={`rounded-xl border ${border} ${bg} px-3 py-3`}>
+      {props.title && (
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="text-xl font-bold text-slate-900">{props.title}</div>
+          {props.right}
         </div>
-      ) : null}
+      )}
       {props.children}
     </div>
   );
@@ -1669,49 +1299,44 @@ function Section(props: {
 function Field(props: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1 text-sm font-extrabold text-slate-600">
-        {props.label}
-      </div>
+      <div className="text-sm font-bold text-slate-600 mb-1">{props.label}</div>
       {props.children}
     </div>
   );
 }
 
-function ReadOnlyStat(props: { label: string; value: string }) {
+function SmallField(props: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1 text-sm font-extrabold text-slate-600">
-        {props.label}
-      </div>
-      <div className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 grid items-center">
-        <span className="text-sm font-extrabold text-slate-900">
-          {props.value}
-        </span>
-      </div>
+      <div className="text-sm font-bold text-slate-600 mb-0.5">{props.label}</div>
+      {props.children}
     </div>
   );
 }
 
-function NumberField(props: {
-  label: string;
-  value: number | "";
-  onChange: (v: number | "") => void;
-}) {
+function Stat(props: { label: string; value: string }) {
   return (
-    <div>
-      <div className="mb-1 text-sm font-extrabold text-slate-600">
-        {props.label}
-      </div>
+    <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+      <span className="text-base font-bold text-slate-600">{props.label}</span>
+      <span className="text-xl font-extrabold text-slate-900">{props.value}</span>
+    </div>
+  );
+}
+
+function SmallNumberField(props: { label: string; value: number | ""; onChange: (v: number | "") => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      <label className="text-base font-bold text-slate-600 w-19">{props.label}</label>
       <input
         type="number"
         min={0}
         inputMode="numeric"
         value={String(props.value)}
-        onChange={(e) =>
-          props.onChange(e.target.value === "" ? "" : clampNum(e.target.value))
-        }
-        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-extrabold focus:outline-none focus:ring-2 focus:ring-slate-200"
+        onChange={(e) => props.onChange(e.target.value === "" ? "" : clampNum(e.target.value))}
+        className="h-8 w-20 rounded-lg border border-slate-200 bg-white px-2 text-right text-xl font-bold focus:outline-none focus:ring-1 focus:ring-slate-200"
       />
     </div>
   );
 }
+
+

@@ -1,5 +1,6 @@
 package election.ems_backend.controller;
 
+import election.ems_backend.dto.AdminResetPasswordRequest;
 import election.ems_backend.dto.UserCreateRequest;
 import election.ems_backend.dto.UserDto;
 import election.ems_backend.dto.UserUpdateRequest;
@@ -117,7 +118,6 @@ public class SystemUserController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void setVerified(@PathVariable UUID id, @RequestBody @Valid SetBooleanRequest body) {
         authz.requireAnyInTenantOrPlatformAdmin();
-//        authz.requireAny("PARTY_ADMIN", "ADMIN", "SYSTEM_ADMIN");
         systemUserService.setVerifiedInTenant(id, body.value());
     }
 
@@ -126,21 +126,27 @@ public class SystemUserController {
     @PostMapping("/{userId}/password")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void changePassword(@PathVariable UUID userId, @Valid @RequestBody ChangePasswordRequest req) {
-        authz.requireAny("PARTY_ADMIN", "ADMIN", "SYSTEM_ADMIN");
         systemUserService.changePassword(userId, req);
     }
 
-
     @PostMapping("/{userId}/password/reset")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void adminResetPassword(@PathVariable UUID userId, @RequestBody @Valid AdminResetPasswordRequest body) {
-        systemUserService.adminResetPasswordInTenant(userId, body.newPassword());
+    public void adminResetPassword(
+            @PathVariable UUID userId,
+            @RequestBody @Valid AdminResetPasswordRequest body) {
+        authz.requireAny("TENANT_ADMIN", "ADMIN", "SYSTEM_ADMIN");
+
+        systemUserService.adminResetPasswordInTenant(
+                userId,
+                body.newPassword(),
+                Boolean.TRUE.equals(body.sendEmail())
+        );
     }
 
     @PatchMapping("/{userId}/lock")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void setLock(@PathVariable UUID userId, @Valid @RequestBody SetLockRequest body) {
-        authz.requireAny("PARTY_ADMIN", "ADMIN", "SYSTEM_ADMIN");
+        authz.requireAny("TENANT_ADMIN", "ADMIN", "SYSTEM_ADMIN");
         systemUserService.setLockInTenant(userId, body.lock(), body.until());
     }
 
@@ -161,14 +167,14 @@ public class SystemUserController {
     @PatchMapping("/{userId}/role")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void assignRole(@PathVariable UUID userId, @RequestBody @Valid AssignRoleRequest body) {
-        authz.requireAny("PARTY_ADMIN", "ADMIN", "SYSTEM_ADMIN");
+        authz.requireAny("TENANT_ADMIN", "ADMIN", "SYSTEM_ADMIN");
         systemUserService.assignRoleInTenant(userId, body.roleName());
     }
 
     @PatchMapping("/{id}/party")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void assignParty(@PathVariable UUID id, @RequestBody AssignIdRequest body) {
-        authz.requireAny("PARTY_ADMIN", "ADMIN", "SYSTEM_ADMIN");
+        authz.requireAny("TENANT_ADMIN", "ADMIN", "SYSTEM_ADMIN");
         systemUserService.assignPartyInTenant(id, body == null ? null : body.id());
     }
 
@@ -236,6 +242,12 @@ public class SystemUserController {
             if (flag instanceof Boolean b && b) isSystemAdmin = true;
         }
 
+        // ✅ FIXED: Check if user is a PLATFORM user (SYSTEM_ADMIN or ADMIN role)
+        boolean isPlatformUser = isSystemAdmin ||
+                authentication.getAuthorities().stream().anyMatch(a ->
+                        a.getAuthority() != null && a.getAuthority().equalsIgnoreCase("ROLE_ADMIN")
+                );
+
         // 3) TENANT MODE (orgId present): membership-scoped lookup
         if (orgId != null) {
             if (userId != null) {
@@ -250,10 +262,10 @@ public class SystemUserController {
                     .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).build());
         }
 
-        // 4) PLATFORM MODE (orgId missing): ONLY SYSTEM_ADMIN is allowed
-        if (!isSystemAdmin) {
+        // 4) PLATFORM MODE (orgId missing): Allow ALL platform users (SYSTEM_ADMIN or ADMIN)
+        if (!isPlatformUser) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(null); // or return a structured error: "X-Org-Id header is required"
+                    .body(null); // Only return error for non-platform users
         }
 
         if (userId != null) {
@@ -272,8 +284,6 @@ public class SystemUserController {
 
     public record SetBooleanRequest(@NotNull Boolean value) {}
 
-    public record AdminResetPasswordRequest(@NotBlank String newPassword) {}
-
     public record SetLockRequest(
             @NotNull Boolean lock,
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime until // optional when lock=false
@@ -283,4 +293,6 @@ public class SystemUserController {
 
     /** Pass {"id":"<uuid>"} or {} / null to clear (for party/county/default-org). */
     public record AssignIdRequest(UUID id) {}
+
+
 }

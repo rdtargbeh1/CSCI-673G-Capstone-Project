@@ -15,6 +15,7 @@ public class CountyStatsOfficialMapper {
             d.setElectionId(e.getId().getElectionId());
             d.setContestId(e.getId().getContestId());
             d.setCountyId(e.getId().getCountyId());
+
         }
 
         d.setCountyName(e.getCountyName());

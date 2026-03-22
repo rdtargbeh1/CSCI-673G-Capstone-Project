@@ -1,4 +1,5 @@
 // src/pages/elections/workspace/tabs/setup/masters/CandidatesMasterTab.tsx
+
 import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -8,6 +9,9 @@ import {
   Search,
   Trash2,
   Image as ImageIcon,
+  X,
+  AlertCircle,
+  CheckCircle,
 } from "lucide-react";
 
 import { useAuthStore } from "../../../../../../shared/store/authStore";
@@ -31,19 +35,22 @@ import {
   type PartyDto,
 } from "../../../../../../shared/services/partyService";
 
-/** ---------------- helpers ---------------- */
+/** ============ HELPERS ============ */
 function safeStr(v: any) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
+
 function fmtDate(v: any): string {
   if (!v) return "";
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return safeStr(v);
   return d.toLocaleString();
 }
+
 function normalizeName(v: string) {
   return v.trim().replace(/\s+/g, " ");
 }
+
 function friendlySaveError(err: any): string {
   const msg =
     safeStr(err?.response?.data?.message) ||
@@ -115,6 +122,7 @@ function CompactTable(props: {
   );
 }
 
+/** ============ MAIN COMPONENT ============ */
 export default function CandidatesMasterTab() {
   const qc = useQueryClient();
 
@@ -146,7 +154,7 @@ export default function CandidatesMasterTab() {
   const [isActive, setIsActive] = useState(true);
   const [independent, setIndependent] = useState(false);
 
-  // Parties for dropdown
+  /** ============ PARTIES DROPDOWN ============ */
   const partiesQ = useQuery({
     queryKey: ["party-master-dropdown"],
     queryFn: () => searchParties({ page: 0, size: 500, q: undefined }),
@@ -159,8 +167,7 @@ export default function CandidatesMasterTab() {
     [partiesQ.data]
   );
 
-  // ✅ Independent perfect paging:
-  // when filter == Independent -> send independent=true and DO NOT send partyId
+  /** ============ CANDIDATES QUERY ============ */
   const independentForApi =
     partyFilter === PARTY_FILTER_INDEPENDENT ? true : undefined;
 
@@ -175,7 +182,7 @@ export default function CandidatesMasterTab() {
       page,
       q,
       position,
-      partyFilter, // include in key
+      partyFilter,
       active,
     ],
     queryFn: () =>
@@ -186,7 +193,7 @@ export default function CandidatesMasterTab() {
         position: position.trim() || undefined,
         partyId: partyIdForApi,
         active: active === "" ? undefined : active === "true",
-        independent: independentForApi, // ✅ NEW param (perfect paging)
+        independent: independentForApi,
       }),
     staleTime: 10_000,
     retry: 1,
@@ -198,6 +205,7 @@ export default function CandidatesMasterTab() {
   );
   const totalPages = Math.max(1, candidatesQ.data?.totalPages ?? 1);
 
+  /** ============ HANDLERS (BEFORE MUTATIONS) ============ */
   const refreshNow = async () => {
     await qc.invalidateQueries({ queryKey: ["candidate-master"] });
     await candidatesQ.refetch();
@@ -209,8 +217,8 @@ export default function CandidatesMasterTab() {
     setFormPosition("");
     setFormPartyId("");
     setPhotoUrl("");
-    setIsActive(true); // ✅ default true
-    setIndependent(false); // ✅ default unchecked
+    setIsActive(true);
+    setIndependent(false);
     setTouched(false);
     setOpen(true);
   };
@@ -222,11 +230,12 @@ export default function CandidatesMasterTab() {
     setFormPartyId(safeStr((c as any)?.partyId));
     setPhotoUrl(safeStr(c.photoUrl));
     setIsActive(getActiveValue(c));
-    setIndependent(getIndependentValue(c)); // ✅ uses db value safely
+    setIndependent(getIndependentValue(c));
     setTouched(false);
     setOpen(true);
   };
 
+  /** ============ MUTATIONS ============ */
   const createM = useMutation({
     mutationFn: async () => {
       const name = normalizeName(fullName);
@@ -277,6 +286,7 @@ export default function CandidatesMasterTab() {
     onSuccess: refreshNow,
   });
 
+  /** ============ STATE ============ */
   const saving = createM.isPending || updateM.isPending;
 
   const save = () => {
@@ -286,11 +296,14 @@ export default function CandidatesMasterTab() {
     else createM.mutate();
   };
 
+  const fullNameValid = normalizeName(fullName);
+
   const selectedRowIndex = useMemo(() => {
     if (!selected) return -1;
     return items.findIndex((x) => x.candidateId === selected.candidateId);
   }, [items, selected]);
 
+  /** ============ TABLE ROWS ============ */
   const rows = useMemo(() => {
     return items.map((c) => {
       const activeVal = getActiveValue(c);
@@ -303,7 +316,6 @@ export default function CandidatesMasterTab() {
               c.abbreviation ? ` (${c.abbreviation})` : ""
             }`;
 
-      // ✅ highly-visible checkboxes (DB-driven)
       const independentCheck = (
         <input
           type="checkbox"
@@ -333,7 +345,7 @@ export default function CandidatesMasterTab() {
         >
           <button
             type="button"
-            className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-blue-500"
+            className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-blue-500 hover:bg-blue-50 transition"
             title="Show photo"
             onClick={() => setSelected(c)}
           >
@@ -343,7 +355,7 @@ export default function CandidatesMasterTab() {
           <button
             type="button"
             disabled={!canEdit}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-600 ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-600 hover:bg-green-50 transition ${
               !canEdit ? "opacity-60" : ""
             }`}
             title={
@@ -357,7 +369,7 @@ export default function CandidatesMasterTab() {
           <button
             type="button"
             disabled={!canEdit || deleteM.isPending}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 hover:bg-red-50 transition ${
               !canEdit || deleteM.isPending ? "opacity-60" : ""
             }`}
             title={
@@ -376,7 +388,6 @@ export default function CandidatesMasterTab() {
       );
 
       return [
-        // ✅ name only (no underline/second line)
         <div key={c.candidateId}>{c.fullName}</div>,
 
         <span key="pos" className="text-slate-700">
@@ -404,6 +415,7 @@ export default function CandidatesMasterTab() {
     });
   }, [items, canEdit, deleteM.isPending]);
 
+  /** ============ RENDER ============ */
   return (
     <div className="flex flex-col gap-3">
       {!canEdit ? (
@@ -413,7 +425,7 @@ export default function CandidatesMasterTab() {
         />
       ) : null}
 
-      {/* Header actions */}
+      {/* ============ HEADER ACTIONS ============ */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
@@ -428,7 +440,7 @@ export default function CandidatesMasterTab() {
                 setPage(0);
               }}
               placeholder="Search candidate name…"
-              className="pl-8 pr-3 py-2 rounded-lg border border-slate-200 bg-white min-w-[240px] outline-none"
+              className="pl-8 pr-3 py-2 rounded-lg border border-slate-200 bg-white min-w-[240px] outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -439,17 +451,16 @@ export default function CandidatesMasterTab() {
               setPage(0);
             }}
             placeholder="Filter by position…"
-            className="px-3 py-2 rounded-lg border border-slate-200 bg-white min-w-[200px] outline-none"
+            className="px-3 py-2 rounded-lg border border-slate-200 bg-white min-w-[200px] outline-none focus:ring-2 focus:ring-blue-500"
           />
 
-          {/* ✅ Party filter includes Independent option (perfect paging via independent=true) */}
           <select
             value={partyFilter}
             onChange={(e) => {
               setPartyFilter(e.target.value);
               setPage(0);
             }}
-            className="px-3 py-2 rounded-lg border border-slate-200 bg-white outline-none"
+            className="px-3 py-2 rounded-lg border border-slate-200 bg-white outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All parties</option>
             <option value={PARTY_FILTER_INDEPENDENT}>Independent</option>
@@ -466,7 +477,7 @@ export default function CandidatesMasterTab() {
               setActive(e.target.value as any);
               setPage(0);
             }}
-            className="px-3 py-2 rounded-lg border border-slate-200 bg-white outline-none"
+            className="px-3 py-2 rounded-lg border border-slate-200 bg-white outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All status</option>
             <option value="true">Active</option>
@@ -483,7 +494,7 @@ export default function CandidatesMasterTab() {
               setPage(0);
               setSelected(null);
             }}
-            className="px-3 py-2 rounded-lg border border-slate-200 bg-white"
+            className="px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition"
             title="Clear filters"
           >
             Clear
@@ -495,7 +506,7 @@ export default function CandidatesMasterTab() {
             <button
               type="button"
               onClick={openCreate}
-              className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-600 text-white font-bold"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition shadow-sm"
               title="Create candidate (SYSTEM/NEC)"
             >
               <Plus size={16} />
@@ -509,7 +520,7 @@ export default function CandidatesMasterTab() {
             type="button"
             onClick={refreshNow}
             disabled={candidatesQ.isFetching}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-100 ${
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
               candidatesQ.isFetching ? "opacity-60" : ""
             }`}
             title="Refresh candidates"
@@ -520,7 +531,7 @@ export default function CandidatesMasterTab() {
         </div>
       </div>
 
-      {/* Status */}
+      {/* ============ STATUS ============ */}
       {candidatesQ.isLoading ? (
         <div className="p-2 text-slate-600">Loading candidates…</div>
       ) : candidatesQ.isError ? (
@@ -529,7 +540,7 @@ export default function CandidatesMasterTab() {
         </div>
       ) : null}
 
-      {/* Table + Photo Viewer */}
+      {/* ============ TABLE + PHOTO VIEWER ============ */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-3">
         <div>
           <CompactTable
@@ -603,7 +614,7 @@ export default function CandidatesMasterTab() {
         </div>
       </div>
 
-      {/* Pagination */}
+      {/* ============ PAGINATION ============ */}
       <div className="flex justify-between items-center gap-2">
         <div className="text-sm text-slate-500">
           Page <b>{page + 1}</b> of <b>{totalPages}</b>
@@ -613,8 +624,8 @@ export default function CandidatesMasterTab() {
             type="button"
             disabled={page <= 0}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
-            className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-              page <= 0 ? "opacity-50" : ""
+            className={`px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
+              page <= 0 ? "opacity-50 cursor-not-allowed" : ""
             }`}
             title="Previous page"
           >
@@ -624,8 +635,8 @@ export default function CandidatesMasterTab() {
             type="button"
             disabled={page >= totalPages - 1}
             onClick={() => setPage((p) => p + 1)}
-            className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-              page >= totalPages - 1 ? "opacity-50" : ""
+            className={`px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
+              page >= totalPages - 1 ? "opacity-50 cursor-not-allowed" : ""
             }`}
             title="Next page"
           >
@@ -634,6 +645,7 @@ export default function CandidatesMasterTab() {
         </div>
       </div>
 
+      {/* ============ NOTES ============ */}
       <div className="mt-1">
         <PlaceholderNote
           title="Notes"
@@ -645,52 +657,55 @@ export default function CandidatesMasterTab() {
         />
       </div>
 
-      {/* Modal */}
+      {/* ============ CREATE/EDIT MODAL (ENHANCED UX) ============ */}
       {open ? (
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm"
           onClick={() => {
             if (saving) return;
             setOpen(false);
           }}
         >
           <div
-            className="w-full max-w-[950px] bg-white rounded-2xl border border-slate-200 p-4 mx-auto shadow-xl"
+            className="w-full max-w-210 bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between gap-3">
-              <div>
-                <div className="font-extrabold text-base">
-                  {editing ? "Edit Candidate" : "Create Candidate"}
-                </div>
-                <div className="text-sm text-slate-500 mt-0.5">
+            {/* ============ HEADER WITH BLUE GRADIENT ============ */}
+            <div className="bg-gradient-to-r from-blue-700 via-blue-500 to-blue-400 px-4 sm:px-8 py-6 sm:py-8 border-b border-blue-600 flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-2xl sm:text-3xl font-bold text-white">
+                  {editing ? "✏️ Edit Candidate" : "➕ Create Candidate"}
+                </h2>
+                <p className="text-sm sm:text-base font-semibold text-blue-100 mt-2">
                   {editing
-                    ? "Update candidate master data."
-                    : "Create a new global candidate."}
-                </div>
+                    ? `Update "${safeStr(editing.fullName)}" master data.`
+                    : "Create a new global candidate for elections."}
+                </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  if (saving) return;
+                  setOpen(false);
+                }}
                 disabled={saving}
-                className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                  saving ? "opacity-60" : ""
-                }`}
-                title="Close"
+                className="flex-shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border-2 border-blue-300 hover:bg-blue-700 bg-blue-600 transition text-white disabled:opacity-50"
+                title="Close modal"
               >
-                Close
+                <X size={20} />
               </button>
             </div>
 
-            <div className="grid gap-2.5 mt-3">
-              {/* Full name */}
-              <div className="grid gap-1.5">
-                <div className="text-base font-extrabold text-slate-600">
+            {/* ============ CONTENT ============ */}
+            <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 sm:py-7 space-y-5 sm:space-y-6">
+              {/* Full Name Field */}
+              <div>
+                <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
                   Full Name <span className="text-red-600">*</span>
-                </div>
+                </label>
                 <input
                   value={fullName}
                   onChange={(e) => {
@@ -698,52 +713,62 @@ export default function CandidatesMasterTab() {
                     setTouched(true);
                   }}
                   placeholder="e.g., Jane Doe"
-                  className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                 />
-                {touched && !normalizeName(fullName) ? (
-                  <div className="text-[11px] font-bold text-red-600">
-                    Required
+                {touched && !fullNameValid && (
+                  <div className="flex items-center gap-2 mt-2 text-sm text-red-600 font-semibold">
+                    <AlertCircle size={16} />
+                    Full name is required
                   </div>
-                ) : null}
+                )}
+                {touched && fullNameValid && (
+                  <div className="flex items-center gap-2 mt-2 text-sm text-green-600 font-semibold">
+                    <CheckCircle size={16} />
+                    Valid candidate name
+                  </div>
+                )}
               </div>
 
-              {/* Position + Active checkbox */}
-              <div className="grid grid-cols-2 gap-2.5">
-                <div className="grid gap-1.5">
-                  <div className="text-base font-extrabold text-slate-600">
-                    Position
-                  </div>
+              {/* Position + Active Checkbox */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                {/* Position Field */}
+                <div>
+                  <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
+                    Position <span className="text-slate-400">(optional)</span>
+                  </label>
                   <input
                     value={formPosition}
                     onChange={(e) => setFormPosition(e.target.value)}
                     placeholder="e.g., President"
-                    className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
+                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                   />
                 </div>
 
-                <div className="grid gap-1.5">
-                  <div className="text-base font-extrabold text-slate-600">
-                    Active
-                  </div>
-                  <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                {/* Active Checkbox */}
+                <div>
+                  <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
+                    Status
+                  </label>
+                  <label className="inline-flex items-center gap-3 text-base font-semibold text-slate-700 p-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer transition">
                     <input
                       type="checkbox"
                       checked={isActive}
                       onChange={(e) => setIsActive(e.target.checked)}
-                      className="h-4 w-4 accent-emerald-600"
+                      className="h-5 w-5 accent-blue-600 cursor-pointer"
                     />
-                    Active
+                    <span>Active</span>
                   </label>
                 </div>
               </div>
 
-              {/* Independent checkbox + Party */}
-              <div className="grid grid-cols-2 gap-2.5">
-                <div className="grid gap-1.5">
-                  <div className="text-base font-extrabold text-slate-600">
-                    Independent
-                  </div>
-                  <label className="inline-flex items-center gap-2 text-base text-slate-700">
+              {/* Independent Checkbox + Party Dropdown */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                {/* Independent Checkbox */}
+                <div>
+                  <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
+                    Party Affiliation
+                  </label>
+                  <label className="inline-flex items-center gap-3 text-base font-semibold text-slate-700 p-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer transition">
                     <input
                       type="checkbox"
                       checked={independent}
@@ -752,85 +777,123 @@ export default function CandidatesMasterTab() {
                         setIndependent(v);
                         if (v) setFormPartyId("");
                       }}
-                      className="h-4 w-4 accent-emerald-600"
+                      className="h-5 w-5 accent-blue-600 cursor-pointer"
                     />
-                    Independent
-                    
+                    <span>Independent</span>
                   </label>
-                  <div className="text-xs">Check <strong className="text-red-700">Independent</strong> if candidate is Independent</div>
+                  <p className="text-xs sm:text-sm text-slate-500 mt-2">
+                    Check if candidate is running independently
+                  </p>
                 </div>
 
-                <div className="grid gap-1.5">
-                  <div className="text-base font-extrabold text-slate-600">
-                    Party
-                  </div>
+                {/* Party Dropdown */}
+                <div>
+                  <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
+                    Party <span className="text-slate-400">(optional)</span>
+                  </label>
                   <select
                     value={formPartyId}
                     onChange={(e) => setFormPartyId(e.target.value)}
                     disabled={independent}
-                    className={`px-3 py-2.5 rounded-lg border border-slate-200 outline-none bg-white ${
-                      independent ? "opacity-60" : ""
+                    className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition ${
+                      independent ? "opacity-60 cursor-not-allowed" : ""
                     }`}
                   >
                     <option value="">-- Select Party --</option>
                     {parties.map((p) => (
                       <option key={p.partyId} value={p.partyId}>
                         {p.partyName} ({p.abbreviation})
-                        
                       </option>
                     ))}
                   </select>
+                  {independent && (
+                    <p className="text-xs sm:text-sm text-amber-600 font-semibold mt-2">
+                      📌 Party field is disabled for independent candidates
+                    </p>
+                  )}
                 </div>
               </div>
 
-              {/* Photo URL */}
-              <div className="grid gap-1.5">
-                <div className="text-base font-extrabold text-slate-600">
-                  Photo URL
-                </div>
+              {/* Photo URL Field */}
+              <div>
+                <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
+                  Photo URL <span className="text-slate-400">(optional)</span>
+                </label>
                 <input
                   value={photoUrl}
                   onChange={(e) => setPhotoUrl(e.target.value)}
-                  placeholder="https://…"
-                  className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
+                  placeholder="https://example.com/photo.jpg"
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                 />
+                <p className="text-xs sm:text-sm text-slate-500 mt-2">
+                  PNG, JPG, or SVG format recommended (max 2MB)
+                </p>
               </div>
 
-              {/* Errors */}
-              {createM.isError || updateM.isError ? (
-                <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm font-bold">
-                  {createM.isError
-                    ? friendlySaveError(createM.error)
-                    : friendlySaveError(updateM.error)}
+              {/* Error Message */}
+              {(createM.isError || updateM.isError) && (
+                <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-3 sm:p-4">
+                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                  <div className="text-sm text-red-700 font-semibold">
+                    {createM.isError
+                      ? friendlySaveError(createM.error)
+                      : friendlySaveError(updateM.error)}
+                  </div>
                 </div>
-              ) : null}
+              )}
 
-              {/* Footer */}
-              <div className="flex justify-end gap-2 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  disabled={saving}
-                  className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                    saving ? "opacity-60" : ""
-                  }`}
-                  title="Cancel"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="button"
-                  onClick={save}
-                  disabled={!canEdit || saving}
-                  className={`px-3 py-2 rounded-lg border border-slate-200 bg-white font-extrabold ${
-                    !canEdit || saving ? "opacity-60" : ""
-                  }`}
-                  title={canEdit ? "Save candidate" : "Read-only (Tenant)"}
-                >
-                  Save
-                </button>
+              {/* Help Text */}
+              <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 sm:p-4">
+                <p className="text-sm text-blue-800">
+                  <strong className="font-bold">💡 Tip:</strong> Candidate full names must be unique across the system. 
+                  {editing && (
+                    <>
+                      {" "}
+                      Changing these fields may affect existing election assignments.
+                    </>
+                  )}
+                </p>
               </div>
+            </div>
+
+            {/* ============ FOOTER ============ */}
+            <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-8 py-4 sm:py-5 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (saving) return;
+                  setOpen(false);
+                }}
+                disabled={saving}
+                className="px-4 sm:px-6 h-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-base font-semibold hover:bg-slate-50 transition disabled:opacity-50 sm:min-w-fit"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={save}
+                disabled={!canEdit || saving || !fullNameValid}
+                className={`px-4 sm:px-6 h-10 rounded-lg text-base font-semibold text-white transition flex items-center justify-center gap-2 sm:min-w-fit ${
+                  !canEdit || saving || !fullNameValid
+                    ? "bg-slate-300 cursor-not-allowed opacity-60"
+                    : "bg-blue-600 hover:bg-blue-700 shadow-sm"
+                }`}
+                title={canEdit ? "Save candidate" : "Read-only (Tenant)"}
+              >
+                {saving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span className="hidden sm:inline">Saving…</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus size={18} />
+                    <span className="hidden sm:inline">{editing ? "Update Candidate" : "Create Candidate"}</span>
+                    <span className="sm:hidden">{editing ? "Update" : "Create"}</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

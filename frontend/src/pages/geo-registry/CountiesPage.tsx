@@ -1,6 +1,7 @@
+
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Search, Trash2, X, AlertCircle } from "lucide-react";
 
 import { useAuthStore } from "../../shared/store/authStore";
 import {
@@ -17,8 +18,6 @@ import {
   Note,
   PageShell,
   Table,
-  Modal,
-  TextField,
 } from "./shared/geo-ui";
 
 /** ---------------- helpers ---------------- */
@@ -42,7 +41,6 @@ export default function CountiesPage() {
   // modal state
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CountyDto | null>(null);
-  const [touched, setTouched] = useState(false);
   const [name, setName] = useState("");
 
   const countiesQ = useQuery({
@@ -75,7 +73,6 @@ export default function CountiesPage() {
       setOpen(false);
       setEditing(null);
       setName("");
-      setTouched(false);
       await refreshNow();
     },
   });
@@ -91,7 +88,6 @@ export default function CountiesPage() {
       setOpen(false);
       setEditing(null);
       setName("");
-      setTouched(false);
       await refreshNow();
     },
   });
@@ -106,25 +102,23 @@ export default function CountiesPage() {
   const openCreate = () => {
     setEditing(null);
     setName("");
-    setTouched(false);
     setOpen(true);
   };
 
   const openEdit = (c: CountyDto) => {
     setEditing(c);
     setName(safeStr(c.countyName));
-    setTouched(false);
     setOpen(true);
   };
 
   const save = () => {
-    setTouched(true);
     if (!canEdit) return;
     if (editing) updateM.mutate();
     else createM.mutate();
   };
 
   const saving = createM.isPending || updateM.isPending;
+  const error = createM.error || updateM.error;
 
   return (
     <PageShell
@@ -150,7 +144,7 @@ export default function CountiesPage() {
             type="button"
             onClick={openCreate}
             disabled={!canEdit}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-[#0000CD] text-white px-3 py-2 text-lg font-semibold hover:bg-slate-500 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-[#0000CD] text-white px-3 py-2 text-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
             title={canEdit ? "Add County" : "NEC/SYSTEM only"}
           >
             <Plus size={16} />
@@ -175,7 +169,7 @@ export default function CountiesPage() {
                   setPage(0);
                 }}
                 placeholder="Search counties…"
-                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-base outline-none focus:ring-2 focus:ring-(--org-primary)"
+                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-base outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
@@ -203,7 +197,7 @@ export default function CountiesPage() {
           ) : null}
         </div>
 
-        {/* Table (using your geo-ui Table) */}
+        {/* Table */}
         <div className="mt-3">
           <Table
             columns={["County", "Actions"]}
@@ -230,13 +224,12 @@ export default function CountiesPage() {
                     >
                       <button
                         type="button"
-                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white text-[#008000] px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white text-green-600 px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
                         disabled={!canEdit}
                         title={canEdit ? "Edit" : "NEC/SYSTEM only"}
                         onClick={() => openEdit(c)}
                       >
-                        <Pencil size={20} />
-                        {/* Edit */}
+                        <Pencil size={16} />
                       </button>
 
                       <button
@@ -251,8 +244,7 @@ export default function CountiesPage() {
                           if (ok) deleteM.mutate(c.countyId);
                         }}
                       >
-                        <Trash2 size={20} className="text-red-600" />
-                        {/* Delete */}
+                        <Trash2 size={16} className="text-red-600" />
                       </button>
                     </div>,
                   ])
@@ -309,59 +301,107 @@ export default function CountiesPage() {
         </div>
       </Card>
 
-      {/* Modal */}
-      <Modal
-        open={open}
-        onClose={() => {
-          if (saving) return;
-          setOpen(false);
-        }}
-        title={editing ? "Edit County" : "Add County"}
-        subtitle={
-          editing ? "Update county master data." : "Create a new county."
-        }
-        footer={
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
-              onClick={() => setOpen(false)}
-              disabled={saving}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
-              onClick={save}
-              disabled={!canEdit || saving}
-              title={canEdit ? "Save" : "NEC/SYSTEM only"}
-            >
-              Save
-            </button>
-          </div>
-        }
-      >
-        <div className="grid grid-cols-1 gap-3">
-          <TextField
-            label="County Name"
-            value={name}
-            onChange={setName}
-            required
-            placeholder="e.g., Montserrado"
-            error={touched && !normalizeName(name) ? "Required" : ""}
-            onBlur={() => setTouched(true)}
-          />
-
-          {createM.isError || updateM.isError ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-base text-red-700">
-              {(createM.error as any)?.message ??
-                (updateM.error as any)?.message ??
-                "Failed to save county."}
+      {/* ✅ Enhanced Modal - Create/Edit Form */}
+      {open && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => !saving && setOpen(false)}
+        >
+          <div
+            className="w-full max-w-120 bg-white rounded-2xl shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* ✅ HEADER */}
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-8 py-6 text-white flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-2xl font-bold tracking-tight">
+                  {editing ? "Edit County" : "Add County"}
+                </h2>
+                <p className="text-blue-100 mt-1 text-sm">
+                  {editing
+                    ? "Update county master data."
+                    : "Create a new county."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                disabled={saving}
+                className="flex-shrink-0 h-10 w-10 rounded-lg bg-white/20 hover:bg-white/30 transition flex items-center justify-center text-white disabled:opacity-50"
+                aria-label="Close"
+              >
+                <X size={22} />
+              </button>
             </div>
-          ) : null}
+
+            {/* ✅ CONTENT */}
+            <div className="px-8 py-6 space-y-4">
+              {/* County Name Input */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wide block mb-2">
+                  County Name *
+                </label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !saving) {
+                      save();
+                    }
+                  }}
+                  disabled={saving}
+                  type="text"
+                  placeholder="e.g., Montserrado"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-slate-100 disabled:text-slate-500"
+                />
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="rounded-xl bg-red-50 border border-red-200 p-4 flex gap-3">
+                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                  <div>
+                    <div className="text-sm font-bold text-red-900">Error</div>
+                    <div className="text-sm text-red-800 mt-1">
+                      {(error as any)?.message ?? "Failed to save county."}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Info Message */}
+              <div className="rounded-xl bg-blue-50 border border-blue-200 p-3">
+                <p className="text-xs text-blue-700">
+                  💡 <span className="font-semibold">Tip:</span> County names are global master data. Press Enter to save or click the Save button.
+                </p>
+              </div>
+            </div>
+
+            {/* ✅ FOOTER */}
+            <div className="border-t border-slate-200 bg-white px-8 py-4 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                disabled={saving}
+                className="px-6 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-semibold hover:bg-slate-50 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={saving || !normalizeName(name) || !canEdit}
+                onClick={save}
+                className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition disabled:opacity-50 shadow-md"
+              >
+                {saving ? "Saving…" : editing ? "Update County" : "Create County"}
+              </button>
+            </div>
+          </div>
         </div>
-      </Modal>
+      )}
     </PageShell>
   );
 }

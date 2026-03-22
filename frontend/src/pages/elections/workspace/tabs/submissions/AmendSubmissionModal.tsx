@@ -207,19 +207,19 @@ export default function AmendSubmissionModal(props: {
           onClick={(e) => e.stopPropagation()}
         >
           {/* header */}
-          <div className="sticky top-0 z-10 border-b bg-white px-3 py-3">
+          <div className="sticky top-0 z-10 bg-gradient-to-r from-blue-800 to-blue-600 text-white px-4 py-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <FilePenLine className="h-4 w-4" />
-                  <div className="text-[15px] font-extrabold leading-5">
+                  <div className="text-xl font-extrabold leading-5 py-4">
                     Amend Vote Submission
                   </div>
                 </div>
 
-                <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                <div className="text-base text-slate-300 truncate mt-0.5">
                   Actor:{" "}
-                  <span className="font-extrabold text-slate-900">
+                  <span className="font-extrabold text-lg text-white px-3">
                     {props.actorName ?? "—"}
                   </span>
                   {" • "}
@@ -232,13 +232,13 @@ export default function AmendSubmissionModal(props: {
                 type="button"
                 onClick={props.onClose}
                 disabled={busy}
-                className={`shrink-0 rounded-full border border-slate-200 bg-white h-9 w-9 grid place-items-center ${
-                  busy ? "opacity-60" : "hover:bg-slate-50"
+                className={`shrink-0 rounded-full border border-slate-200 bg-red-600 text-white font-bold h-9 w-9 grid place-items-center ${
+                  busy ? "opacity-60" : "hover:bg-slate-500"
                 }`}
                 aria-label="Close"
                 title="Close"
               >
-                <X className="h-4 w-4" />
+                <X className="h-7 w-7" />
               </button>
             </div>
 
@@ -266,7 +266,7 @@ export default function AmendSubmissionModal(props: {
               {/* LEFT */}
               <div className="space-y-3">
                 <Section title="Amendment Reason">
-                  <div className="text-[11px] font-extrabold text-slate-600 mb-1">
+                  <div className="text-[12px] font-extrabold text-slate-600 mb-1">
                     Reason (required)
                   </div>
                   <textarea
@@ -277,7 +277,7 @@ export default function AmendSubmissionModal(props: {
                     placeholder="Explain what was wrong and what was corrected..."
                   />
                   {!reasonOk ? (
-                    <div className="mt-1 text-xs font-bold text-red-700">
+                    <div className="mt-1 text-[12px] font-bold text-red-700">
                       Reason is required.
                     </div>
                   ) : null}
@@ -324,13 +324,13 @@ export default function AmendSubmissionModal(props: {
                         <table className="w-full min-w-[480px]">
                           <thead className="bg-slate-50 sticky top-0 z-10">
                             <tr className="text-left">
-                              <th className="px-2.5 py-2 text-[11px] font-extrabold text-slate-600">
+                              <th className="px-2.5 py-2 text-sm font-extrabold text-slate-600">
                                 Candidate
                               </th>
-                              <th className="px-2.5 py-2 text-[11px] font-extrabold text-slate-600 w-[110px]">
+                              <th className="px-2.5 py-2 text-sm font-extrabold text-slate-600 w-[120px]">
                                 Party
                               </th>
-                              <th className="px-2.5 py-2 text-[11px] font-extrabold text-slate-600 w-[110px] text-right">
+                              <th className="px-2.5 py-2 text-sm font-extrabold text-slate-600 w-[120px] text-right">
                                 Votes
                               </th>
                             </tr>
@@ -367,13 +367,13 @@ export default function AmendSubmissionModal(props: {
                                   }`}
                                 >
                                   <td className="px-2.5 py-2 align-middle">
-                                    <div className="text-sm font-extrabold leading-5 break-words">
+                                    <div className="text-base font-extrabold leading-5 break-words">
                                       {name}
                                     </div>
                                   </td>
                                   <td className="px-2.5 py-2 align-middle">
                                     <span
-                                      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-extrabold ${
+                                      className={`inline-flex rounded-full px-2 py-0.5 text-base font-extrabold ${
                                         party
                                           ? "bg-slate-100 text-slate-700"
                                           : "bg-slate-100 text-slate-500"
@@ -396,7 +396,7 @@ export default function AmendSubmissionModal(props: {
                                             [voteKey]: n,
                                           }));
                                         }}
-                                        className="h-7 w-[64px] rounded-md border border-slate-200 bg-white px-1.5 text-right text-[12px] font-extrabold leading-none focus:outline-none focus:ring-2 focus:ring-slate-200"
+                                        className="h-7 w-[84px] rounded-md border border-slate-200 bg-white px-1.5 text-right text-lg font-extrabold leading-none focus:outline-none focus:ring-2 focus:ring-slate-200"
                                       />
                                     </div>
                                   </td>
@@ -497,7 +497,7 @@ export default function AmendSubmissionModal(props: {
                 className={`h-10 w-full sm:w-auto rounded-xl px-5 text-sm font-extrabold text-white ${
                   busy || !reasonOk
                     ? "bg-slate-400"
-                    : "bg-slate-900 hover:bg-black"
+                    : "bg-blue-800 hover:bg-black"
                 }`}
               >
                 Amend
@@ -520,7 +520,7 @@ function Section(props: {
     <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
       {props.title ? (
         <div className="flex items-center justify-between gap-3 mb-2">
-          <div className="text-sm font-extrabold">{props.title}</div>
+          <div className="text-base text-blue-600 font-extrabold">{props.title}</div>
           {props.right ? <div className="shrink-0">{props.right}</div> : null}
         </div>
       ) : null}
@@ -531,11 +531,11 @@ function Section(props: {
 
 function Pill(props: { label: string; value: string }) {
   return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-2.5 py-1">
-      <span className="text-[11px] text-slate-500 font-extrabold">
+    <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-blue-800 px-3 py-1">
+      <span className="text-[12px] text-red-300 font-extrabold">
         {props.label}
       </span>
-      <span className="text-sm font-extrabold">{props.value}</span>
+      <span className="text-base font-extrabold text-white">{props.value}</span>
     </div>
   );
 }
@@ -543,11 +543,11 @@ function Pill(props: { label: string; value: string }) {
 function ReadOnlyStat(props: { label: string; value: string }) {
   return (
     <div>
-      <div className="mb-1 text-[11px] font-extrabold text-slate-600">
+      <div className="mb-1 text-sm font-extrabold text-slate-600">
         {props.label}
       </div>
       <div className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 grid items-center">
-        <span className="text-sm font-extrabold text-slate-900">
+        <span className="text-lg font-extrabold text-slate-900">
           {props.value}
         </span>
       </div>
@@ -562,7 +562,7 @@ function NumberField(props: {
 }) {
   return (
     <div>
-      <div className="mb-1 text-[11px] font-extrabold text-slate-600">
+      <div className="mb-1 text-sm font-extrabold text-slate-600">
         {props.label}
       </div>
       <input
@@ -573,7 +573,7 @@ function NumberField(props: {
         onChange={(e) =>
           props.onChange(e.target.value === "" ? "" : clampNum(e.target.value))
         }
-        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-extrabold focus:outline-none focus:ring-2 focus:ring-slate-200"
+        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-lg font-extrabold focus:outline-none focus:ring-2 focus:ring-slate-200"
       />
     </div>
   );

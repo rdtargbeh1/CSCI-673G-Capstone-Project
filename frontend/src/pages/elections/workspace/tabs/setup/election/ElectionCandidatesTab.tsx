@@ -1,10 +1,10 @@
 
-// src/pages/elections/workspace/tabs/setup/election/ElectionCandidatesTab.tsx
+ // src/pages/elections/workspace/tabs/setup/election/ElectionCandidatesTab.tsx
 
 import React, { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Search, Trash2, X, AlertCircle, CheckCircle } from "lucide-react";
 
 import { useAuthStore } from "../../../../../../shared/store/authStore";
 import {
@@ -26,19 +26,22 @@ import {
   type CandidateDto,
 } from "../../../../../../shared/services/candidateService";
 
-/** ---------------- helpers ---------------- */
+/** ============ HELPERS ============ */
 function safeStr(v: any) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
+
 function normalizeName(v: string) {
   return v.trim().replace(/\s+/g, " ");
 }
+
 function fmtDate(v: any): string {
   if (!v) return "";
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return safeStr(v);
   return d.toLocaleString();
 }
+
 function friendlySaveError(err: any): string {
   const msg =
     safeStr(err?.response?.data?.message) ||
@@ -94,6 +97,7 @@ function CompactTable(props: {
   );
 }
 
+/** ============ MAIN COMPONENT ============ */
 export default function ElectionCandidatesTab() {
   const qc = useQueryClient();
   const { electionId } = useParams<{ electionId: string }>();
@@ -113,10 +117,11 @@ export default function ElectionCandidatesTab() {
   const [touched, setTouched] = useState(false);
 
   // fields
-  const [candidateId, setCandidateId] = useState(""); // create only
-  const [centerId, setCenterId] = useState(""); // create/update
-  const [centerNullable, setCenterNullable] = useState(true); // if true => send null
+  const [candidateId, setCandidateId] = useState("");
+  const [centerId, setCenterId] = useState("");
+  const [centerNullable, setCenterNullable] = useState(true);
 
+  /** ============ QUERIES ============ */
   const candidatesQ = useQuery({
     enabled: Boolean(electionId),
     queryKey: ["election-candidates", electionId],
@@ -153,6 +158,7 @@ export default function ElectionCandidatesTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [all]);
 
+  /** ============ HANDLERS (BEFORE MUTATIONS) ============ */
   const refreshNow = async () => {
     if (!electionId) return;
     await qc.invalidateQueries({
@@ -173,13 +179,14 @@ export default function ElectionCandidatesTab() {
 
   const openEdit = (row: ElectionCandidateDto) => {
     setEditing(row);
-    setCandidateId(""); // unused in edit
+    setCandidateId("");
     setCenterId(safeStr(row.centerId ?? ""));
     setCenterNullable(row.centerId == null);
     setTouched(false);
     setOpen(true);
   };
 
+  /** ============ MUTATIONS ============ */
   const createM = useMutation({
     mutationFn: async () => {
       if (!electionId) throw new Error("Missing electionId.");
@@ -223,6 +230,7 @@ export default function ElectionCandidatesTab() {
     },
   });
 
+  /** ============ STATE ============ */
   const saving = createM.isPending || updateM.isPending;
 
   const selectedRowIndex = useMemo(() => {
@@ -232,7 +240,7 @@ export default function ElectionCandidatesTab() {
 
   // Candidates master list (fetched when create modal opens)
   const candidatesMasterQ = useQuery({
-    enabled: open && !editing, // only load for create form when modal open
+    enabled: open && !editing,
     queryKey: ["candidates", "master"],
     queryFn: async () => {
       const page = await searchCandidates({
@@ -245,6 +253,7 @@ export default function ElectionCandidatesTab() {
     retry: 1,
   });
 
+  /** ============ TABLE ROWS ============ */
   const rows = useMemo(() => {
     return filtered.map((r) => {
       const actions = (
@@ -252,11 +261,10 @@ export default function ElectionCandidatesTab() {
           className="flex flex-wrap gap-2"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Edit btn */}
           <button
             type="button"
             disabled={!canEdit}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-700 ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-700 hover:bg-green-50 transition ${
               !canEdit ? "opacity-60" : ""
             }`}
             title={canEdit ? "Edit (SYSTEM/NEC)" : "Read-only"}
@@ -268,7 +276,7 @@ export default function ElectionCandidatesTab() {
           <button
             type="button"
             disabled={!canEdit || deleteM.isPending}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 hover:bg-red-50 transition ${
               !canEdit || deleteM.isPending ? "opacity-60" : ""
             }`}
             title={canEdit ? "Delete (SYSTEM/NEC)" : "Read-only"}
@@ -316,6 +324,7 @@ export default function ElectionCandidatesTab() {
     );
   }
 
+  /** ============ RENDER ============ */
   return (
     <div className="flex flex-col gap-3">
       {!canEdit ? (
@@ -325,6 +334,7 @@ export default function ElectionCandidatesTab() {
         />
       ) : null}
 
+      {/* ============ HEADER ACTIONS ============ */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
@@ -336,14 +346,14 @@ export default function ElectionCandidatesTab() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search candidates…"
-              className="pl-8 pr-3 py-2 rounded-lg border border-slate-200 bg-white min-w-[280px] outline-none"
+              className="pl-8 pr-3 py-2 rounded-lg border border-slate-200 bg-white min-w-[280px] outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <button
             type="button"
             onClick={() => setQ("")}
-            className="px-3 py-2 rounded-lg border border-slate-200 bg-white"
+            className="px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition"
           >
             Clear
           </button>
@@ -354,9 +364,9 @@ export default function ElectionCandidatesTab() {
             <button
               type="button"
               onClick={openCreate}
-              className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-700 text-white font-bold"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition shadow-sm"
             >
-              <Plus size={16} />
+              <Plus size={16} className="text-red-500" />
               Assign Candidate
             </button>
           ) : (
@@ -367,7 +377,7 @@ export default function ElectionCandidatesTab() {
             type="button"
             onClick={refreshNow}
             disabled={candidatesQ.isFetching}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-100 ${
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
               candidatesQ.isFetching ? "opacity-60" : ""
             }`}
           >
@@ -377,6 +387,7 @@ export default function ElectionCandidatesTab() {
         </div>
       </div>
 
+      {/* ============ STATUS ============ */}
       {candidatesQ.isLoading ? (
         <div className="p-2 text-slate-600">Loading election candidates…</div>
       ) : candidatesQ.isError ? (
@@ -385,6 +396,7 @@ export default function ElectionCandidatesTab() {
         </div>
       ) : null}
 
+      {/* ============ TABLE ============ */}
       <CompactTable
         columns={[
           "Candidate",
@@ -414,6 +426,7 @@ export default function ElectionCandidatesTab() {
         selectedRowIndex={selectedRowIndex}
       />
 
+      {/* ============ NOTES ============ */}
       <div className="mt-1">
         <PlaceholderNote
           title="Notes"
@@ -425,62 +438,78 @@ export default function ElectionCandidatesTab() {
         />
       </div>
 
-      {/* ---------------- Modal ---------------- */}
+      {/* ============ CREATE/EDIT MODAL (ENHANCED UX) ============ */}
       {open ? (
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm"
           onClick={() => {
             if (saving) return;
             setOpen(false);
           }}
         >
           <div
-            className="w-full max-w-[860px] bg-white rounded-2xl border border-slate-200 p-4 mx-auto shadow-xl"
+            className="w-full max-w-2xl bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between gap-3">
-              <div>
-                <div className="font-extrabold text-xl">
+            {/* ============ HEADER WITH BLUE GRADIENT ============ */}
+            <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400 px-4 sm:px-8 py-6 sm:py-8 border-b border-blue-600 flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-2">
+                  {editing ? (
+                    <>
+                      <Pencil size={28} className="text-white" />
+                      Edit Candidate
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={28} className="text-red-500" />
+                      Assign Candidate
+                    </>
+                  )}
+                </h2>
+                <p className="text-sm sm:text-base font-semibold text-blue-100 mt-2">
                   {editing
-                    ? "Edit Election Candidate"
-                    : "Assign Candidate to Election"}
-                </div>
-                <div className="text-sm text-slate-500 mt-0.5 font-bold">
-                  {editing
-                    ? `electId: ${editing.electId}`
-                    : "Select a candidate from Candidate Master and optional centerId."}
-                </div>
+                    ? `Update candidate settings for this election.`
+                    : "Add a candidate from Candidate Master to this election."}
+                </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  if (saving) return;
+                  setOpen(false);
+                }}
                 disabled={saving}
-                className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                  saving ? "opacity-60" : ""
-                }`}
+                className="flex-shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border-2 border-blue-300 hover:bg-blue-700 bg-blue-600 transition text-white disabled:opacity-50"
+                title="Close modal"
               >
-                Close
+                <X size={20} />
               </button>
             </div>
 
-            <div className="grid gap-2.5 mt-3">
+            {/* ============ CONTENT ============ */}
+            <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 sm:py-7 space-y-5 sm:space-y-6">
+              {/* Candidate Selection (Create only) */}
               {!editing ? (
-                <div className="grid gap-1.5">
-                  <div className="text-lg font-extrabold text-slate-600">
+                <div>
+                  <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
                     Candidate <span className="text-red-600">*</span>
-                  </div>
+                  </label>
 
                   {candidatesMasterQ.isLoading ? (
-                    <div className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-600">
+                    <div className="px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-slate-50 text-slate-600 text-base">
                       Loading candidates…
                     </div>
                   ) : candidatesMasterQ.isError ? (
-                    <div className="px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-700">
-                      {(candidatesMasterQ.error as any)?.message ??
-                        "Failed to load candidates."}
+                    <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-3 sm:p-4">
+                      <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                      <div className="text-sm text-red-700 font-semibold">
+                        {(candidatesMasterQ.error as any)?.message ??
+                          "Failed to load candidates."}
+                      </div>
                     </div>
                   ) : (
                     <select
@@ -489,7 +518,7 @@ export default function ElectionCandidatesTab() {
                         setCandidateId(e.target.value);
                         setTouched(true);
                       }}
-                      className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
+                      className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                     >
                       <option value="">-- Select candidate --</option>
                       {(candidatesMasterQ.data ?? []).map((c: CandidateDto) => (
@@ -501,32 +530,52 @@ export default function ElectionCandidatesTab() {
                     </select>
                   )}
 
-                  {touched && !candidateId.trim() ? (
-                    <div className="text-sm font-bold text-red-600">
-                      Required
+                  {touched && !candidateId.trim() && (
+                    <div className="flex items-center gap-2 mt-2 text-sm text-red-600 font-semibold">
+                      <AlertCircle size={16} />
+                      Candidate is required
                     </div>
-                  ) : null}
-                  <div className="text-sm text-slate-500 font-bold">
-                    Select candidate from Candidate Master.
-                  </div>
+                  )}
+                  {touched && candidateId.trim() && (
+                    <div className="flex items-center gap-2 mt-2 text-sm text-green-600 font-semibold">
+                      <CheckCircle size={16} />
+                      Valid candidate selected
+                    </div>
+                  )}
                 </div>
-              ) : null}
+              ) : (
+                <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 sm:p-4">
+                  <p className="text-lg text-blue-800">
+                    <strong className="font-bold">📌 Editing Candidate:</strong> {editing.fullName}
+                  </p>
+                </div>
+              )}
 
-              <div className="grid gap-1.5">
-                <div className="text-base font-extrabold text-slate-600">
+              {/* Polling Center Field */}
+              <div>
+                <label className="block text-base sm:text-lg font-bold text-slate-900 mb-3 sm:mb-4">
                   Polling Center
-                </div>
-
-                <label className="inline-flex items-center gap-2 text-base text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={centerNullable}
-                    onChange={(e) => setCenterNullable(e.target.checked)}
-                    className="h-4 w-4 accent-emerald-600"
-                  />
-                  NATIONAL (no center)
                 </label>
 
+                {/* NATIONAL Checkbox */}
+                <div className="mb-4">
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer transition">
+                    <input
+                      type="checkbox"
+                      checked={centerNullable}
+                      onChange={(e) => setCenterNullable(e.target.checked)}
+                      className="h-5 w-5 accent-blue-600 cursor-pointer"
+                    />
+                    <span className="text-base font-semibold text-slate-900">
+                      NATIONAL (no center)
+                    </span>
+                    <span className="text-sm text-slate-500 ml-auto">
+                      Center-independent candidate
+                    </span>
+                  </label>
+                </div>
+
+                {/* Center ID Input */}
                 <input
                   value={centerId}
                   onChange={(e) => {
@@ -535,53 +584,89 @@ export default function ElectionCandidatesTab() {
                   }}
                   disabled={centerNullable}
                   placeholder="centerId UUID (optional)"
-                  className={`px-3 py-2.5 rounded-lg border border-slate-200 outline-none ${
-                    centerNullable ? "opacity-60" : ""
+                  className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition ${
+                    centerNullable ? "opacity-60 cursor-not-allowed" : ""
                   }`}
                 />
 
-                <div className="text-base text-slate-500 text-blue font-bold">
-                  If <span className="text-red-800 font-extrabold">NATIONAL</span> is checked, centerId will be saved as <b>null</b>.
-                </div>
+                {centerNullable && (
+                  <p className="text-xs sm:text-sm text-amber-600 font-semibold mt-2">
+                    📌 Center ID is disabled for NATIONAL candidates
+                  </p>
+                )}
               </div>
 
-              {createM.isError || updateM.isError ? (
-                <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm font-bold">
-                  {createM.isError
-                    ? friendlySaveError(createM.error)
-                    : friendlySaveError(updateM.error)}
+              {/* Error Message */}
+              {(createM.isError || updateM.isError) && (
+                <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-3 sm:p-4">
+                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                  <div className="text-sm text-red-700 font-semibold">
+                    {createM.isError
+                      ? friendlySaveError(createM.error)
+                      : friendlySaveError(updateM.error)}
+                  </div>
                 </div>
-              ) : null}
+              )}
 
-              <div className="flex justify-end gap-2 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  disabled={saving}
-                  className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                    saving ? "opacity-60" : ""
-                  }`}
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="button"
-                  disabled={!canEdit || saving}
-                  onClick={() => {
-                    setTouched(true);
-                    if (!canEdit) return;
-
-                    if (editing) updateM.mutate();
-                    else createM.mutate();
-                  }}
-                  className={`px-3 py-2 rounded-lg border border-slate-200 bg-white font-extrabold ${
-                    !canEdit || saving ? "opacity-60" : ""
-                  }`}
-                >
-                  Save
-                </button>
+              {/* Help Text */}
+              <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 sm:p-4">
+                <p className="text-sm text-blue-800">
+                  <strong className="font-bold">💡 Tip:</strong> Check "NATIONAL" for candidates not tied to a specific polling center. Otherwise, provide center UUID.
+                </p>
               </div>
+            </div>
+
+            {/* ============ FOOTER ============ */}
+            <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-8 py-4 sm:py-5 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (saving) return;
+                  setOpen(false);
+                }}
+                disabled={saving}
+                className="px-4 sm:px-6 h-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-base font-semibold hover:bg-slate-50 transition disabled:opacity-50 sm:min-w-fit"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={!canEdit || saving || (!editing && !candidateId.trim())}
+                onClick={() => {
+                  setTouched(true);
+                  if (!canEdit) return;
+                  if (editing) updateM.mutate();
+                  else createM.mutate();
+                }}
+                className={`px-4 sm:px-6 h-10 rounded-lg text-base font-bold text-white transition flex items-center justify-center gap-2 sm:min-w-fit ${
+                  !canEdit || saving || (!editing && !candidateId.trim())
+                    ? "bg-slate-300 cursor-not-allowed opacity-60"
+                    : "bg-blue-600 hover:bg-blue-700 shadow-sm"
+                }`}
+                title={
+                  !canEdit
+                    ? "Read-only (Tenant)"
+                    : !candidateId.trim() && !editing
+                    ? "Select a candidate"
+                    : "Save candidate"
+                }
+              >
+                {saving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span className="hidden sm:inline">Saving…</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus size={18} className="text-red-500" />
+                    <span className="hidden sm:inline">
+                      {editing ? "Update Candidate" : "Assign Candidate"}
+                    </span>
+                    <span className="sm:hidden">{editing ? "Update" : "Assign"}</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -589,3 +674,4 @@ export default function ElectionCandidatesTab() {
     </div>
   );
 }
+

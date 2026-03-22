@@ -267,7 +267,7 @@ export default function AuditLogsPage() {
             type="button"
             onClick={() => logsQ.refetch()}
             disabled={!enabled || logsQ.isFetching}
-            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md border bg-white text-sm font-extrabold ${
+            className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md border bg-white text-base font-extrabold ${
               !enabled || logsQ.isFetching ? "opacity-60" : ""
             }`}
           >
@@ -287,20 +287,20 @@ export default function AuditLogsPage() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search (description, entity, metadata)…"
-            className="h-10 w-[320px] rounded-xl border px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-200"
+            className="h-10 w-[320px] rounded-xl border px-3 text-base font-semibold outline-none focus:ring-2 focus:ring-blue-200"
           />
 
           <input
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
             placeholder="Actor userId (optional)"
-            className="h-10 w-[240px] rounded-xl border px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-200"
+            className="h-10 w-[240px] rounded-xl border px-3 text-base font-semibold outline-none focus:ring-2 focus:ring-blue-200"
           />
 
           <select
             value={type}
             onChange={(e) => setType(e.target.value)}
-            className="h-10 rounded-xl border px-3 text-sm font-extrabold bg-white"
+            className="h-10 rounded-xl border px-3 text-base font-extrabold bg-white"
             title="Activity type"
           >
             <option value="">All types</option>
@@ -312,22 +312,22 @@ export default function AuditLogsPage() {
           </select>
 
           <div className="flex items-center gap-2">
-            <label className="text-xs font-extrabold text-slate-600">From</label>
+            <label className="text-sm font-extrabold text-slate-600">From</label>
             <input
               type="datetime-local"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
-              className="h-10 rounded-xl border px-3 text-sm font-semibold bg-white"
+              className="h-10 rounded-xl border px-3 text-base font-semibold bg-white"
             />
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="text-xs font-extrabold text-slate-600">To</label>
+            <label className="text-sm font-extrabold text-slate-600">To</label>
             <input
               type="datetime-local"
               value={to}
               onChange={(e) => setTo(e.target.value)}
-              className="h-10 rounded-xl border px-3 text-sm font-semibold bg-white"
+              className="h-10 rounded-xl border px-3 text-base font-semibold bg-white"
             />
           </div>
 
@@ -336,13 +336,13 @@ export default function AuditLogsPage() {
             onClick={clear}
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border bg-white text-sm font-extrabold"
           >
-            <X size={14} />
+            <X size={16} />
             Clear
           </button>
         </div>
 
         {logsQ.isError ? (
-          <div className="mb-3 p-2 rounded-md border border-red-200 bg-red-50 text-red-700 text-sm font-bold">
+          <div className="mb-3 p-2 rounded-md border border-red-200 bg-red-50 text-red-700 text-base font-bold">
             {friendlyError(logsQ.error)}
           </div>
         ) : null}

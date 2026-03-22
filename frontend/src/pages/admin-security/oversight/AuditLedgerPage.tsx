@@ -175,8 +175,8 @@ export default function AuditLedgerPage() {
     >
       <Card title="Ledger (then Retry Activity)">
         {/* ✅ DEBUG / STATUS PANEL */}
-        <div className="mb-3 rounded-xl border bg-white p-3 text-xs text-slate-700">
-          <div className="font-bold text-slate-800">Status</div>
+        <div className="mb-3 rounded-xl border bg-white p-3 text-base text-slate-700">
+          <div className="font-bold text-slate-800">Status</div>base
           <div className="mt-1 grid grid-cols-1 gap-1 lg:grid-cols-2">
             <div>allowed: <b>{String(allowed)}</b></div>
             <div>ledgerEnabled: <b>{String(ledgerEnabled)}</b></div>
@@ -199,8 +199,8 @@ export default function AuditLedgerPage() {
         {/* FILTER + REFRESH */}
         <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <div className="text-sm font-semibold text-slate-800">Ledger filter</div>
-            <div className="text-xs text-slate-500">
+            <div className="text-base font-semibold text-slate-800">Ledger filter</div>
+            <div className="text-sm text-slate-500">
               Uses /api/admin/audit-ledger/by-type (controller doesn’t expose “list all”).
             </div>
           </div>
@@ -209,7 +209,7 @@ export default function AuditLedgerPage() {
             <input
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
-              className="h-10 w-[260px] rounded-xl border border-slate-300 bg-white px-3 text-sm"
+              className="h-10 w-[260px] rounded-xl border border-slate-300 bg-white px-3 text-base"
               placeholder="Entry type (e.g., VOTE_SUBMISSION)"
             />
             <button
@@ -219,7 +219,7 @@ export default function AuditLedgerPage() {
                 retryQ.refetch();
                 verifyQ.refetch();
               }}
-              className="h-10 rounded-xl border bg-white px-4 text-sm font-extrabold hover:bg-slate-50"
+              className="h-10 rounded-xl border bg-white px-4 text-base font-extrabold hover:bg-slate-50"
             >
               Refresh
             </button>
@@ -240,8 +240,8 @@ export default function AuditLedgerPage() {
 
         {/* Retry controls */}
         <div className="mt-4">
-          <div className="text-sm font-semibold text-slate-800">Retry controls</div>
-          <div className="text-xs text-slate-500">
+          <div className="text-base font-semibold text-slate-800">Retry controls</div>
+          <div className="text-sm text-slate-500">
             Manual retry calls POST /api/admin/audit/retries/{`{retryId}`}/retry.
           </div>
 
@@ -251,11 +251,11 @@ export default function AuditLedgerPage() {
                 key={r.retryId}
                 className="flex flex-col gap-2 rounded-xl border bg-white p-3 lg:flex-row lg:items-center lg:justify-between"
               >
-                <div className="text-sm">
+                <div className="text-base">
                   <div className="font-semibold text-slate-800">
                     {r.status} • {r.entryType || "—"} • retryId {short(r.retryId, 10)}
                   </div>
-                  <div className="text-xs text-slate-500">
+                  <div className="text-base text-slate-500">
                     attempts={r.attempts} • next={fmtTime(r.nextAttemptAt)} • err=
                     {r.lastError
                       ? ` ${r.lastError.slice(0, 80)}${r.lastError.length > 80 ? "…" : ""}`
@@ -283,13 +283,13 @@ export default function AuditLedgerPage() {
           {verifyQ.isLoading ? (
             <div className="text-xs text-slate-500">Checking ledger chain…</div>
           ) : (verifyQ.data ?? []).length ? (
-            <div className="text-xs text-red-700">
+            <div className="text-sm text-red-700">
               {(verifyQ.data ?? []).slice(0, 8).map((e, i) => (
                 <div key={i}>• {e}</div>
               ))}
             </div>
           ) : (
-            <div className="text-xs text-slate-500">No chain errors reported.</div>
+            <div className="text-sm text-slate-500">No chain errors reported.</div>
           )}
         </div>
       </Card>

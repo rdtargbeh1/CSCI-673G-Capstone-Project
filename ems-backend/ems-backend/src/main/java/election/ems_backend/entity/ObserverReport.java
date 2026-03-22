@@ -1,5 +1,7 @@
 package election.ems_backend.entity;
 
+import election.ems_backend.enums.ObserverReportVerificationStatus;
+import election.ems_backend.enums.ObserverReportVisibility;
 import election.ems_backend.enums.ReportType;
 import jakarta.persistence.*;
 import lombok.*;
@@ -68,6 +70,24 @@ public class ObserverReport extends AuditBaseEntity {
     @Column(name = "description", nullable = false, columnDefinition = "text")
     private String description;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "visibility", nullable = false)
+    private ObserverReportVisibility visibility = ObserverReportVisibility.PRIVATE;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "verification_status", nullable = false)
+    private ObserverReportVerificationStatus verificationStatus = ObserverReportVerificationStatus.PENDING;
+
+    @Column(name = "verified_by")
+    private UUID verifiedBy;
+
+    @Column(name = "verified_at")
+    private LocalDateTime verifiedAt;
+
+    @Column(name = "verification_note", columnDefinition = "text", nullable = false)
+    private String verificationNote;
+
+
     @Column(name = "media_url", columnDefinition = "text")
     private String mediaUrl;
 
@@ -78,8 +98,22 @@ public class ObserverReport extends AuditBaseEntity {
     @Column(name = "timestamp")
     private LocalDateTime timestamp = LocalDateTime.now();
 
+    @Column(name = "is_critical", nullable = false)
+    private Boolean isCritical = false;
+
     @Column(name = "resolved", nullable = false)
     private Boolean resolved = false;
+
+
+    @Column(name = "resolved_at")
+    private LocalDateTime resolvedAt;
+
+    @Column(name = "resolved_by")
+    private UUID resolvedBy;
+
+    @Column(name = "resolved_note", nullable = false, columnDefinition = "text")
+    private String resolvedNote;
+
 
     @PrePersist
     public void prePersist() {

@@ -14,7 +14,7 @@ public final class PollingCenterAllocationSpecs {
     }
     public static Specification<PollingCenterAllocation> centerEquals(UUID centerId) {
         return (root, cq, cb) -> centerId == null ? cb.conjunction()
-                : cb.equal(root.get("pollingCenter").get("pollingCenterId"), centerId);
+                : cb.equal(root.get("pollingCenter").get("centerId"), centerId);
     }
     public static Specification<PollingCenterAllocation> countyEquals(UUID countyId) {
         return (root, cq, cb) -> countyId == null ? cb.conjunction()

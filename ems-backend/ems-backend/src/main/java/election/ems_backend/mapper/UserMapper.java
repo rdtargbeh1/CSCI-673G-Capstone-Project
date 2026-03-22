@@ -179,6 +179,7 @@ public class UserMapper {
         dto.setActive(u.isActive());
         dto.setVerified(u.isVerified());
         dto.setProfileImageUrl(u.getProfileImageUrl());
+        dto.setLastPasswordChange(u.getLastPasswordChange());
         dto.setProfileImageUploadId(u.getProfileImageUpload() != null ? u.getProfileImageUpload().getFileId() : null);
 
         return dto;

@@ -67,8 +67,13 @@ public interface SystemUserRepository extends JpaRepository<SystemUser, UUID>, J
                                   Pageable pageable);
 
 
-
-    @Query("select u from SystemUser u where u.userId = :id and u.defaultOrg.orgId = :orgId")
+    @Query("""
+        select u
+        from SystemUser u
+        join u.defaultOrg o
+        where u.userId = :id
+        and o.orgId = :orgId
+        """)
     Optional<SystemUser> findByIdAndOrgId(@Param("id") UUID id, @Param("orgId") UUID orgId);
 
     @Query("select u from SystemUser u where lower(u.userName) = lower(:username) and u.defaultOrg.orgId = :orgId")

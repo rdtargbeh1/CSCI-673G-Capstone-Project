@@ -1,4 +1,6 @@
-// src/pages/elections/workspace/tabs/setup/election/ContestsTab.tsx
+
+// // src/pages/elections/workspace/tabs/setup/election/ContestsTab.tsx
+
 import React, { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,6 +12,8 @@ import {
   Trash2,
   Power,
   List,
+  X,
+  AlertCircle,
 } from "lucide-react";
 
 import { useAuthStore } from "../../../../../../shared/store/authStore";
@@ -43,19 +47,22 @@ import {
   type DistrictDto,
 } from "../../../../../../shared/services/districtService";
 
-/** ---------------- helpers ---------------- */
+/** ============ HELPERS ============ */
 function safeStr(v: any) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
+
 function fmtDate(v: any): string {
   if (!v) return "";
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return safeStr(v);
   return d.toLocaleString();
 }
+
 function normalizeName(v: string) {
   return v.trim().replace(/\s+/g, " ");
 }
+
 function friendlySaveError(err: any): string {
   const msg =
     safeStr(err?.response?.data?.message) ||
@@ -64,6 +71,7 @@ function friendlySaveError(err: any): string {
     "Failed to save.";
   return msg;
 }
+
 function boolVal(v: any, fallback = false) {
   return v == null ? fallback : Boolean(v);
 }
@@ -84,7 +92,7 @@ function CompactTable(props: {
             {columns.map((c) => (
               <th
                 key={c}
-                className="text-left px-3 py-1.5 text-lg font-extrabold text-slate-600 border-b border-slate-200"
+                className="text-left px-3 py-1.5 text-base font-extrabold text-slate-600 border-b border-slate-200"
               >
                 {c}
               </th>
@@ -134,6 +142,7 @@ type Props = {
   onOpenOptions: (contestId: string) => void;
 };
 
+/** ============ MAIN COMPONENT ============ */
 export default function ContestsTab({ onOpenOptions }: Props) {
   const qc = useQueryClient();
   const { electionId } = useParams<{ electionId: string }>();
@@ -166,7 +175,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
   const [contestDesc, setContestDesc] = useState("");
   const [contestActive, setContestActive] = useState(true);
 
-  // ----------------- Counties + Districts -----------------
+  /** ============ COUNTIES + DISTRICTS ============ */
   const COUNTY_PAGE_SIZE = 200;
   const DISTRICT_PAGE_SIZE = 500;
 
@@ -215,7 +224,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countyId]);
 
-  // ----------------- Contests -----------------
+  /** ============ CONTESTS ============ */
   const contestsQ = useQuery({
     enabled: Boolean(electionId),
     queryKey: ["contests-by-election", electionId],
@@ -253,6 +262,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contestsAll]);
 
+  /** ============ HANDLERS (BEFORE MUTATIONS) ============ */
   const refreshNow = async () => {
     await qc.invalidateQueries({
       queryKey: ["contests-by-election", electionId],
@@ -260,7 +270,6 @@ export default function ContestsTab({ onOpenOptions }: Props) {
     await contestsQ.refetch();
   };
 
-  /** -------- Contest modal open helpers -------- */
   const openCreateContest = () => {
     setContestEditing(null);
     setContestName("");
@@ -295,7 +304,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
     setContestOpen(true);
   };
 
-  /** -------- Mutations -------- */
+  /** ============ MUTATIONS ============ */
   const contestCreateM = useMutation({
     mutationFn: async () => {
       if (!electionId) throw new Error("Missing electionId.");
@@ -391,7 +400,6 @@ export default function ContestsTab({ onOpenOptions }: Props) {
     },
   });
 
-  // ✅ Activate/Deactivate contest (button in Actions)
   const contestToggleActiveM = useMutation({
     mutationFn: async (c: ContestDto) => {
       return updateContest(c.contestId, {
@@ -401,9 +409,10 @@ export default function ContestsTab({ onOpenOptions }: Props) {
     onSuccess: refreshNow,
   });
 
+  /** ============ STATE ============ */
   const savingContest = contestCreateM.isPending || contestUpdateM.isPending;
 
-  /** -------- Table rows -------- */
+  /** ============ TABLE ROWS ============ */
   const selectedRowIndex = useMemo(() => {
     if (!selected) return -1;
     return contests.findIndex((x) => x.contestId === selected.contestId);
@@ -445,7 +454,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
         >
           <button
             type="button"
-            className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white"
+            className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition"
             title="Open contest options"
             onClick={() => onOpenOptions(c.contestId)}
           >
@@ -456,7 +465,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
           <button
             type="button"
             disabled={!canEdit}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-800 ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-800 hover:bg-green-50 transition ${
               !canEdit ? "opacity-60" : ""
             }`}
             title={canEdit ? "Edit contest (SYSTEM/NEC)" : "Read-only"}
@@ -468,7 +477,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
           <button
             type="button"
             disabled={!canEdit || contestToggleActiveM.isPending}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-blue-800 ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-blue-800 hover:bg-blue-50 transition ${
               !canEdit || contestToggleActiveM.isPending ? "opacity-60" : ""
             }`}
             title={activeVal ? "Deactivate contest" : "Activate contest"}
@@ -483,7 +492,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
           <button
             type="button"
             disabled={!canEdit || contestDeleteM.isPending}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 hover:bg-red-50 transition ${
               !canEdit || contestDeleteM.isPending ? "opacity-60" : ""
             }`}
             title={canEdit ? "Delete contest (SYSTEM/NEC)" : "Read-only"}
@@ -502,7 +511,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
       return [
         <div key={c.contestId} className="grid">
           <span className="font-bold">{c.contestName}</span>
-          <span className="text-[14px] text-slate-500">
+          <span className="text-sm text-slate-500">
             {c.category} · {c.scopeType} · {scopeMeta}
           </span>
         </div>,
@@ -524,7 +533,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
             activeVal ? "text-emerald-700" : "text-slate-500"
           }`}
         >
-          {activeVal ? "ACTIVE" : "INACTIVE"}
+          {activeVal ? "✅ ACTIVE" : "⚪ INACTIVE"}
         </span>,
         <span key="created" className="text-base text-slate-600">
           {fmtDate((c as any).dateCreated)}
@@ -542,7 +551,6 @@ export default function ContestsTab({ onOpenOptions }: Props) {
     onOpenOptions,
   ]);
 
-  /** -------- Guard -------- */
   if (!electionId) {
     return (
       <div className="p-3 rounded-xl border border-slate-200 bg-white">
@@ -554,6 +562,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
     );
   }
 
+  /** ============ RENDER ============ */
   return (
     <div className="flex flex-col gap-3">
       {!canEdit ? (
@@ -563,6 +572,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
         />
       ) : null}
 
+      {/* ============ HEADER ACTIONS ============ */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
@@ -574,14 +584,14 @@ export default function ContestsTab({ onOpenOptions }: Props) {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search contests…"
-              className="pl-8 pr-3 py-2 rounded-lg border border-slate-200 bg-white min-w-[260px] outline-none"
+              className="pl-8 pr-3 py-2 rounded-lg border border-slate-200 bg-white min-w-[260px] outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <button
             type="button"
             onClick={() => setQ("")}
-            className="px-3 py-2 rounded-lg border border-slate-200 bg-white"
+            className="px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition"
             title="Clear search"
           >
             Clear
@@ -593,10 +603,10 @@ export default function ContestsTab({ onOpenOptions }: Props) {
             <button
               type="button"
               onClick={openCreateContest}
-              className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-600 text-white font-bold"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition shadow-sm"
               title="Create contest (SYSTEM/NEC)"
             >
-              <Plus size={18} />
+              <Plus size={16} className="text-red-500" />
               Create Contest
             </button>
           ) : (
@@ -607,7 +617,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
             type="button"
             onClick={refreshNow}
             disabled={contestsQ.isFetching}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-100 ${
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
               contestsQ.isFetching ? "opacity-60" : ""
             }`}
             title="Refresh contests"
@@ -618,6 +628,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
         </div>
       </div>
 
+      {/* ============ STATUS ============ */}
       {contestsQ.isLoading ? (
         <div className="p-2 text-slate-600">Loading contests…</div>
       ) : contestsQ.isError ? (
@@ -626,6 +637,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
         </div>
       ) : null}
 
+      {/* ============ TABLE ============ */}
       <div>
         <CompactTable
           columns={[
@@ -661,6 +673,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
         />
       </div>
 
+      {/* ============ NOTES ============ */}
       <div className="mt-1">
         <PlaceholderNote
           title="Notes"
@@ -673,96 +686,136 @@ export default function ContestsTab({ onOpenOptions }: Props) {
         />
       </div>
 
-      {/* ---------------- Contest Modal ---------------- */}
+      {/* ============ CREATE/EDIT MODAL (HORIZONTAL 2-COLUMN LAYOUT) ============ */}
       {contestOpen ? (
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm"
           onClick={() => {
             if (savingContest) return;
             setContestOpen(false);
           }}
         >
           <div
-            className="w-full max-w-[860px] bg-white rounded-2xl border border-slate-200 p-4 mx-auto shadow-xl"
+            className="w-full max-w-4xl bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between gap-3">
-              <div>
-                <div className="font-extrabold text-base">
-                  {contestEditing ? "Edit Contest" : "Create Contest"}
-                </div>
-                <div className="text-xs text-slate-500 mt-0.5">
+            {/* ============ HEADER WITH BLUE GRADIENT ============ */}
+            <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400 px-4 sm:px-8 py-6 sm:py-8 border-b border-blue-600 flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-2">
+                  {contestEditing ? (
+                    <>
+                      <Pencil size={28} className="text-white" />
+                      Edit Contest
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={28} className="text-red-500" />
+                      Create Contest
+                    </>
+                  )}
+                </h2>
+                <p className="text-sm sm:text-base font-semibold text-blue-100 mt-2">
                   {contestEditing
-                    ? "Update contest data."
+                    ? `Update "${contestName}" contest data.`
                     : "Create a new contest for this election."}
-                </div>
+                </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => setContestOpen(false)}
+                onClick={() => {
+                  if (savingContest) return;
+                  setContestOpen(false);
+                }}
                 disabled={savingContest}
-                className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                  savingContest ? "opacity-60" : ""
-                }`}
+                className="flex-shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border-2 border-blue-300 hover:bg-blue-700 bg-blue-600 transition text-white disabled:opacity-50"
+                title="Close modal"
               >
-                Close
+                <X size={20} />
               </button>
             </div>
 
-            <div className="grid gap-2.5 mt-3">
-              <div className="grid gap-1.5">
-                <div className="text-[11px] font-extrabold text-slate-600">
-                  Contest Name <span className="text-red-600">*</span>
-                </div>
-                <input
-                  value={contestName}
-                  onChange={(e) => {
-                    setContestName(e.target.value);
-                    setContestTouched(true);
-                  }}
-                  className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
-                />
-                {contestTouched && !normalizeName(contestName) ? (
-                  <div className="text-[11px] font-bold text-red-600">
-                    Required
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-                <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
-                    Category
-                  </div>
-                  <select
-                    value={category}
-                    onChange={(e) =>
-                      setCategory(e.target.value as ContestCategory)
-                    }
-                    className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none bg-white"
-                  >
-                    {CATEGORIES.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
+            {/* ============ CONTENT - HORIZONTAL LAYOUT ============ */}
+            <div className="flex-1 overflow-y-auto flex flex-col lg:flex-row">
+              {/* LEFT COLUMN - Basic Info */}
+              <div className="w-full lg:w-1/2 px-4 sm:px-6 py-4 sm:py-5 space-y-3 sm:space-y-4 border-b lg:border-b-0 lg:border-r border-slate-200">
+                {/* Contest Name */}
+                <div>
+                  <label className="block text-sm font-bold text-slate-900 mb-1.5">
+                    Contest Name <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    value={contestName}
+                    onChange={(e) => {
+                      setContestName(e.target.value);
+                      setContestTouched(true);
+                    }}
+                    placeholder="e.g., Presidential Election"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                  />
+                  {contestTouched && !normalizeName(contestName) && (
+                    <div className="flex items-center gap-1.5 mt-1 text-xs text-red-600 font-semibold">
+                      <AlertCircle size={12} /> Required
+                    </div>
+                  )}
                 </div>
 
-                <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                {/* Category + Vote Method */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-900 mb-1.5 uppercase tracking-wide">
+                      Category
+                    </label>
+                    <select
+                      value={category}
+                      onChange={(e) =>
+                        setCategory(e.target.value as ContestCategory)
+                      }
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                    >
+                      {CATEGORIES.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-900 mb-1.5 uppercase tracking-wide">
+                      Vote Method
+                    </label>
+                    <select
+                      value={voteMethod}
+                      onChange={(e) =>
+                        setVoteMethod(e.target.value as ContestVoteMethod)
+                      }
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                    >
+                      {VOTE_METHODS.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Scope */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-900 mb-1.5 uppercase tracking-wide">
                     Scope
-                  </div>
+                  </label>
                   <select
                     value={scopeType}
                     onChange={(e) => {
                       setScopeType(e.target.value as ContestScopeType);
                       setContestTouched(true);
                     }}
-                    className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none bg-white"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
                   >
                     {SCOPES.map((t) => (
                       <option key={t} value={t}>
@@ -772,157 +825,143 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                   </select>
                 </div>
 
-                <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
-                    Vote Method
-                  </div>
-                  <select
-                    value={voteMethod}
-                    onChange={(e) =>
-                      setVoteMethod(e.target.value as ContestVoteMethod)
-                    }
-                    className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none bg-white"
-                  >
-                    {VOTE_METHODS.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
+                {/* County (if needed) */}
+                {(scopeType === "COUNTY" || scopeType === "DISTRICT") && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-900 mb-1.5 uppercase tracking-wide">
+                      County <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      value={countyId}
+                      onChange={(e) => {
+                        setCountyId(e.target.value);
+                        setContestTouched(true);
+                        if (scopeType === "DISTRICT") setDistrictId("");
+                      }}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                    >
+                      <option value="">
+                        {countiesQ.isLoading
+                          ? "Loading…"
+                          : "Select county…"}
                       </option>
-                    ))}
-                  </select>
+                      {counties.map((c) => (
+                        <option key={c.countyId} value={c.countyId}>
+                          {c.countyName}
+                        </option>
+                      ))}
+                    </select>
+                    {contestTouched &&
+                      (scopeType === "COUNTY" || scopeType === "DISTRICT") &&
+                      !countyId.trim() && (
+                        <div className="flex items-center gap-1.5 mt-1 text-xs text-red-600 font-semibold">
+                          <AlertCircle size={12} /> Required
+                        </div>
+                      )}
+                  </div>
+                )}
+
+                {/* District (if needed) */}
+                {scopeType === "DISTRICT" && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-900 mb-1.5 uppercase tracking-wide">
+                      District <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      value={districtId}
+                      onChange={(e) => {
+                        setDistrictId(e.target.value);
+                        setContestTouched(true);
+                      }}
+                      disabled={!countyId.trim()}
+                      className={`w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition ${
+                        !countyId.trim() ? "opacity-60 cursor-not-allowed" : ""
+                      }`}
+                    >
+                      <option value="">
+                        {!countyId.trim()
+                          ? "Select county first…"
+                          : districtsQ.isLoading
+                          ? "Loading…"
+                          : "Select district…"}
+                      </option>
+                      {districts.map((d) => (
+                        <option key={d.districtId} value={d.districtId}>
+                          {d.districtName}
+                        </option>
+                      ))}
+                    </select>
+                    {contestTouched &&
+                      scopeType === "DISTRICT" &&
+                      !districtId.trim() && (
+                        <div className="flex items-center gap-1.5 mt-1 text-xs text-red-600 font-semibold">
+                          <AlertCircle size={12} /> Required
+                        </div>
+                      )}
+                  </div>
+                )}
+
+                {/* Active Status */}
+                <div className="rounded-lg border border-slate-300 bg-slate-50 p-2.5">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={contestActive}
+                      onChange={(e) => setContestActive(e.target.checked)}
+                      className="h-4 w-4 accent-blue-600 cursor-pointer"
+                    />
+                    <span className="text-xs font-semibold text-slate-900">
+                      Active
+                    </span>
+                  </label>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
-                    County{" "}
-                    {scopeType === "COUNTY" || scopeType === "DISTRICT" ? (
-                      <span className="text-red-600">*</span>
-                    ) : null}
+              {/* RIGHT COLUMN - Advanced Settings */}
+              <div className="w-full lg:w-1/2 px-4 sm:px-6 py-4 sm:py-5 space-y-3 sm:space-y-4">
+                {/* Seats + Max Selections */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-900 mb-1.5 uppercase tracking-wide">
+                      Seats
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={seats}
+                      onChange={(e) => setSeats(Number(e.target.value || 1))}
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                    />
                   </div>
 
-                  <select
-                    value={countyId}
-                    onChange={(e) => {
-                      setCountyId(e.target.value);
-                      setContestTouched(true);
-                      if (scopeType === "DISTRICT") setDistrictId("");
-                    }}
-                    disabled={scopeType === "NATIONAL"}
-                    className={`px-3 py-2.5 rounded-lg border border-slate-200 outline-none bg-white ${
-                      scopeType === "NATIONAL" ? "opacity-60" : ""
-                    }`}
-                  >
-                    <option value="">
-                      {scopeType === "NATIONAL"
-                        ? "Not used for NATIONAL"
-                        : countiesQ.isLoading
-                        ? "Loading counties…"
-                        : "Select county…"}
-                    </option>
-                    {counties.map((c) => (
-                      <option key={c.countyId} value={c.countyId}>
-                        {c.countyName}
-                      </option>
-                    ))}
-                  </select>
-
-                  {contestTouched &&
-                  (scopeType === "COUNTY" || scopeType === "DISTRICT") &&
-                  !countyId.trim() ? (
-                    <div className="text-[11px] font-bold text-red-600">
-                      County is required for COUNTY/DISTRICT scope
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
-                    District{" "}
-                    {scopeType === "DISTRICT" ? (
-                      <span className="text-red-600">*</span>
-                    ) : null}
-                  </div>
-
-                  <select
-                    value={districtId}
-                    onChange={(e) => {
-                      setDistrictId(e.target.value);
-                      setContestTouched(true);
-                    }}
-                    disabled={scopeType !== "DISTRICT" || !countyId.trim()}
-                    className={`px-3 py-2.5 rounded-lg border border-slate-200 outline-none bg-white ${
-                      scopeType !== "DISTRICT" || !countyId.trim()
-                        ? "opacity-60"
-                        : ""
-                    }`}
-                  >
-                    <option value="">
-                      {scopeType !== "DISTRICT"
-                        ? "Only used for DISTRICT scope"
-                        : !countyId.trim()
-                        ? "Select county first…"
-                        : districtsQ.isLoading
-                        ? "Loading districts…"
-                        : "Select district…"}
-                    </option>
-                    {districts.map((d) => (
-                      <option key={d.districtId} value={d.districtId}>
-                        {d.districtName}
-                      </option>
-                    ))}
-                  </select>
-
-                  {contestTouched &&
-                  scopeType === "DISTRICT" &&
-                  !districtId.trim() ? (
-                    <div className="text-[11px] font-bold text-red-600">
-                      District is required for DISTRICT scope
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-                <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
-                    Seats
-                  </div>
-                  <input
-                    type="number"
-                    min={1}
-                    value={seats}
-                    onChange={(e) => setSeats(Number(e.target.value || 1))}
-                    className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
-                  />
-                </div>
-
-                <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
-                    Max Selections
-                  </div>
-                  <input
-                    type="number"
-                    min={1}
-                    value={maxSelections}
-                    onChange={(e) =>
-                      setMaxSelections(Number(e.target.value || 1))
-                    }
-                    className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
-                  />
-                  <div className="text-[11px] text-slate-500">
-                    Must be ≥ seats (backend enforces).
+                  <div>
+                    <label className="block text-xs font-bold text-slate-900 mb-1.5 uppercase tracking-wide">
+                      Max Select
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={maxSelections}
+                      onChange={(e) =>
+                        setMaxSelections(Number(e.target.value || 1))
+                      }
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                    />
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Must be ≥ seats
+                    </p>
                   </div>
                 </div>
 
-                <div className="grid gap-1.5">
-                  <div className="text-[11px] font-extrabold text-slate-600">
+                {/* Status */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-900 mb-1.5 uppercase tracking-wide">
                     Status
-                  </div>
+                  </label>
                   <select
                     value={status}
                     onChange={(e) => setStatus(e.target.value as ContestStatus)}
-                    className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none bg-white"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
                   >
                     {STATUSES.map((t) => (
                       <option key={t} value={t}>
@@ -930,75 +969,82 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                       </option>
                     ))}
                   </select>
-                  <div className="text-[11px] text-slate-500">
-                    If LOCKED, backend blocks structural changes.
-                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    If LOCKED, backend blocks changes
+                  </p>
                 </div>
-              </div>
 
-              <div className="grid gap-1.5">
-                <div className="text-[11px] font-extrabold text-slate-600">
-                  Active
-                </div>
-                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={contestActive}
-                    onChange={(e) => setContestActive(e.target.checked)}
-                    className="h-4 w-4 accent-emerald-600"
+                {/* Description */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-900 mb-1.5 uppercase tracking-wide">
+                    Description
+                  </label>
+                  <textarea
+                    value={contestDesc}
+                    onChange={(e) => setContestDesc(e.target.value)}
+                    rows={5}
+                    placeholder="Describe this contest…"
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition resize-none"
                   />
-                  Active
-                </label>
-              </div>
-
-              <div className="grid gap-1.5">
-                <div className="text-[11px] font-extrabold text-slate-600">
-                  Description
                 </div>
-                <textarea
-                  value={contestDesc}
-                  onChange={(e) => setContestDesc(e.target.value)}
-                  rows={3}
-                  className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
-                />
+
+                {/* Error Message */}
+                {(contestCreateM.isError || contestUpdateM.isError) && (
+                  <div className="flex gap-2 rounded-lg bg-red-50 border border-red-200 p-2.5">
+                    <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={16} />
+                    <div className="text-xs text-red-700 font-semibold">
+                      {contestCreateM.isError
+                        ? friendlySaveError(contestCreateM.error)
+                        : friendlySaveError(contestUpdateM.error)}
+                    </div>
+                  </div>
+                )}
               </div>
+            </div>
 
-              {contestCreateM.isError || contestUpdateM.isError ? (
-                <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm font-bold">
-                  {contestCreateM.isError
-                    ? friendlySaveError(contestCreateM.error)
-                    : friendlySaveError(contestUpdateM.error)}
-                </div>
-              ) : null}
+            {/* ============ FOOTER ============ */}
+            <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-6 py-3 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (savingContest) return;
+                  setContestOpen(false);
+                }}
+                disabled={savingContest}
+                className="px-4 h-9 rounded-lg border border-slate-300 bg-white text-slate-900 text-sm font-semibold hover:bg-slate-50 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
 
-              <div className="flex justify-end gap-2 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setContestOpen(false)}
-                  disabled={savingContest}
-                  className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                    savingContest ? "opacity-60" : ""
-                  }`}
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="button"
-                  disabled={!canEdit || savingContest}
-                  onClick={() => {
-                    setContestTouched(true);
-                    if (!canEdit) return;
-                    if (contestEditing) contestUpdateM.mutate();
-                    else contestCreateM.mutate();
-                  }}
-                  className={`px-3 py-2 rounded-lg border border-slate-200 bg-white font-extrabold ${
-                    !canEdit || savingContest ? "opacity-60" : ""
-                  }`}
-                >
-                  Save
-                </button>
-              </div>
+              <button
+                type="button"
+                disabled={!canEdit || savingContest || !normalizeName(contestName)}
+                onClick={() => {
+                  setContestTouched(true);
+                  if (!canEdit) return;
+                  if (contestEditing) contestUpdateM.mutate();
+                  else contestCreateM.mutate();
+                }}
+                className={`px-4 h-9 rounded-lg text-base font-semibold text-white transition flex items-center justify-center gap-2 ${
+                  !canEdit || savingContest || !normalizeName(contestName)
+                    ? "bg-slate-300 cursor-not-allowed opacity-60"
+                    : "bg-blue-600 hover:bg-blue-700 shadow-sm"
+                }`}
+              >
+                {savingContest ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span className="hidden sm:inline text-xs">Saving…</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus size={16} className="text-red-500" />
+                    <span className="hidden sm:inline">
+                      {contestEditing ? "Update" : "Create"}
+                    </span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -1006,3 +1052,4 @@ export default function ContestsTab({ onOpenOptions }: Props) {
     </div>
   );
 }
+

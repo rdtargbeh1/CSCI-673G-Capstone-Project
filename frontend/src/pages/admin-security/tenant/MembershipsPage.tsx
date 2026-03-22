@@ -229,12 +229,12 @@ export default function MembershipsPage() {
               type="button"
               onClick={refreshNow}
               disabled={!hasOrgContext || membershipsQ.isFetching}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-lg font-semibold hover:bg-slate-50 disabled:opacity-50"
               title={
                 !hasOrgContext ? "Select an organization first" : "Refresh"
               }
             >
-              <RefreshCw size={16} />
+              <RefreshCw size={18} />
               Refresh
             </button>
           </div>
@@ -244,7 +244,7 @@ export default function MembershipsPage() {
         {isSystemMode ? (
           <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label className="block">
-              <div className="mb-1 text-base font-semibold text-slate-600">
+              <div className="mb-1 text-lg font-bold text-slate-600">
                 Organization <span className="text-red-600">*</span>
               </div>
               <select
@@ -285,7 +285,7 @@ export default function MembershipsPage() {
             <div className="relative w-full sm:max-w-xl">
               <Search
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                size={16}
+                size={18}
               />
               <input
                 value={q}
@@ -455,29 +455,25 @@ export default function MembershipsPage() {
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            className="h-9 w-9 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
+                            className="flex items-center gap-1 h-9 px-2 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
                             title={enabled ? "Disable" : "Enable"}
-                            disabled={
-                              !canManage || enabledM.isPending || !userId
-                            }
-                            onClick={() =>
-                              enabledM.mutate({ userId, next: !enabled })
-                            }
+                            disabled={!canManage || enabledM.isPending || !userId}
+                            onClick={() => enabledM.mutate({ userId, next: !enabled })}
                           >
                             {enabled ? (
-                              <PowerOff
-                                size={18}
-                                className="mx-auto text-amber-600"
-                              />
+                              <>
+                                <PowerOff size={20} className="text-amber-600 mr-3" />
+                                <span className="base text-red-500">Disable</span>
+                              </>
                             ) : (
-                              <Power
-                                size={18}
-                                className="mx-auto text-emerald-600"
-                              />
+                              <>
+                                <Power size={20} className="text-emerald-600" />
+                                <span className="text-base text-green-400">Enable</span>
+                              </>
                             )}
                           </button>
 
-                          <button
+                          {/* <button
                             type="button"
                             className="h-9 w-9 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
                             title="Remove member"
@@ -494,10 +490,10 @@ export default function MembershipsPage() {
                             }}
                           >
                             <Trash2
-                              size={16}
+                              size={20}
                               className="mx-auto text-red-600"
                             />
-                          </button>
+                          </button> */}
                         </div>
                       </td>
                     </tr>

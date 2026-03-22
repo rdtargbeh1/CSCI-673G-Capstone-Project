@@ -1,9 +1,10 @@
 
+
 // src/pages/geo-registry/PollingCentersPage.tsx
 
 import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Search, Trash2, X, AlertCircle, ChevronDown } from "lucide-react";
 
 import { useAuthStore } from "../../shared/store/authStore";
 import {
@@ -29,8 +30,6 @@ import {
   Note,
   PageShell,
   Table,
-  Modal,
-  TextField,
 } from "./shared/geo-ui";
 
 /** ---------------- helpers ---------------- */
@@ -52,33 +51,26 @@ type FilterMode = "CENTER" | "COUNTY" | "DISTRICT";
 export default function PollingCentersPage() {
   const qc = useQueryClient();
 
-  // Dashboard switch on who can edit
   const dashboardMode = useAuthStore((s) => s.dashboardMode);
   const canEdit = dashboardMode === "SYSTEM" || dashboardMode === "NEC";
 
   const size = 20;
   const [page, setPage] = useState(0);
 
-  /** 3 filter boxes */
   const [mode, setMode] = useState<FilterMode>("CENTER");
   const [qCenter, setQCenter] = useState("");
   const [countyId, setCountyId] = useState("");
   const [districtId, setDistrictId] = useState("");
 
-  /** ✅ NEW: click-only tooltip state (no layout space) */
   const [districtClickWarn, setDistrictClickWarn] = useState(false);
 
-  /** modal */
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<PollingCenterDto | null>(null);
-  const [touched, setTouched] = useState(false);
 
-  /** form fields */
   const [centerName, setCenterName] = useState("");
   const [formCountyId, setFormCountyId] = useState("");
   const [formDistrictId, setFormDistrictId] = useState("");
 
-  /** Counties lookup */
   const countiesQ = useQuery({
     queryKey: ["counties-lookup", "polling-centers"],
     queryFn: async () => {
@@ -96,7 +88,6 @@ export default function PollingCentersPage() {
     }));
   }, [countiesQ.data]);
 
-  /** ✅ District dropdown is COUNTY-SCOPED and requires county */
   const districtsByCountyQ = useQuery({
     queryKey: [
       "districts-filter",
@@ -124,12 +115,10 @@ export default function PollingCentersPage() {
     }));
   }, [districtsByCountyQ.data]);
 
-  /** ✅ When county changes, clear district */
   React.useEffect(() => {
     setDistrictId("");
   }, [countyId]);
 
-  /** District lookup for MODAL (filtered by selected county in modal) */
   const districtsForModalQ = useQuery({
     queryKey: ["districts-modal", formCountyId || "no-county"],
     queryFn: async () => {
@@ -153,7 +142,6 @@ export default function PollingCentersPage() {
     }));
   }, [districtsForModalQ.data]);
 
-  /** Effective query params based on mode */
   const effectiveParams = useMemo(() => {
     if (mode === "CENTER") {
       return {
@@ -169,7 +157,6 @@ export default function PollingCentersPage() {
         districtId: undefined,
       };
     }
-    // ✅ DISTRICT mode: county is required, include it for safety
     return {
       q: undefined,
       countyId: countyId.trim() || undefined,
@@ -177,7 +164,6 @@ export default function PollingCentersPage() {
     };
   }, [mode, qCenter, countyId, districtId]);
 
-  /** Centers query */
   const centersQ = useQuery({
     queryKey: [
       "polling-centers",
@@ -207,7 +193,6 @@ export default function PollingCentersPage() {
     await centersQ.refetch();
   };
 
-  /** CRUD */
   const createM = useMutation({
     mutationFn: async () => {
       const name = normalizeName(centerName);
@@ -222,7 +207,6 @@ export default function PollingCentersPage() {
       setCenterName("");
       setFormCountyId("");
       setFormDistrictId("");
-      setTouched(false);
       await refreshNow();
     },
   });
@@ -245,7 +229,6 @@ export default function PollingCentersPage() {
       setCenterName("");
       setFormCountyId("");
       setFormDistrictId("");
-      setTouched(false);
       await refreshNow();
     },
   });
@@ -256,14 +239,13 @@ export default function PollingCentersPage() {
   });
 
   const saving = createM.isPending || updateM.isPending;
+  const error = createM.error || updateM.error;
 
-  /** Modal open helpers */
   const openCreate = () => {
     setEditing(null);
     setCenterName("");
     setFormCountyId("");
     setFormDistrictId("");
-    setTouched(false);
     setOpen(true);
   };
 
@@ -272,13 +254,13 @@ export default function PollingCentersPage() {
     setCenterName(safeStr(c.centerName));
     setFormCountyId(safeStr(c.countyId));
     setFormDistrictId(safeStr(c.districtId));
-    setTouched(false);
     setOpen(true);
   };
 
   const save = () => {
-    setTouched(true);
     if (!canEdit) return;
+    if (!normalizeName(centerName)) return;
+    if (!safeStr(formDistrictId).trim()) return;
     if (editing) updateM.mutate();
     else createM.mutate();
   };
@@ -294,13 +276,11 @@ export default function PollingCentersPage() {
       setQCenter("");
       setDistrictId("");
     } else {
-      // DISTRICT: county must be selected first (we keep county)
       setQCenter("");
       setDistrictId("");
     }
   };
 
-  /** Table columns change based on filter mode */
   const tableColumns =
     mode === "DISTRICT"
       ? ["District", "Code", "Center", "Created", "Actions"]
@@ -310,7 +290,6 @@ export default function PollingCentersPage() {
   const districtDropdownLoading = !!countyId && districtsByCountyQ.isLoading;
   const districtDropdownError = !!countyId && districtsByCountyQ.isError;
 
-  /** ✅ NEW: show tooltip ONLY when user clicks District while disabled */
   const warnDistrictNeedsCounty = () => {
     if (!countyId) {
       setDistrictClickWarn(true);
@@ -342,19 +321,19 @@ export default function PollingCentersPage() {
             type="button"
             onClick={openCreate}
             disabled={!canEdit}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-[#0000CD] text-white px-3 py-2 text-lg font-semibold hover:bg-slate-500 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-[#0000CD] text-white px-3 py-2 text-base font-semibold hover:bg-blue-700 disabled:opacity-50"
             title={canEdit ? "Add Center" : "NEC/SYSTEM only"}
           >
-            <Plus size={18} />
+            <Plus size={16} />
             Add Center
           </button>
         </div>
       }
     >
       <Card title="Polling Centers">
-        {/* ✅ CONDENSED FILTERS ON LEFT - NO LABELS */}
+        {/* ✅ CONDENSED FILTERS */}
         <div className="flex items-end gap-2 mb-4">
-          {/* Filter 1: Search */}
+          {/* Search */}
           <div className="relative w-80">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
@@ -368,33 +347,36 @@ export default function PollingCentersPage() {
                 setMode("CENTER");
               }}
               placeholder="Search center…"
-              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-base outline-none focus:ring-2 focus:ring-(--org-primary)"
+              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-base outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
-          {/* Filter 2: County */}
-          <select
-            value={countyId}
-            onChange={(e) => {
-              setMode("COUNTY");
-              setCountyId(e.target.value);
-              setDistrictId("");
-              setPage(0);
-            }}
-            disabled={countiesQ.isLoading || countiesQ.isError}
-            className="w-80 rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
-          >
-            <option value="">
-              {countiesQ.isLoading ? "Loading…" : "County"}
-            </option>
-            {countyOptions.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
+          {/* County Filter */}
+          <div className="relative w-80">
+            <select
+              value={countyId}
+              onChange={(e) => {
+                setMode("COUNTY");
+                setCountyId(e.target.value);
+                setDistrictId("");
+                setPage(0);
+              }}
+              disabled={countiesQ.isLoading || countiesQ.isError}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-10 text-base outline-none focus:ring-2 focus:ring-blue-500 appearance-none disabled:bg-slate-50"
+            >
+              <option value="">
+                {countiesQ.isLoading ? "Loading…" : "County"}
               </option>
-            ))}
-          </select>
+              {countyOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
 
-          {/* Filter 3: District */}
+          {/* District Filter */}
           <div
             className="relative w-80"
             onMouseDown={warnDistrictNeedsCounty}
@@ -418,7 +400,7 @@ export default function PollingCentersPage() {
                 districtDropdownLoading ||
                 districtDropdownError
               }
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-10 text-base outline-none focus:ring-2 focus:ring-blue-500 appearance-none disabled:bg-slate-50"
               title={
                 districtDisabled ? "Select county first" : "Select district"
               }
@@ -437,6 +419,7 @@ export default function PollingCentersPage() {
                 </option>
               ))}
             </select>
+            <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           </div>
 
           {/* Clear */}
@@ -497,11 +480,11 @@ export default function PollingCentersPage() {
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[#008000] text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
+                          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-green-600 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
                           disabled={!canEdit}
                           onClick={() => openEdit(c)}
                         >
-                          <Pencil size={20} />
+                          <Pencil size={16} />
                         </button>
                         <button
                           type="button"
@@ -514,7 +497,7 @@ export default function PollingCentersPage() {
                             if (ok) deleteM.mutate(c.centerId);
                           }}
                         >
-                          <Trash2 size={20} className="text-red-600" />
+                          <Trash2 size={16} className="text-red-600" />
                         </button>
                       </div>
                     );
@@ -574,125 +557,184 @@ export default function PollingCentersPage() {
         </div>
       </Card>
 
-      {/* Modal (unchanged) */}
-      <Modal
-        open={open}
-        onClose={() => {
-          if (saving) return;
-          setOpen(false);
-        }}
-        title={editing ? "Edit Polling Center" : "Add Polling Center"}
-        subtitle={
-          editing
-            ? "Update polling center master data."
-            : "Create a new polling center."
-        }
-        footer={
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
-              onClick={() => setOpen(false)}
-              disabled={saving}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
-              onClick={save}
-              disabled={!canEdit || saving}
-              title={canEdit ? "Save" : "NEC/SYSTEM only"}
-            >
-              Save
-            </button>
+      {/* ✅ Enhanced Modal - Create/Edit Form */}
+      {open && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => !saving && setOpen(false)}
+        >
+          <div
+            className="w-full max-w-120 bg-white rounded-2xl shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* ✅ HEADER */}
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-8 py-6 text-white flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-2xl font-bold tracking-tight">
+                  {editing ? "Edit Polling Center" : "Add Polling Center"}
+                </h2>
+                <p className="text-blue-100 mt-1 text-sm">
+                  {editing
+                    ? "Update polling center master data."
+                    : "Create a new polling center."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                disabled={saving}
+                className="flex-shrink-0 h-10 w-10 rounded-lg bg-white/20 hover:bg-white/30 transition flex items-center justify-center text-white disabled:opacity-50"
+                aria-label="Close"
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            {/* ✅ CONTENT */}
+            <div className="px-8 py-6 space-y-4">
+              {/* County Dropdown */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wide block mb-2">
+                  County *
+                </label>
+                <div className="relative">
+                  <select
+                    value={formCountyId}
+                    onChange={(e) => {
+                      setFormCountyId(e.target.value);
+                      setFormDistrictId("");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !saving && formDistrictId && normalizeName(centerName)) {
+                        save();
+                      }
+                    }}
+                    disabled={saving || countiesQ.isLoading || countiesQ.isError}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none disabled:bg-slate-100 disabled:text-slate-500 pr-10"
+                  >
+                    <option value="">
+                      {countiesQ.isLoading
+                        ? "Loading counties…"
+                        : "-- Select County --"}
+                    </option>
+                    {countyOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* District Dropdown */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wide block mb-2">
+                  District *
+                </label>
+                <div className="relative">
+                  <select
+                    value={formDistrictId}
+                    onChange={(e) => setFormDistrictId(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !saving) {
+                        save();
+                      }
+                    }}
+                    disabled={
+                      saving ||
+                      !formCountyId ||
+                      districtsForModalQ.isLoading ||
+                      districtsForModalQ.isError
+                    }
+                    className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none disabled:bg-slate-100 disabled:text-slate-500 pr-10"
+                    title={
+                      !formCountyId ? "Select a county first" : "Select district"
+                    }
+                  >
+                    <option value="">
+                      {!formCountyId
+                        ? "Select county first…"
+                        : districtsForModalQ.isLoading
+                        ? "Loading districts…"
+                        : "-- Select District --"}
+                    </option>
+                    {modalDistrictOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* Center Name Input */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wide block mb-2">
+                  Center Name *
+                </label>
+                <input
+                  value={centerName}
+                  onChange={(e) => setCenterName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !saving) {
+                      save();
+                    }
+                  }}
+                  disabled={saving}
+                  type="text"
+                  placeholder="e.g., Paynesville City Hall"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-slate-100 disabled:text-slate-500"
+                />
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="rounded-xl bg-red-50 border border-red-200 p-4 flex gap-3">
+                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                  <div>
+                    <div className="text-sm font-bold text-red-900">Error</div>
+                    <div className="text-sm text-red-800 mt-1">
+                      {(error as any)?.message ?? "Failed to save polling center."}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Info Message */}
+              <div className="rounded-xl bg-blue-50 border border-blue-200 p-3">
+                <p className="text-xs text-blue-700">
+                  💡 <span className="font-semibold">Tip:</span> Select county first, then district, then enter center name. Press Enter to save.
+                </p>
+              </div>
+            </div>
+
+            {/* ✅ FOOTER */}
+            <div className="border-t border-slate-200 bg-white px-8 py-4 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                disabled={saving}
+                className="px-6 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-semibold hover:bg-slate-50 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={saving || !normalizeName(centerName) || !safeStr(formDistrictId).trim() || !canEdit}
+                onClick={save}
+                className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition disabled:opacity-50 shadow-md"
+              >
+                {saving ? "Saving…" : editing ? "Update Center" : "Create Center"}
+              </button>
+            </div>
           </div>
-        }
-      >
-        <div className="grid grid-cols-1 gap-3">
-          <label className="block">
-            <div className="mb-1 text-base font-semibold text-slate-600">
-              County <span className="text-red-600">*</span>
-            </div>
-            <select
-              value={formCountyId}
-              onChange={(e) => {
-                setFormCountyId(e.target.value);
-                setFormDistrictId("");
-                setTouched(true);
-              }}
-              disabled={!canEdit || countiesQ.isLoading || countiesQ.isError}
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
-            >
-              <option value="">
-                {countiesQ.isLoading
-                  ? "Loading counties…"
-                  : "— Select County —"}
-              </option>
-              {countyOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="block">
-            <div className="mb-1 text-base font-semibold text-slate-600">
-              District <span className="text-red-600">*</span>
-            </div>
-            <select
-              value={formDistrictId}
-              onChange={(e) => {
-                setFormDistrictId(e.target.value);
-                setTouched(true);
-              }}
-              disabled={
-                !canEdit ||
-                !formCountyId ||
-                districtsForModalQ.isLoading ||
-                districtsForModalQ.isError
-              }
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
-              title={
-                !formCountyId ? "Select a county first" : "Select district"
-              }
-            >
-              <option value="">
-                {!formCountyId
-                  ? "Select county first…"
-                  : districtsForModalQ.isLoading
-                  ? "Loading districts…"
-                  : "— Select District —"}
-              </option>
-              {modalDistrictOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <TextField
-            label="Center Name"
-            value={centerName}
-            onChange={setCenterName}
-            required
-            placeholder="e.g., Paynesville City Hall"
-            error={touched && !normalizeName(centerName) ? "Required" : ""}
-            onBlur={() => setTouched(true)}
-          />
-
-          {createM.isError || updateM.isError ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-base text-red-700">
-              {(createM.error as any)?.message ??
-                (updateM.error as any)?.message ??
-                "Failed to save polling center."}
-            </div>
-          ) : null}
         </div>
-      </Modal>
+      )}
     </PageShell>
   );
 }
-

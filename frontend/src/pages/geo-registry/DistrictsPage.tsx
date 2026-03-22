@@ -1,10 +1,9 @@
 
-
 // src/pages/geo-registry/DistrictsPage.tsx
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Search, Trash2, X, AlertCircle, ChevronDown } from "lucide-react";
 
 import { useAuthStore } from "../../shared/store/authStore";
 
@@ -27,8 +26,6 @@ import {
   Note,
   PageShell,
   Table,
-  Modal,
-  TextField,
 } from "./shared/geo-ui";
 
 /** ---------------- helpers ---------------- */
@@ -54,7 +51,6 @@ export default function DistrictsPage() {
   // modal state
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<DistrictDto | null>(null);
-  const [touched, setTouched] = useState(false);
 
   // form fields
   const [districtName, setDistrictName] = useState("");
@@ -113,7 +109,6 @@ export default function DistrictsPage() {
       setEditing(null);
       setDistrictName("");
       setCountyId("");
-      setTouched(false);
       await refreshNow();
     },
   });
@@ -135,7 +130,6 @@ export default function DistrictsPage() {
       setEditing(null);
       setDistrictName("");
       setCountyId("");
-      setTouched(false);
       await refreshNow();
     },
   });
@@ -148,12 +142,12 @@ export default function DistrictsPage() {
   });
 
   const saving = createM.isPending || updateM.isPending;
+  const error = createM.error || updateM.error;
 
   const openCreate = () => {
     setEditing(null);
     setDistrictName("");
-    setCountyId(""); // must pick
-    setTouched(false);
+    setCountyId("");
     setOpen(true);
   };
 
@@ -161,13 +155,14 @@ export default function DistrictsPage() {
     setEditing(d);
     setDistrictName(safeStr(d.districtName));
     setCountyId(safeStr(d.countyId));
-    setTouched(false);
     setOpen(true);
   };
 
   const save = () => {
-    setTouched(true);
     if (!canEdit) return;
+    if (!normalizeName(districtName)) return;
+    if (!safeStr(countyId).trim()) return;
+    
     if (editing) updateM.mutate();
     else createM.mutate();
   };
@@ -196,17 +191,17 @@ export default function DistrictsPage() {
             type="button"
             onClick={openCreate}
             disabled={!canEdit}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-[#0000CD] text-white px-3 py-2 text-base font-semibold hover:bg-slate-500 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-[#0000CD] text-white px-3 py-2 text-base font-semibold hover:bg-blue-700 disabled:opacity-50"
             title={canEdit ? "Add District" : "NEC/SYSTEM only"}
           >
-            <Plus size={22} />
+            <Plus size={16} />
             Add District
           </button>
         </div>
       }
     >
       <Card title="Districts">
-        {/* ✅ CONDENSED FILTERS - NO LABELS */}
+        {/* ✅ CONDENSED FILTERS */}
         <div className="flex items-end gap-2 mb-4">
           {/* Search */}
           <div className="relative w-80">
@@ -221,29 +216,32 @@ export default function DistrictsPage() {
                 setPage(0);
               }}
               placeholder="Search district…"
-              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-base outline-none focus:ring-2 focus:ring-(--org-primary)"
+              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-base outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
-          {/* County */}
-          <select
-            value={countyFilter}
-            onChange={(e) => {
-              setCountyFilter(e.target.value);
-              setPage(0);
-            }}
-            disabled={countiesQ.isLoading || countiesQ.isError}
-            className="w-80 rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
-          >
-            <option value="">
-              {countiesQ.isLoading ? "Loading…" : "All counties"}
-            </option>
-            {countyOptions.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
+          {/* County Filter */}
+          <div className="relative w-80">
+            <select
+              value={countyFilter}
+              onChange={(e) => {
+                setCountyFilter(e.target.value);
+                setPage(0);
+              }}
+              disabled={countiesQ.isLoading || countiesQ.isError}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-10 text-base outline-none focus:ring-2 focus:ring-blue-500 appearance-none disabled:bg-slate-50"
+            >
+              <option value="">
+                {countiesQ.isLoading ? "Loading…" : "All counties"}
               </option>
-            ))}
-          </select>
+              {countyOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
 
           {/* Clear */}
           <button
@@ -305,12 +303,12 @@ export default function DistrictsPage() {
                     >
                       <button
                         type="button"
-                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-base text-[#008000] font-semibold hover:bg-slate-50 disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-base text-green-600 font-semibold hover:bg-slate-50 disabled:opacity-50"
                         disabled={!canEdit}
                         title={canEdit ? "Edit" : "NEC/SYSTEM only"}
                         onClick={() => openEdit(d)}
                       >
-                        <Pencil size={20} />
+                        <Pencil size={16} />
                       </button>
 
                       <button
@@ -325,7 +323,7 @@ export default function DistrictsPage() {
                           if (ok) deleteM.mutate(d.districtId);
                         }}
                       >
-                        <Trash2 size={20} className="text-red-600" />
+                        <Trash2 size={16} className="text-red-600" />
                       </button>
                     </div>,
                   ])
@@ -383,89 +381,142 @@ export default function DistrictsPage() {
         </div>
       </Card>
 
-      {/* Modal */}
-      <Modal
-        open={open}
-        onClose={() => {
-          if (saving) return;
-          setOpen(false);
-        }}
-        title={editing ? "Edit District" : "Add District"}
-        subtitle={
-          editing ? "Update district master data." : "Create a new district."
-        }
-        footer={
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
-              onClick={() => setOpen(false)}
-              disabled={saving}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
-              onClick={save}
-              disabled={!canEdit || saving}
-              title={canEdit ? "Save" : "NEC/SYSTEM only"}
-            >
-              Save
-            </button>
-          </div>
-        }
-      >
-        <div className="grid grid-cols-1 gap-3">
-          <label className="block">
-            <div className="mb-1 text-base font-semibold text-slate-600">
-              County <span className="text-red-600">*</span>
-            </div>
-            <select
-              value={countyId}
-              onChange={(e) => setCountyId(e.target.value)}
-              disabled={!canEdit || countiesQ.isLoading || countiesQ.isError}
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary) disabled:bg-slate-50"
-            >
-              <option value="">
-                {countiesQ.isLoading
-                  ? "Loading counties…"
-                  : "— Select County —"}
-              </option>
-              {countyOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-
-            {touched && !safeStr(countyId).trim() ? (
-              <div className="mt-1 text-base font-semibold text-red-600">
-                Required
+      {/* ✅ Enhanced Modal - Create/Edit Form */}
+      {open && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => !saving && setOpen(false)}
+        >
+          <div
+            className="w-full max-w-120 bg-white rounded-2xl shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* ✅ HEADER */}
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-8 py-6 text-white flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-2xl font-bold tracking-tight">
+                  {editing ? "Edit District" : "Add District"}
+                </h2>
+                <p className="text-blue-100 mt-1 text-sm">
+                  {editing
+                    ? "Update district master data."
+                    : "Create a new district."}
+                </p>
               </div>
-            ) : null}
-          </label>
-
-          <TextField
-            label="District Name"
-            value={districtName}
-            onChange={setDistrictName}
-            required
-            placeholder="e.g., District 1"
-            error={touched && !normalizeName(districtName) ? "Required" : ""}
-            onBlur={() => setTouched(true)}
-          />
-
-          {createM.isError || updateM.isError ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-base text-red-700">
-              {(createM.error as any)?.message ??
-                (updateM.error as any)?.message ??
-                "Failed to save district."}
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                disabled={saving}
+                className="flex-shrink-0 h-10 w-10 rounded-lg bg-white/20 hover:bg-white/30 transition flex items-center justify-center text-white disabled:opacity-50"
+                aria-label="Close"
+              >
+                <X size={22} />
+              </button>
             </div>
-          ) : null}
+
+            {/* ✅ CONTENT */}
+            <div className="px-8 py-6 space-y-4">
+              {/* County Dropdown */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wide block mb-2">
+                  County *
+                </label>
+                <div className="relative">
+                  <select
+                    value={countyId}
+                    onChange={(e) => setCountyId(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !saving && countyId && normalizeName(districtName)) {
+                        save();
+                      }
+                    }}
+                    disabled={saving || countiesQ.isLoading || countiesQ.isError}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none disabled:bg-slate-100 disabled:text-slate-500 pr-10"
+                  >
+                    <option value="">
+                      {countiesQ.isLoading
+                        ? "Loading counties…"
+                        : "-- Select County --"}
+                    </option>
+                    {countyOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                </div>
+              </div>
+
+              {/* District Name Input */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wide block mb-2">
+                  District Name *
+                </label>
+                <input
+                  value={districtName}
+                  onChange={(e) => setDistrictName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !saving) {
+                      save();
+                    }
+                  }}
+                  disabled={saving}
+                  type="text"
+                  placeholder="e.g., District 1"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-slate-100 disabled:text-slate-500"
+                />
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="rounded-xl bg-red-50 border border-red-200 p-4 flex gap-3">
+                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                  <div>
+                    <div className="text-sm font-bold text-red-900">Error</div>
+                    <div className="text-sm text-red-800 mt-1">
+                      {(error as any)?.message ?? "Failed to save district."}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Info Message */}
+              <div className="rounded-xl bg-blue-50 border border-blue-200 p-3">
+                <p className="text-xs text-blue-700">
+                  💡 <span className="font-semibold">Tip:</span> Select a county first, then enter the district name. Press Enter to save.
+                </p>
+              </div>
+            </div>
+
+            {/* ✅ FOOTER */}
+            <div className="border-t border-slate-200 bg-white px-8 py-4 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                disabled={saving}
+                className="px-6 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-semibold hover:bg-slate-50 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={saving || !normalizeName(districtName) || !safeStr(countyId).trim() || !canEdit}
+                onClick={save}
+                className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition disabled:opacity-50 shadow-md"
+              >
+                {saving ? "Saving…" : editing ? "Update District" : "Create District"}
+              </button>
+            </div>
+          </div>
         </div>
-      </Modal>
+      )}
     </PageShell>
   );
 }
+
+
 

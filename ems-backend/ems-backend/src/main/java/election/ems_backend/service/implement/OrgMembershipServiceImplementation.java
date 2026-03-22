@@ -183,32 +183,58 @@ public class OrgMembershipServiceImplementation implements OrgMembershipService 
 
     @Override
     public void removeMemberInTenant(UUID userId) {
+
         // Only tenant ADMIN or system admin may remove members
         authz.requireAnyInTenantOrPlatformAdmin("TENANT_ADMIN", "NEC_ADMIN");
 
         UUID orgId = requireTenant();
-        OrgMembership m = orgMembershipRepository.findByOrganization_OrgIdAndUser_UserId(orgId, userId)
+
+        OrgMembership m = orgMembershipRepository
+                .findByOrganization_OrgIdAndUser_UserId(orgId, userId)
                 .orElseThrow(() -> new NoSuchElementException("Membership not found in current tenant"));
 
         // Prevent removing last enabled ADMIN in the org unless caller is platform admin
         boolean removingAdmin = "ADMIN".equalsIgnoreCase(m.getRoleName()) && m.isEnabled();
         if (removingAdmin && !callerIsPlatformAdmin()) {
-            long admins = orgMembershipRepository.countByOrganization_OrgIdAndRoleNameAndIsEnabledTrue(orgId, "ADMIN");
+            long admins = orgMembershipRepository
+                    .countByOrganization_OrgIdAndRoleNameAndIsEnabledTrue(orgId, "ADMIN");
+
             if (admins <= 1) {
                 throw new IllegalStateException("Cannot remove the last enabled ADMIN for the organization");
             }
         }
 
+        // Remove the membership
         orgMembershipRepository.delete(m);
+
+        // -----------------------------
+        // NEW SAFETY LOGIC
+        // -----------------------------
+
+        long remainingMemberships = orgMembershipRepository.countByUser_UserId(userId);
+
+        if (remainingMemberships == 0) {
+
+            SystemUser user = users.findById(userId)
+                    .orElse(null);
+
+            if (user != null && !user.isSystemAdmin()) {
+                users.delete(user);
+            }
+        }
 
         // Audit
         try {
             UUID actor = currentUserProvider.currentUserId();
             String desc = "Removed membership: user=" + userId;
-            jdbc.update("INSERT INTO audit_log (log_id, org_id, user_id, activity_type, entity_affected, action_description) VALUES (gen_random_uuid(), ?, ?, ?, ?, ?)",
-                    new Object[]{ orgId, actor, "MEMBERSHIP_REMOVED", "org_membership", desc });
-        } catch (Exception ignored) {}
 
+            jdbc.update(
+                    "INSERT INTO audit_log (log_id, org_id, user_id, activity_type, entity_affected, action_description) " +
+                            "VALUES (gen_random_uuid(), ?, ?, ?, ?, ?)",
+                    new Object[]{ orgId, actor, "MEMBERSHIP_REMOVED", "org_membership", desc }
+            );
+
+        } catch (Exception ignored) {}
 
     }
 

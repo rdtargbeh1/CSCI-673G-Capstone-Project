@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { useAuth } from "../../../../../auth/useAuth";
 import { Panel, Badge } from "../../../shared/elections-ui";
@@ -12,73 +13,56 @@ export default function AllocationTab() {
   const canEdit = dashboardMode === "NEC" || dashboardMode === "SYSTEM";
 
   const [tab, setTab] = useState<SubTab>("CENTERS");
- 
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 16}}>
+    <div className="flex flex-col gap-3">
       <Panel
         title="Allocation"
         right={
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              flexWrap: "wrap",
-              fontSize: 14
-            }}
-          >
+          <div className="flex flex-wrap gap-3 items-center">
+            {/* Centers Tab */}
             <button
               type="button"
               onClick={() => setTab("CENTERS")}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                background: tab === "CENTERS" ? "#f8fafc" : "#fff",
-                fontWeight: 700,
-                fontSize: 20,
-              }}
+              className={`px-4 py-2 rounded-lg font-bold text-xl transition-all ${
+                tab === "CENTERS"
+                  ? "bg-blue-900 text-white shadow-md border-blue-600"
+                  : "bg-white text-slate-900 border border-slate-300 hover:bg-slate-50"
+              }`}
             >
-              Centers
+              📍 Centers
             </button>
 
+            {/* Places Tab */}
             <button
               type="button"
               onClick={() => setTab("PLACES")}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid #e5e7eb",
-                background: tab === "PLACES" ? "#f8fafc" : "#fff",
-                fontWeight: 700,
-                fontSize: 20,
-              }}
+              className={`px-4 py-2 rounded-lg font-bold text-xl transition-all ${
+                tab === "PLACES"
+                  ? "bg-blue-900 text-white shadow-md border-blue-600"
+                  : "bg-white text-slate-900 border border-slate-300 hover:bg-slate-50"
+              }`}
             >
-              Places
+              🗳️ Places
             </button>
 
-            {/* <Badge
-              text={canEdit ? "Editable (NEC/SYSTEM)" : "Read-only (Tenant)"}
-            /> */}
+            {/* Divider */}
+            <div className="hidden sm:block w-px h-6 bg-slate-300" />
 
+            {/* Bulk Import Button */}
             {canEdit && (
               <button
                 type="button"
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 10,
-                  border: "1px solid #e5e7eb",
-                  background: "#fff",
-                }}
+                className="px-4 py-2 rounded-lg font-semibold text-base border border-slate-300 bg-white text-slate-900 hover:bg-slate-50 transition"
+                title="Coming soon"
               >
-                Bulk Import (later)
+                📥 Bulk Import
               </button>
             )}
           </div>
         }
       >
         {tab === "CENTERS" ? (
-          
           <PollingCenterAllocationsPage />
         ) : (
           <PollingPlaceAllocationsPage />
@@ -87,3 +71,4 @@ export default function AllocationTab() {
     </div>
   );
 }
+

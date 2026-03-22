@@ -1,4 +1,6 @@
-// src/pages/elections/workspace/tabs/setup/masters/PartiesMasterTab.tsx
+// // src/pages/elections/workspace/tabs/setup/masters/PartiesMasterTab.tsx
+
+
 /**
  * PARTY MASTER TAB (party)
  *
@@ -14,7 +16,7 @@
 
 import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Search, Trash2, X, AlertCircle, CheckCircle } from "lucide-react";
 
 // ✅ use the same auth store used across your app
 import { useAuthStore } from "../../../../../../shared/store/authStore";
@@ -33,16 +35,19 @@ import {
   type PartyDto,
 } from "../../../../../../shared/services/partyService";
 
-/** ---------------- helpers ---------------- */
+/** ============ HELPERS ============ */
 function safeStr(v: any) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
+
 function normalizeName(v: string) {
   return v.trim().replace(/\s+/g, " ");
 }
+
 function normalizeAbbrev(v: string) {
   return v.trim().replace(/\s+/g, "").toUpperCase();
 }
+
 function friendlySaveError(err: any): string {
   const msg =
     safeStr(err?.response?.data?.message) ||
@@ -56,6 +61,7 @@ function friendlySaveError(err: any): string {
   }
   return msg;
 }
+
 function fmtDate(v: any): string {
   if (!v) return "";
   const d = new Date(v);
@@ -98,6 +104,7 @@ function CompactTable(props: { columns: string[]; rows: React.ReactNode[][] }) {
   );
 }
 
+/** ============ MAIN COMPONENT ============ */
 export default function PartiesMasterTab() {
   const qc = useQueryClient();
 
@@ -121,6 +128,7 @@ export default function PartiesMasterTab() {
   const [abbreviation, setAbbreviation] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
 
+  /** ============ QUERIES ============ */
   const partiesQ = useQuery({
     queryKey: ["party-master", page, q],
     queryFn: () => searchParties({ page, size, q: q.trim() || undefined }),
@@ -131,6 +139,7 @@ export default function PartiesMasterTab() {
   const items = useMemo(() => partiesQ.data?.items ?? [], [partiesQ.data]);
   const totalPages = Math.max(1, partiesQ.data?.totalPages ?? 1);
 
+  /** ============ HANDLERS (BEFORE MUTATIONS) ============ */
   const refreshNow = async () => {
     await qc.invalidateQueries({ queryKey: ["party-master"] });
     await partiesQ.refetch();
@@ -154,6 +163,7 @@ export default function PartiesMasterTab() {
     setOpen(true);
   };
 
+  /** ============ MUTATIONS ============ */
   const createM = useMutation({
     mutationFn: async () => {
       const name = normalizeName(partyName);
@@ -211,6 +221,7 @@ export default function PartiesMasterTab() {
     onSuccess: refreshNow,
   });
 
+  /** ============ STATE ============ */
   const saving = createM.isPending || updateM.isPending;
 
   const save = () => {
@@ -220,6 +231,10 @@ export default function PartiesMasterTab() {
     else createM.mutate();
   };
 
+  const partyNameValid = normalizeName(partyName);
+  const abbreviationValid = normalizeAbbrev(abbreviation);
+
+  /** ============ TABLE ROWS ============ */
   const rows = useMemo(() => {
     return items.map((p) => {
       const actions = (
@@ -227,19 +242,19 @@ export default function PartiesMasterTab() {
           <button
             type="button"
             disabled={!canEdit}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-600 ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-600 hover:bg-green-50 transition ${
               !canEdit ? "opacity-60" : ""
             }`}
             title={canEdit ? "Edit party (SYSTEM/NEC)" : "Read-only (Tenant)"}
             onClick={() => openEdit(p)}
           >
-            <Pencil size={18} />
+            <Pencil size={20} />
           </button>
 
           <button
             type="button"
             disabled={!canEdit || deleteM.isPending}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 ${
+            className={`inline-flex items-center gap-2 px-2.5 ml-3 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 hover:bg-red-50 transition ${
               !canEdit || deleteM.isPending ? "opacity-60" : ""
             }`}
             title={canEdit ? "Delete party (SYSTEM/NEC)" : "Read-only (Tenant)"}
@@ -250,7 +265,7 @@ export default function PartiesMasterTab() {
               if (ok) deleteM.mutate(p.partyId);
             }}
           >
-            <Trash2 size={18} className="text-red-600" />
+            <Trash2 size={20} className="text-red-600" />
           </button>
         </div>
       );
@@ -259,7 +274,7 @@ export default function PartiesMasterTab() {
         <div key={p.partyId} className="grid gap-0.5">
           <div>{p.partyName}</div>
         </div>,
-        <span key="abbr" className=" text-slate-700">
+        <span key="abbr" className="text-slate-700">
           {p.abbreviation}
         </span>,
         p.logoUrl ? (
@@ -278,7 +293,6 @@ export default function PartiesMasterTab() {
           </span>
         ),
         <span key="created" className="text-base text-slate-600">
-          {/* ✅ use dateCreated only */}
           {fmtDate(p.dateCreated)}
         </span>,
         actions,
@@ -286,6 +300,7 @@ export default function PartiesMasterTab() {
     });
   }, [items, canEdit, deleteM.isPending]);
 
+  /** ============ RENDER ============ */
   return (
     <div className="flex flex-col gap-3">
       {!canEdit ? (
@@ -295,7 +310,7 @@ export default function PartiesMasterTab() {
         />
       ) : null}
 
-      {/* Header actions */}
+      {/* ============ HEADER ACTIONS ============ */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
@@ -310,7 +325,7 @@ export default function PartiesMasterTab() {
                 setPage(0);
               }}
               placeholder="Search party name or abbreviation…"
-              className="pl-8 pr-3 py-2 rounded-lg border border-slate-200 bg-white min-w-260px outline-none"
+              className="pl-8 pr-3 py-2 rounded-lg border border-slate-200 bg-white min-w-260px outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -320,7 +335,7 @@ export default function PartiesMasterTab() {
               setQ("");
               setPage(0);
             }}
-            className="px-3 py-2 rounded-lg border border-slate-200 bg-white"
+            className="px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition"
             title="Clear search"
           >
             Clear
@@ -332,11 +347,11 @@ export default function PartiesMasterTab() {
             <button
               type="button"
               onClick={openCreate}
-              className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-600 text-white font-bold"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition shadow-sm"
               title="Create party (SYSTEM/NEC)"
             >
               <Plus size={16} />
-             Add New
+              Add New
             </button>
           ) : (
             <Badge text="Read-only (Tenant)" />
@@ -346,7 +361,7 @@ export default function PartiesMasterTab() {
             type="button"
             onClick={refreshNow}
             disabled={partiesQ.isFetching}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-100 ${
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
               partiesQ.isFetching ? "opacity-60" : ""
             }`}
             title="Refresh parties"
@@ -357,7 +372,7 @@ export default function PartiesMasterTab() {
         </div>
       </div>
 
-      {/* Status */}
+      {/* ============ STATUS ============ */}
       {partiesQ.isLoading ? (
         <div className="p-2 text-slate-600">Loading parties…</div>
       ) : partiesQ.isError ? (
@@ -366,7 +381,7 @@ export default function PartiesMasterTab() {
         </div>
       ) : null}
 
-      {/* Compact table */}
+      {/* ============ TABLE ============ */}
       <CompactTable
         columns={["Party", "Abbrev", "Logo", "Created", "Actions"]}
         rows={
@@ -386,7 +401,7 @@ export default function PartiesMasterTab() {
         }
       />
 
-      {/* Pagination */}
+      {/* ============ PAGINATION ============ */}
       <div className="flex justify-between items-center gap-2">
         <div className="text-sm text-slate-500">
           Page <b>{page + 1}</b> of <b>{totalPages}</b>
@@ -396,8 +411,8 @@ export default function PartiesMasterTab() {
             type="button"
             disabled={page <= 0}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
-            className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-              page <= 0 ? "opacity-50" : ""
+            className={`px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
+              page <= 0 ? "opacity-50 cursor-not-allowed" : ""
             }`}
             title="Previous page"
           >
@@ -407,8 +422,8 @@ export default function PartiesMasterTab() {
             type="button"
             disabled={page >= totalPages - 1}
             onClick={() => setPage((p) => p + 1)}
-            className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-              page >= totalPages - 1 ? "opacity-50" : ""
+            className={`px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
+              page >= totalPages - 1 ? "opacity-50 cursor-not-allowed" : ""
             }`}
             title="Next page"
           >
@@ -417,7 +432,7 @@ export default function PartiesMasterTab() {
         </div>
       </div>
 
-      {/* Note */}
+      {/* ============ NOTES ============ */}
       <div className="mt-1">
         <PlaceholderNote
           title="Notes"
@@ -428,52 +443,55 @@ export default function PartiesMasterTab() {
         />
       </div>
 
-      {/* Modal */}
+      {/* ============ CREATE/EDIT MODAL (ENHANCED UX) ============ */}
       {open ? (
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm"
           onClick={() => {
             if (saving) return;
             setOpen(false);
           }}
         >
           <div
-            className="w-full max-w-[720px] bg-white rounded-2xl border border-slate-200 p-4 mx-auto shadow-xl"
+            className="w-full max-w-2xl bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between gap-3">
-              <div>
-                <div className="font-extrabold text-xl">
-                  {editing ? "Edit Party" : "Create Party"}
-                </div>
-                <div className="text-xs text-slate-500 mt-0.5">
+            {/* ============ HEADER WITH BLUE GRADIENT ============ */}
+            <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400 px-4 sm:px-8 py-6 sm:py-8 border-b border-blue-600 flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-2xl sm:text-3xl font-bold text-white">
+                  {editing ? "✏️ Edit Party" : "➕ Create Party"}
+                </h2>
+                <p className="text-sm sm:text-base font-semibold text-blue-100 mt-2">
                   {editing
-                    ? "Update party master data."
-                    : "Create a new global party."}
-                </div>
+                    ? `Update "${safeStr(editing.partyName)}" master data.`
+                    : "Create a new global party for election assignments."}
+                </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  if (saving) return;
+                  setOpen(false);
+                }}
                 disabled={saving}
-                className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                  saving ? "opacity-60" : ""
-                }`}
-                title="Close"
+                className="flex-shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border-2 border-blue-300 hover:bg-blue-700 bg-blue-600 transition text-white disabled:opacity-50"
+                title="Close modal"
               >
-                Close
+                <X size={20} />
               </button>
             </div>
 
-            <div className="grid gap-2.5 mt-3">
-              {/* Party name */}
-              <div className="grid gap-1.5">
-                <div className="text-base font-extrabold text-slate-600">
+            {/* ============ CONTENT ============ */}
+            <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 sm:py-7 space-y-5 sm:space-y-6">
+              {/* Party Name Field */}
+              <div>
+                <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
                   Party Name <span className="text-red-600">*</span>
-                </div>
+                </label>
                 <input
                   value={partyName}
                   onChange={(e) => {
@@ -481,21 +499,29 @@ export default function PartiesMasterTab() {
                     setTouched(true);
                   }}
                   placeholder="e.g., Unity Party"
-                  className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                 />
-                {touched && !normalizeName(partyName) ? (
-                  <div className="text-[11px] font-bold text-red-600">
-                    Required
+                {touched && !partyNameValid && (
+                  <div className="flex items-center gap-2 mt-2 text-sm text-red-600 font-semibold">
+                    <AlertCircle size={16} />
+                    Party name is required
                   </div>
-                ) : null}
+                )}
+                {touched && partyNameValid && (
+                  <div className="flex items-center gap-2 mt-2 text-sm text-green-600 font-semibold">
+                    <CheckCircle size={16} />
+                    Valid party name
+                  </div>
+                )}
               </div>
 
-              {/* Abbrev + logo */}
-              <div className="grid grid-cols-2 gap-2.5">
-                <div className="grid gap-1.5">
-                  <div className="text-base font-extrabold text-slate-600">
+              {/* Two-column layout: Abbreviation + Logo */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                {/* Abbreviation Field */}
+                <div>
+                  <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
                     Abbreviation <span className="text-red-600">*</span>
-                  </div>
+                  </label>
                   <input
                     value={abbreviation}
                     onChange={(e) => {
@@ -503,63 +529,104 @@ export default function PartiesMasterTab() {
                       setTouched(true);
                     }}
                     placeholder="e.g., UP"
-                    className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
+                    maxLength={10}
+                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                   />
-                  {touched && !normalizeAbbrev(abbreviation) ? (
-                    <div className="text-[11px] font-bold text-red-600">
-                      Required
+                  {touched && !abbreviationValid && (
+                    <div className="flex items-center gap-2 mt-2 text-sm text-red-600 font-semibold">
+                      <AlertCircle size={16} />
+                      Abbreviation is required
                     </div>
-                  ) : null}
+                  )}
+                  {touched && abbreviationValid && (
+                    <div className="flex items-center gap-2 mt-2 text-sm text-green-600 font-semibold">
+                      <CheckCircle size={16} />
+                      {abbreviationValid.length}/10 chars
+                    </div>
+                  )}
                 </div>
 
-                <div className="grid gap-1.5">
-                  <div className="text-base font-extrabold text-slate-600">
-                    Logo URL
-                  </div>
+                {/* Logo URL Field */}
+                <div>
+                  <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
+                    Logo URL <span className="text-slate-400">(optional)</span>
+                  </label>
                   <input
                     value={logoUrl}
                     onChange={(e) => setLogoUrl(e.target.value)}
-                    placeholder="https://…"
-                    className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
+                    placeholder="https://example.com/logo.png"
+                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                   />
+                  <p className="text-xs sm:text-sm text-slate-500 mt-2">
+                    PNG, JPG, or SVG format recommended (max 2MB)
+                  </p>
                 </div>
               </div>
 
-              {/* Errors */}
-              {createM.isError || updateM.isError ? (
-                <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm font-bold">
-                  {createM.isError
-                    ? friendlySaveError(createM.error)
-                    : friendlySaveError(updateM.error)}
+              {/* Error Message */}
+              {(createM.isError || updateM.isError) && (
+                <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-3 sm:p-4">
+                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                  <div className="text-sm text-red-700 font-semibold">
+                    {createM.isError
+                      ? friendlySaveError(createM.error)
+                      : friendlySaveError(updateM.error)}
+                  </div>
                 </div>
-              ) : null}
+              )}
 
-              {/* Footer */}
-              <div className="flex justify-end gap-2 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  disabled={saving}
-                  className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                    saving ? "opacity-60" : ""
-                  }`}
-                  title="Cancel"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="button"
-                  onClick={save}
-                  disabled={!canEdit || saving}
-                  className={`px-3 py-2 rounded-lg border border-slate-200 bg-white font-extrabold ${
-                    !canEdit || saving ? "opacity-60" : ""
-                  }`}
-                  title={canEdit ? "Save party" : "Read-only (Tenant)"}
-                >
-                  Save
-                </button>
+              {/* Help Text */}
+              <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 sm:p-4">
+                <p className="text-sm text-blue-800">
+                  <strong className="font-bold">💡 Tip:</strong> Party names and abbreviations must be unique across the system.
+                  {editing && (
+                    <>
+                      {" "}
+                      Changing these fields may affect existing election assignments.
+                    </>
+                  )}
+                </p>
               </div>
+            </div>
+
+            {/* ============ FOOTER ============ */}
+            <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-8 py-4 sm:py-5 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (saving) return;
+                  setOpen(false);
+                }}
+                disabled={saving}
+                className="px-4 sm:px-6 h-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-base font-semibold hover:bg-slate-50 transition disabled:opacity-50 sm:min-w-fit"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={save}
+                disabled={!canEdit || saving || !partyNameValid || !abbreviationValid}
+                className={`px-4 sm:px-6 h-10 rounded-lg text-base font-semibold text-white transition flex items-center justify-center gap-2 sm:min-w-fit ${
+                  !canEdit || saving || !partyNameValid || !abbreviationValid
+                    ? "bg-slate-300 cursor-not-allowed opacity-60"
+                    : "bg-blue-600 hover:bg-blue-700 shadow-sm"
+                }`}
+                title={canEdit ? "Save party" : "Read-only (Tenant)"}
+              >
+                {saving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span className="hidden sm:inline">Saving…</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus size={18} />
+                    <span className="hidden sm:inline">{editing ? "Update Party" : "Create Party"}</span>
+                    <span className="sm:hidden">{editing ? "Update" : "Create"}</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -567,3 +634,5 @@ export default function PartiesMasterTab() {
     </div>
   );
 }
+
+

@@ -1,6 +1,6 @@
 
 
-// src/pages/elections/ElectionsListPage.tsx
+// // src/pages/elections/ElectionsListPage.tsx
 
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -35,7 +35,7 @@ import {
   Badge,
 } from "./shared/elections-ui";
 
-/** ---------------- helpers ---------------- */
+/** ============ HELPERS ============ */
 function safeStr(v: any) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
@@ -94,7 +94,6 @@ export default function ElectionsListPage() {
   const [year, setYear] = useState("");
   const [type, setType] = useState<ElectionType | "">("");
 
-  // ✅ default: active only
   const [statusFilter, setStatusFilter] = useState<
     "active" | "inactive" | "all"
   >("active");
@@ -114,7 +113,6 @@ export default function ElectionsListPage() {
   );
   const [formActive, setFormActive] = useState(true);
 
-  // ✅ NEW: NEC ballot policy fields (Election-level)
   const [ballotSparePercent, setBallotSparePercent] = useState<number | "">("");
   const [enforceBallotsGteRegistered, setEnforceBallotsGteRegistered] =
     useState<boolean>(true);
@@ -265,7 +263,6 @@ export default function ElectionsListPage() {
     setFormType(e.electionType || "PRESIDENTIAL_GENERAL");
     setFormActive(!!e.isActive);
 
-    // prefill
     setBallotSparePercent(
       (e as any).ballotSparePercent == null
         ? ""
@@ -320,7 +317,6 @@ export default function ElectionsListPage() {
         </span>
       );
 
-      // status indicator
       const statusNode = (
         <label className="inline-flex items-center gap-2 select-none">
           <input
@@ -411,11 +407,8 @@ export default function ElectionsListPage() {
         e.electionName,
         e.year,
         typeLabel,
-
-        // ✅ NEW columns
         spareNode,
         ruleNode,
-
         statusNode,
         fmtDate(created),
         actions,
@@ -464,7 +457,6 @@ export default function ElectionsListPage() {
         }
       >
         {/* Filters */}
-        <div className=" ">
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <div className="relative">
             <Search
@@ -510,12 +502,11 @@ export default function ElectionsListPage() {
             ))}
           </select>
 
-          {/* Status radio */}
           <div
             className="inline-flex items-center gap-3 px-3 py-2 rounded-lg border border-slate-200 bg-white"
             title="Filter by status"
           >
-            <span className="text-lg font-extrabold text-slate-600/800">
+            <span className="text-lg font-extrabold text-slate-600">
               Status:
             </span>
 
@@ -574,8 +565,6 @@ export default function ElectionsListPage() {
             Clear
           </button>
         </div>
-        
-        </div>
 
         {/* Status */}
         {electionsQ.isLoading ? (
@@ -586,7 +575,7 @@ export default function ElectionsListPage() {
           </div>
         ) : null}
 
-        {/* ✅ TABLE (added 2 new columns) */}
+        {/* Table */}
         <SimpleTable
           columns={[
             "Election",
@@ -603,7 +592,7 @@ export default function ElectionsListPage() {
               ? rows
               : [
                   [
-                    <span key="empty" className="text-slate-00">
+                    <span key="empty" className="text-slate-500">
                       No elections found.
                     </span>,
                     "",
@@ -616,7 +605,6 @@ export default function ElectionsListPage() {
                   ],
                 ]
           }
-          
         />
 
         {/* Pagination */}
@@ -650,7 +638,7 @@ export default function ElectionsListPage() {
           </div>
         </div>
 
-        <div className="mt-3 text-lg ">
+        <div className="mt-3 text-lg">
           <PlaceholderNote
             title="Behavior"
             bullets={[
@@ -664,230 +652,257 @@ export default function ElectionsListPage() {
         </div>
       </Panel>
 
-      {/* Modal */}
+      {/* CREATE/EDIT MODAL */}
       {open ? (
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40"
+          className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm"
           onClick={() => {
             if (saving) return;
             setOpen(false);
           }}
-        >
+        />
+      ) : null}
+
+      {open ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
           <div
-            className="w-full max-w-[840px] bg-white rounded-2xl border border-slate-200 p-4 mx-auto shadow-xl"
+            className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between gap-3">
-              <div>
-                <div className="font-extrabold text-2xl">
-                  {editing ? "Edit Election" : "Create Election"}
-                </div>
-                <div className="text-sm text-slate-500 mt-0.5">
+            {/* HEADER WITH BLUE GRADIENT */}
+            <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400 px-4 sm:px-6 py-5 sm:py-6 border-b border-blue-600 flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+                  {editing ? "✏️ Edit Election" : "🗳️ Create Election"}
+                </h2>
+                <p className="text-xs sm:text-sm font-semibold text-blue-100 mt-1">
                   {editing
-                    ? "Update election master data."
+                    ? "Update election master data and ballot policies."
                     : "Create a new official election."}
-                </div>
+                </p>
               </div>
 
               <button
                 type="button"
                 onClick={() => setOpen(false)}
                 disabled={saving}
-                className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                  saving ? "opacity-60" : ""
-                }`}
-                title="Close"
+                className="flex-shrink-0 h-9 w-9 rounded-lg border-2 border-blue-300 hover:bg-blue-700 bg-blue-600 transition text-white flex items-center justify-center disabled:opacity-50"
+                aria-label="Close"
               >
-                Close
+                ✕
               </button>
             </div>
 
-            <div className="grid gap-2.5 mt-3">
-              {/* Name */}
-              <div className="grid gap-1.5">
-                <div className="text-base font-extrabold text-slate-600">
-                  Election Name <span className="text-red-600">*</span>
+            {/* CONTENT */}
+            <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5">
+              <div className="space-y-4">
+                {/* Name */}
+                <div>
+                  <label className="block text-base font-semibold text-slate-900 mb-2">
+                    Election Name <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    value={electionName}
+                    onChange={(e) => {
+                      setElectionName(e.target.value);
+                      setTouched(true);
+                    }}
+                    placeholder="e.g., Presidential General"
+                    className={`w-full rounded-lg border px-3 py-2.5 text-lg outline-none transition ${
+                      touched && !normalizeName(electionName)
+                        ? "border-red-300 bg-red-50 text-red-900 placeholder:text-red-400 focus:ring-2 focus:ring-red-400"
+                        : "border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500"
+                    }`}
+                  />
+                  {touched && !normalizeName(electionName) && (
+                    <div className="text-xs text-red-600 font-semibold mt-1">⚠️ Required</div>
+                  )}
                 </div>
-                <input
-                  value={electionName}
-                  onChange={(e) => {
-                    setElectionName(e.target.value);
-                    setTouched(true);
-                  }}
-                  placeholder="e.g., Presidential General"
-                  className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
-                />
-                {touched && !normalizeName(electionName) ? (
-                  <div className="text-[11px] font-bold text-red-600">
-                    Required
+
+                {/* Row: Year & Type */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-base font-semibold text-slate-900 mb-2">
+                      Year <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      value={formYear}
+                      onChange={(e) => {
+                        setFormYear(e.target.value);
+                        setTouched(true);
+                      }}
+                      placeholder="e.g., 2029"
+                      className={`w-full rounded-lg border px-3 py-2.5 text-lg outline-none transition ${
+                        touched && !toIntOrUndef(formYear)
+                          ? "border-red-300 bg-red-50 text-red-900 placeholder:text-red-400 focus:ring-2 focus:ring-red-400"
+                          : "border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500"
+                      }`}
+                    />
+                    {touched && !toIntOrUndef(formYear) && (
+                      <div className="text-xs text-red-600 font-semibold mt-1">⚠️ Required</div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-base font-semibold text-slate-900 mb-2">
+                      Type <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      value={formType}
+                      onChange={(e) => {
+                        setFormType(e.target.value as any);
+                        setTouched(true);
+                      }}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-lg outline-none focus:ring-2 focus:ring-blue-500 transition bg-white text-slate-900"
+                    >
+                      {ELECTION_TYPE_OPTIONS.map((t) => (
+                        <option key={t.value} value={t.value}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Active */}
+                <label className="flex items-center gap-2 p-3 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer transition">
+                  <input
+                    type="checkbox"
+                    checked={formActive}
+                    onChange={(e) => {
+                      setFormActive(e.target.checked);
+                      setTouched(true);
+                    }}
+                    className="h-4 w-4 accent-blue-600"
+                  />
+                  <span className="text-sm font-semibold text-slate-900">Active</span>
+                </label>
+
+                {/* Ballot Policy */}
+                <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+                  <div className="text-sm font-bold text-blue-900 mb-1 uppercase tracking-wide">
+                    🎫 Ballot Policy (NEC)
+                  </div>
+                  <p className="text-xs text-blue-800 mb-4">
+                    Configure spare ballot percent and enforcement rule for allocations.
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-900 mb-2">
+                        Spare Ballots Percent
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={ballotSparePercent}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setTouched(true);
+                          if (v === "") return setBallotSparePercent("");
+                          const n = Number(v);
+                          if (!Number.isFinite(n)) return;
+                          setBallotSparePercent(n);
+                        }}
+                        placeholder="e.g., 20"
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-lg outline-none focus:ring-2 focus:ring-blue-500 transition bg-white text-slate-900 placeholder:text-slate-400"
+                      />
+                      <div className="text-xs text-slate-600 mt-1 font-semibold">
+                        Optional. Leave empty if not set yet.
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-900 mb-2">
+                        Enforce ballotsIssued ≥ registeredVoters
+                      </label>
+
+                      <div className="flex items-center gap-4">
+                        <label className="inline-flex items-center gap-2 text-sm">
+                          <input
+                            type="radio"
+                            name="enforceBallotsGteRegistered"
+                            checked={enforceBallotsGteRegistered === true}
+                            onChange={() => {
+                              setTouched(true);
+                              setEnforceBallotsGteRegistered(true);
+                            }}
+                            className="h-4 w-4 accent-green-600"
+                          />
+                          <span className="font-semibold">Yes</span>
+                        </label>
+
+                        <label className="inline-flex items-center gap-2 text-sm">
+                          <input
+                            type="radio"
+                            name="enforceBallotsGteRegistered"
+                            checked={enforceBallotsGteRegistered === false}
+                            onChange={() => {
+                              setTouched(true);
+                              setEnforceBallotsGteRegistered(false);
+                            }}
+                            className="h-4 w-4 accent-red-600"
+                          />
+                          <span className="font-semibold">No</span>
+                        </label>
+                      </div>
+
+                      <div className="text-xs text-slate-600 mt-1 font-semibold">
+                        Recommended: <span className="text-green-700">Yes</span> (prevent shortage)
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Errors */}
+                {createM.isError || updateM.isError ? (
+                  <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm font-semibold">
+                    ⚠️ {createM.isError
+                      ? friendlySaveError(createM.error)
+                      : friendlySaveError(updateM.error)}
                   </div>
                 ) : null}
               </div>
+            </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
-                {/* Year */}
-                <div className="grid gap-1.5">
-                  <div className="text-base font-extrabold text-slate-600">
-                    Year <span className="text-red-600">*</span>
-                  </div>
-                  <input
-                    value={formYear}
-                    onChange={(e) => {
-                      setFormYear(e.target.value);
-                      setTouched(true);
-                    }}
-                    placeholder="e.g., 2029"
-                    className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
-                  />
-                </div>
+            {/* FOOTER */}
+            <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-6 py-4 sm:py-5 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                disabled={saving}
+                className="px-4 h-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-sm font-semibold hover:bg-slate-50 transition disabled:opacity-50 sm:min-w-fit"
+              >
+                Cancel
+              </button>
 
-                {/* Type */}
-                <div className="grid gap-1.5">
-                  <div className="text-base font-extrabold text-slate-600">
-                    Type <span className="text-red-600">*</span>
-                  </div>
-                  <select
-                    value={formType}
-                    onChange={(e) => {
-                      setFormType(e.target.value as any);
-                      setTouched(true);
-                    }}
-                    className="px-3 py-2.5 rounded-lg border border-slate-200 bg-white outline-none"
-                  >
-                    {ELECTION_TYPE_OPTIONS.map((t) => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Active */}
-              <label className="inline-flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={formActive}
-                  onChange={(e) => setFormActive(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-300"
-                />
-                <span className="text-base text-slate-900">Active</span>
-              </label>
-
-              {/* ✅ NEC Ballot Policy */}
-              <div className="rounded-xl border border-slate-200 bg-white p-3">
-                <div className="text-base font-extrabold text-slate-900">
-                  Ballot Policy (NEC)
-                </div>
-                <div className="text-sm text-slate-500 mt-0.5">
-                  Configure spare ballot percent and enforcement rule for allocations.
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                  <div className="grid gap-1.5">
-                    <div className="text-lg font-extrabold text-slate-600">
-                      Spare Ballots Percent
-                    </div>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={ballotSparePercent}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setTouched(true);
-                        if (v === "") return setBallotSparePercent("");
-                        const n = Number(v);
-                        if (!Number.isFinite(n)) return;
-                        setBallotSparePercent(n);
-                      }}
-                      placeholder="e.g., 20"
-                      className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
-                    />
-                    <div className="text-sm text-slate-500">
-                      Optional. Leave empty if NEC has not set a spare cap yet.
-                    </div>
-                  </div>
-
-                  <div className="grid gap-1.5">
-                    <div className="text-base font-extrabold text-slate-600">
-                      Enforce ballotsIssued ≥ registeredVoters
-                    </div>
-
-                    <div className="flex items-center gap-6 text-lg text-slate-700">
-                      <label className="inline-flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="enforceBallotsGteRegistered"
-                          checked={enforceBallotsGteRegistered === true}
-                          onChange={() => {
-                            setTouched(true);
-                            setEnforceBallotsGteRegistered(true);
-                          }}
-                          className="h-4 w-4 accent-emerald-600"
-                        />
-                        Yes
-                      </label>
-
-                      <label className="inline-flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="enforceBallotsGteRegistered"
-                          checked={enforceBallotsGteRegistered === false}
-                          onChange={() => {
-                            setTouched(true);
-                            setEnforceBallotsGteRegistered(false);
-                          }}
-                          className="h-4 w-4 accent-emerald-600"
-                        />
-                        No
-                      </label>
-                    </div>
-
-                    <div className="text-sm text-slate-500">
-                      Recommended: <b>Yes</b> (to prevent ballot shortage).
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Errors */}
-              {createM.isError || updateM.isError ? (
-                <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-lg font-bold">
-                  {createM.isError
-                    ? friendlySaveError(createM.error)
-                    : friendlySaveError(updateM.error)}
-                </div>
-              ) : null}
-
-              {/* Footer */}
-              <div className="flex justify-end gap-2 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  disabled={saving}
-                  className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                    saving ? "opacity-60" : ""
-                  }`}
-                  title="Cancel"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="button"
-                  onClick={save}
-                  disabled={!canEdit || saving}
-                  className={`px-3 py-2 rounded-lg border border-slate-200 bg-white font-extrabold ${
-                    !canEdit || saving ? "opacity-60" : ""
-                  }`}
-                  title={canEdit ? "Save election" : "Read-only (Tenant)"}
-                >
-                  Save
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={save}
+                disabled={!canEdit || saving}
+                className={`px-4 h-10 rounded-lg text-sm font-semibold text-white transition flex items-center justify-center gap-2 sm:min-w-fit ${
+                  !canEdit || saving
+                    ? "bg-slate-300 cursor-not-allowed opacity-60"
+                    : "bg-blue-600 hover:bg-blue-700 shadow-sm"
+                }`}
+              >
+                {saving ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span className="hidden sm:inline">Saving…</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus size={16} className="text-red-500" />
+                    <span className="hidden sm:inline">
+                      {editing ? "Update" : "Create"}
+                    </span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

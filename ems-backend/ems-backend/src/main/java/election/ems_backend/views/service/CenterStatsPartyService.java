@@ -1,3 +1,4 @@
+
 package election.ems_backend.views.service;
 
 /**
@@ -9,7 +10,6 @@ package election.ems_backend.views.service;
  */
 
 
-import election.ems_backend.entity.PollingCenter;
 import election.ems_backend.repository.PollingCenterRepository;
 import election.ems_backend.views.CenterStatsPartySpecs;
 import election.ems_backend.views.dto.CenterStatsPartyDto;
@@ -22,7 +22,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;

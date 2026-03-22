@@ -34,6 +34,8 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
 
     Optional<Notification> findByIdempotencyKey(String key);
 
+    boolean existsByIdempotencyKey(String idempotencyKey);
+
     /**
      * ✅ Idempotent insert (Postgres):
      * Inserts a notification only if idempotency_key doesn't already exist.

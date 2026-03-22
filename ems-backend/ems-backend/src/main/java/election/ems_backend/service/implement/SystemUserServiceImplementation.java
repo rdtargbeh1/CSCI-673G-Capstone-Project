@@ -5,6 +5,7 @@ import election.ems_backend.dto.UserDto;
 import election.ems_backend.dto.UserUpdateRequest;
 import election.ems_backend.entity.*;
 import election.ems_backend.enums.RoleName;
+import election.ems_backend.integration.EmailService;
 import election.ems_backend.mapper.UserMapper;
 import election.ems_backend.repository.*;
 import election.ems_backend.security.AuthorizationService;
@@ -22,7 +23,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -47,8 +52,8 @@ public class SystemUserServiceImplementation implements SystemUserService {
     private final PartyRepository partyRepository;
     private final CountyRepository countyRepository;
     private final OrganizationRepository organizationRepository;
-    private final OrgMembershipRepository memberships;
     private final FileUploadRepository fileUploadRepository;
+    private final EmailService emailService;
     private final AuditLogService auditLogService;
     private final NotificationService notificationService;
     private final PasswordEncoder encoder;
@@ -314,11 +319,18 @@ public class SystemUserServiceImplementation implements SystemUserService {
     public Optional<UserDto> getInTenant(UUID userId) {
         UUID orgId = requireTenant();
         if (!callerIsPlatformAdmin()
-                && !memberships.existsByOrganization_OrgIdAndUser_UserId(orgId, userId)) {
+                && !orgMembershipRepository.existsByOrganization_OrgIdAndUser_UserId(orgId, userId)) {
             return Optional.empty();
         }
         return systemUserRepository.findById(userId).map(mapper::toDTO);
     }
+
+    @Override
+    public Optional<UserDto> getInTenant(UUID id, UUID orgId) {
+        // ensure check organization/tenant match in repository query
+        return systemUserRepository.findByIdAndOrgId(id, orgId).map(mapper::toDTO);
+    }
+
 
 
     @Override
@@ -343,6 +355,46 @@ public class SystemUserServiceImplementation implements SystemUserService {
                 .findPlatformUsersOnly(active, pageable)
                 .map(mapper::toDTO);
     }
+
+
+    // inside SystemUserServiceImpl (or similar)
+
+    @Override
+    public Optional<UserDto> getByUsernameInTenant(String username, UUID orgId) {
+        return systemUserRepository.findByUsernameAndOrgId(username, orgId).map(mapper::toDTO);
+    }
+
+
+    // -----------------------------
+    // ✅ PLATFORM MODE LOOKUPS
+    // -----------------------------
+    @Override
+    public Optional<UserDto> getPlatformUser(UUID userId) {
+        return systemUserRepository.findById(userId)
+                .filter(SystemUser::isActive) // platform-safe: still enforce active user
+                .map(mapper::toDtoPlatform); // or toDto
+    }
+
+    @Override
+    public Optional<UserDto> getPlatformUserByUsername(String usernameOrEmail) {
+        if (usernameOrEmail == null || usernameOrEmail.isBlank()) {
+            return Optional.empty();
+        }
+
+        String ident = usernameOrEmail.trim();
+
+        Optional<SystemUser> userOpt = systemUserRepository.findByUserNameIgnoreCase(ident);
+
+        if (userOpt.isEmpty() && ident.contains("@")) {
+            userOpt = systemUserRepository.findByEmailIgnoreCase(ident);
+        }
+
+        return userOpt
+                .filter(SystemUser::isActive)
+                .map(mapper::toDtoPlatform); // or toDto
+    }
+
+
 
 
     /* ======================= FLAGS ======================= */
@@ -372,12 +424,36 @@ public class SystemUserServiceImplementation implements SystemUserService {
     @Override
     @org.springframework.transaction.annotation.Transactional
     public void changePassword(UUID userId, ChangePasswordRequest req) {
-        // Optional tenant guard if context present and caller isn’t platform admin
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AccessDeniedException("User is not authenticated");
+        }
+
+        UUID callerUserId;
+
+        if (authentication instanceof JwtAuthenticationToken jwtAuth) {
+            callerUserId = UUID.fromString(jwtAuth.getToken().getSubject());
+        } else {
+            throw new AccessDeniedException("Invalid authentication type");
+        }
+
+        boolean isSystemAdmin = authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_SYSTEM_ADMIN".equals(a.getAuthority()));
+
+        // Prevent changing another user's password unless system admin
+        if (!isSystemAdmin && !callerUserId.equals(userId)) {
+            throw new AccessDeniedException("You may only change your own password");
+        }
+
+        // Tenant guard
         TenantContext ctx = TenantContext.get();
         UUID orgId = (ctx != null) ? ctx.orgId().orElse(null) : null;
-        if (orgId != null && !callerIsPlatformAdmin()
-                && !memberships.existsByOrganization_OrgIdAndUser_UserId(orgId, userId)) {
-            throw new IllegalArgumentException("Not in current tenant");
+
+        if (orgId != null && !isSystemAdmin &&
+                !orgMembershipRepository.existsByOrganization_OrgIdAndUser_UserId(orgId, userId)) {
+            throw new IllegalArgumentException("User does not belong to current tenant");
         }
 
         SystemUser u = systemUserRepository.findById(userId)
@@ -391,18 +467,100 @@ public class SystemUserServiceImplementation implements SystemUserService {
         u.setLastPasswordChange(LocalDateTime.now());
         u.setFailedLoginAttempts(0);
         u.setLockedUntil(null);
+
+        systemUserRepository.save(u);
     }
 
+
+    /**
+     * ✅ Platform user self-service password change
+     * No tenant context required.
+     */
     @Override
-    @org.springframework.transaction.annotation.Transactional
-    public void adminResetPasswordInTenant(UUID userId, String newPassword) {
+    @Transactional
+    public void changePasswordPlatform(UUID userId, ChangePasswordRequest req) {
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AccessDeniedException("User is not authenticated");
+        }
+
+        UUID callerUserId;
+
+        if (authentication instanceof JwtAuthenticationToken jwtAuth) {
+            callerUserId = UUID.fromString(jwtAuth.getToken().getSubject());
+        } else {
+            throw new AccessDeniedException("Invalid authentication type");
+        }
+
+        boolean isSystemAdmin = authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_SYSTEM_ADMIN".equals(a.getAuthority()));
+
+        // Prevent changing another user's password unless system admin
+        if (!isSystemAdmin && !callerUserId.equals(userId)) {
+            throw new AccessDeniedException("You may only change your own password");
+        }
+
+        SystemUser u = systemUserRepository.findById(userId)
+                .orElseThrow(() -> new NoSuchElementException("User not found"));
+
+        if (!encoder.matches(req.getCurrentPassword(), u.getPassword())) {
+            throw new IllegalArgumentException("Current password is incorrect");
+        }
+
+        u.setPassword(encoder.encode(req.getNewPassword()));
+        u.setLastPasswordChange(LocalDateTime.now());
+        u.setFailedLoginAttempts(0);
+        u.setLockedUntil(null);
+
+        systemUserRepository.save(u);
+    }
+
+
+    @Override
+    @Transactional
+    public void adminResetPasswordInTenant(UUID userId, String newPassword, boolean sendEmail) {
+
         UUID orgId = requireTenant();
+
         SystemUser u = loadTenantUser(orgId, userId);
+
         u.setPassword(encoder.encode(newPassword));
         u.setLastPasswordChange(LocalDateTime.now());
         u.setFailedLoginAttempts(0);
         u.setLockedUntil(null);
+
+        if (sendEmail) {
+            emailService.sendPasswordResetEmail(
+                    u.getEmail(),
+                    u.getUserName(),
+                    newPassword
+            );
+        }
     }
+
+
+    @Transactional
+    public void adminResetPasswordPlatform(UUID userId, String newPassword, boolean sendEmail) {
+
+        SystemUser u = systemUserRepository.findById(userId)
+                .orElseThrow(() -> new NoSuchElementException("User not found"));
+
+        u.setPassword(encoder.encode(newPassword));
+        u.setLastPasswordChange(LocalDateTime.now());
+        u.setFailedLoginAttempts(0);
+        u.setLockedUntil(null);
+
+        if (sendEmail) {
+            emailService.sendPasswordResetEmail(
+                    u.getEmail(),
+                    u.getUserName(),
+                    newPassword
+            );
+        }
+    }
+
 
     @Override
     @org.springframework.transaction.annotation.Transactional
@@ -497,7 +655,7 @@ public class SystemUserServiceImplementation implements SystemUserService {
     private SystemUser loadTenantUser(UUID orgId, UUID userId) {
         if (!callerIsPlatformAdmin()) {
             if (orgId == null) throw new IllegalStateException("X-Org-Id is required");
-            if (!memberships.existsByOrganization_OrgIdAndUser_UserId(orgId, userId)) {
+            if (!orgMembershipRepository.existsByOrganization_OrgIdAndUser_UserId(orgId, userId)) {
                 throw new IllegalArgumentException("User not in current tenant");
             }
         }
@@ -549,7 +707,7 @@ public class SystemUserServiceImplementation implements SystemUserService {
     }
 
     private void ensureMembership(UUID orgId, UUID userId, String roleNameText) {
-        if (memberships.existsByOrganization_OrgIdAndUser_UserId(orgId, userId)) {
+        if (orgMembershipRepository.existsByOrganization_OrgIdAndUser_UserId(orgId, userId)) {
             syncMembershipRole(orgId, userId, roleNameText);
             return;
         }
@@ -563,11 +721,11 @@ public class SystemUserServiceImplementation implements SystemUserService {
         m.setUser(user);
         m.setRoleName(roleNameText);
         m.setEnabled(true);
-        memberships.save(m);
+        orgMembershipRepository.save(m);
     }
 
     private void syncMembershipRole(UUID orgId, UUID userId, String roleNameText) {
-        memberships.findByOrganization_OrgIdAndUser_UserId(orgId, userId)
+        orgMembershipRepository.findByOrganization_OrgIdAndUser_UserId(orgId, userId)
                 .ifPresent(m -> m.setRoleName(roleNameText));
     }
 
@@ -638,51 +796,6 @@ public class SystemUserServiceImplementation implements SystemUserService {
 
         return mapper.toDTO(u);
     }
-
-
-    // inside SystemUserServiceImpl (or similar)
-    @Override
-    public Optional<UserDto> getInTenant(UUID id, UUID orgId) {
-        // ensure check organization/tenant match in repository query
-        return systemUserRepository.findByIdAndOrgId(id, orgId).map(mapper::toDTO);
-    }
-
-    @Override
-    public Optional<UserDto> getByUsernameInTenant(String username, UUID orgId) {
-        return systemUserRepository.findByUsernameAndOrgId(username, orgId).map(mapper::toDTO);
-    }
-
-
-    // -----------------------------
-    // ✅ PLATFORM MODE LOOKUPS
-    // -----------------------------
-    @Override
-    public Optional<UserDto> getPlatformUser(UUID userId) {
-        return systemUserRepository.findById(userId)
-                .filter(SystemUser::isActive) // platform-safe: still enforce active user
-                .map(mapper::toDtoPlatform); // or toDto
-    }
-
-    @Override
-    public Optional<UserDto> getPlatformUserByUsername(String usernameOrEmail) {
-        if (usernameOrEmail == null || usernameOrEmail.isBlank()) {
-            return Optional.empty();
-        }
-
-        String ident = usernameOrEmail.trim();
-
-        Optional<SystemUser> userOpt = systemUserRepository.findByUserNameIgnoreCase(ident);
-
-        if (userOpt.isEmpty() && ident.contains("@")) {
-            userOpt = systemUserRepository.findByEmailIgnoreCase(ident);
-        }
-
-        return userOpt
-                .filter(SystemUser::isActive)
-                .map(mapper::toDtoPlatform); // or toDto
-    }
-
-
 
 
 

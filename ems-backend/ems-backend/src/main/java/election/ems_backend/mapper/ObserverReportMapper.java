@@ -4,6 +4,8 @@ import election.ems_backend.dto.ObserverReportCreateRequest;
 import election.ems_backend.dto.ObserverReportDto;
 import election.ems_backend.dto.ObserverReportUpdateRequest;
 import election.ems_backend.entity.*;
+import election.ems_backend.enums.ObserverReportVerificationStatus;
+import election.ems_backend.enums.ObserverReportVisibility;
 import election.ems_backend.enums.ReportType;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
@@ -55,10 +57,19 @@ public class ObserverReportMapper {
                 .centerName(pc != null ? pc.getCenterName() : null)
                 .type(r.getType() != null ? r.getType().name() : null)
                 .description(r.getDescription())
+                .visibility(r.getVisibility() != null ? r.getVisibility().name() : null)
+                .verificationStatus(r.getVerificationStatus() != null ? r.getVerificationStatus().name() : null)
+                .verifiedBy(r.getVerifiedBy())
+                .verifiedAt(r.getVerifiedAt())
+                .verificationNote(r.getVerificationNote())
                 .mediaUrl(r.getMediaUrl())
                 .latitude(lat).longitude(lon)
                 .timestamp(r.getTimestamp())
+                .isCritical(r.getIsCritical())
                 .resolved(r.getResolved())
+                .resolvedAt(r.getResolvedAt())
+                .resolvedBy(r.getResolvedBy())
+                .resolvedNote(r.getResolvedNote())
                 .build();
     }
 
@@ -73,6 +84,8 @@ public class ObserverReportMapper {
         r.setPollingCenter(center);
         r.setType(ReportType.valueOf(req.getType())); // validate upstream if needed
         r.setDescription(req.getDescription());
+        r.setVisibility(ObserverReportVisibility.PRIVATE);
+        r.setVerificationStatus(ObserverReportVerificationStatus.PENDING);
         r.setMediaUrl(req.getMediaUrl());
         if (req.getTimestamp() != null) r.setTimestamp(req.getTimestamp());
         r.setResolved(false);
@@ -94,7 +107,7 @@ public class ObserverReportMapper {
         if (req.getDescription() != null) r.setDescription(req.getDescription());
         if (req.getMediaUrl() != null) r.setMediaUrl(req.getMediaUrl());
         if (req.getTimestamp() != null) r.setTimestamp(req.getTimestamp());
-        if (req.getResolved() != null) r.setResolved(req.getResolved());
+//        if (req.getResolved() != null) r.setResolved(req.getResolved());
 
         if (req.getLatitude() != null && req.getLongitude() != null) {
             r.setGpsLocation(point(req.getLongitude(), req.getLatitude()));

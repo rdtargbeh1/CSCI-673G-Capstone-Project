@@ -57,6 +57,7 @@ public enum ActivityType {
     MEMBERSHIP_ENABLED,
     MEMBERSHIP_REMOVED,
     MEMBERSHIP_DISABLED,
+    ORGANIZATION_SET_ACTIVE,
 
 
     // System / Settings

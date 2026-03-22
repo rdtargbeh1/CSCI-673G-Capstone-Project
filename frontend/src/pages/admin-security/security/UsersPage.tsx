@@ -1,4 +1,6 @@
+
 // src/pages/admin-security/security/UsersPage.tsx
+
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../../../shared/store/authStore";
@@ -11,20 +13,20 @@ import type {
 } from "../../../auth/userTypes";
 
 import {
-  fetchUsers, // tenant scoped (requires X-Org-Id header)
+  fetchUsers,
   createUser,
   updateUser,
   deleteUser,
   setUserActive,
   setUserVerified,
   assignUserCounty,
-  fetchPlatformUsers, // GET /api/users/platform
-  createPlatformUser, // POST /api/platform/system-users
-  setPlatformUserActive, // PATCH /api/platform/system-users/{id}/active
-  setPlatformUserVerified, // PATCH /api/platform/system-users/{id}/verified
-  updatePlatformUser, // PUT /api/platform/system-users/{id}
-  createTenantAdmin, // ✅ NEW: POST /api/tenants/users/admins (X-Org-Id required)
-  adminResetPassword, // ✅ NEW: POST /api/user/{userId}/password/reset (X-Org-Id required)
+  fetchPlatformUsers,
+  createPlatformUser,
+  setPlatformUserActive,
+  setPlatformUserVerified,
+  updatePlatformUser,
+  createTenantAdmin,
+  adminResetPassword,
 } from "../../../shared/services/userService";
 
 import {
@@ -37,22 +39,38 @@ import { apiClient } from "../../../shared/lib/apiClient";
 import { AdminShell, Badge, Card, Note } from "../shared/admin-ui";
 import {
   Pencil,
-  Trash2,
   UserPlus,
   Search,
   RefreshCw,
-  KeyRound, // ✅ NEW
+  KeyRound,
 } from "lucide-react";
 
-// ✅ Existing modals
 import UsersFormModal from "./UsersFormModal";
-import TenantAdminFormModal from "./TenantAdminFormModal";
-
-// ✅ NEW modal
+import TenantAdminFormModal from "../tenant/TenantAdminFormModal";
 import AdminResetPasswordModal from "./AdminResetPasswordModal";
-
-// ✅ Parties lookup
 import { searchParties } from "../../../shared/services/partyService";
+
+/** ✅ Add this helper function for client-side search filtering */
+function filterUsersBySearch(users: any[], searchQuery: string): any[] {
+  if (!searchQuery.trim()) return users;
+
+  const query = searchQuery.toLowerCase().trim();
+  return users.filter((u: any) => {
+    const fullNameStr = fullName(u).toLowerCase();
+    const usernameStr = safeStr(u?.userName).toLowerCase();
+    const emailStr = safeStr(u?.email).toLowerCase();
+    const positionStr = safeStr(u?.position).toLowerCase();
+    const roleStr = safeStr(u?.roleName).toLowerCase();
+
+    return (
+      fullNameStr.includes(query) ||
+      usernameStr.includes(query) ||
+      emailStr.includes(query) ||
+      positionStr.includes(query) ||
+      roleStr.includes(query)
+    );
+  });
+}
 
 /** ---------------- helpers ---------------- */
 function safeStr(v: any) {
@@ -77,13 +95,12 @@ function fmtDate(v?: string | null) {
   return d.toLocaleString();
 }
 
-/** ✅ email + phone validation */
 function isValidEmail(email: string) {
   const v = email.trim();
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 }
 function isValidPhoneDigitsOnly(phone: string) {
-  if (!phone.trim()) return true; // optional
+  if (!phone.trim()) return true;
   return /^[0-9]+$/.test(phone.trim());
 }
 
@@ -94,7 +111,6 @@ function unwrapList<T = any>(data: any): T[] {
   return [];
 }
 
-/** ✅ Normalize BOTH backend shapes */
 function normalizeUsersResponse(data: any): {
   rows: any[];
   totalPages: number;
@@ -120,7 +136,6 @@ async function fetchCounties(): Promise<CountyOption[]> {
   return unwrapList<CountyOption>(data);
 }
 
-/** ✅ Role rules */
 const TENANT_ALLOWED_ROLES: RoleName[] = [
   "AGENT",
   "OBSERVER",
@@ -158,14 +173,12 @@ export default function UsersPage() {
 
   const isSystemMode = dashboardMode === "SYSTEM";
 
-  // ✅ SYSTEM: empty = PLATFORM users; selecting org = tenant users
   const [selectedOrgId, setSelectedOrgId] = useState<string>("");
 
   const isPlatformView = isSystemMode && !selectedOrgId.trim();
   const effectiveOrgId = isSystemMode ? selectedOrgId : String(currentOrgId ?? "");
   const hasOrgContext = !!effectiveOrgId.trim();
 
-  // ✅ Permissions
   const canManagePlatform = isPlatformView && isSystemMode;
   const canManageTenant =
     !isPlatformView &&
@@ -175,30 +188,24 @@ export default function UsersPage() {
 
   const canManageUsers = canManagePlatform || canManageTenant;
 
-  // Filters / paging
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
 
-  // Modal state (regular users)
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<UserDto | null>(null);
 
-  // ✅ Tenant Admin modal state
   const [tenantAdminOpen, setTenantAdminOpen] = useState(false);
 
-  // ✅ NEW: Admin Reset Password modal state
   const [resetPwOpen, setResetPwOpen] = useState(false);
   const [resetPwUser, setResetPwUser] = useState<any | null>(null);
 
-  // ✅ IMPORTANT: detect “protected role” while editing IN TENANT VIEW
   const editingRoleName = safeStr((editing as any)?.roleName);
   const isProtectedTenantRoleEdit =
     !!editing &&
     !isPlatformView &&
-    !isSystemMode && // ✅ only protect in non-system dashboards
+    !isSystemMode &&
     HIGH_LEVEL_ROLES.includes(editingRoleName as RoleName);
 
-  // Form state (regular users)
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -214,7 +221,6 @@ export default function UsersPage() {
   const [touched, setTouched] = useState<{ [k: string]: boolean }>({});
   const [phoneHasIllegalChar, setPhoneHasIllegalChar] = useState(false);
 
-  // ✅ Tenant Admin form state
   const [tenantAdminForm, setTenantAdminForm] = useState({
     orgId: "",
     partyId: "",
@@ -292,17 +298,20 @@ export default function UsersPage() {
     setTenantAdminOpen(true);
   }
 
-  // ✅ NEW: open reset password modal for a specific user
   function openResetPassword(u: any) {
-    // We only support tenant reset with org header
-    if (isPlatformView) return;
-    if (!canManageTenant || !hasOrgContext) return;
+    if (!canManageUsers) return;
+    
+    const userRole = safeStr(u?.roleName);
+    if (userRole === "SYSTEM_ADMIN" || u?.systemAdmin === true) {
+      return;
+    }
+
+    if (!isPlatformView && !hasOrgContext) return;
 
     setResetPwUser(u);
     setResetPwOpen(true);
   }
 
-  /** ✅ SYSTEM org dropdown options */
   const orgsQ = useQuery({
     queryKey: ["lookups", "orgs", "system"],
     queryFn: async () => {
@@ -328,7 +337,6 @@ export default function UsersPage() {
     }));
   }, [orgsQ.data]);
 
-  /** ✅ Parties lookup (for TenantAdmin modal) */
   const partiesQ = useQuery({
     queryKey: ["lookups", "parties", "system", "tenantAdmin"],
     queryFn: async () => {
@@ -347,7 +355,6 @@ export default function UsersPage() {
     }));
   }, [partiesQ.data]);
 
-  /** ✅ Counties lookup */
   const countiesQ = useQuery({
     queryKey: ["lookups", "counties", effectiveOrgId],
     queryFn: fetchCounties,
@@ -369,7 +376,6 @@ export default function UsersPage() {
     return map;
   }, [countiesQ.data]);
 
-  /** ✅ Role options */
   const roleOptions = useMemo(() => {
     if (isSystemMode) return ALL_ROLES.map((r) => ({ value: r, label: r }));
 
@@ -383,7 +389,6 @@ export default function UsersPage() {
     return TENANT_ALLOWED_ROLES.map((r) => ({ value: r, label: r }));
   }, [isSystemMode, editing, isProtectedTenantRoleEdit, editingRoleName]);
 
-  /** ✅ Validation (regular users) */
   const errors = useMemo(() => {
     const e: Record<string, string> = {};
     const fn = form.firstName.trim();
@@ -426,7 +431,6 @@ export default function UsersPage() {
 
   const isValid = Object.keys(errors).length === 0;
 
-  /** ✅ Validation (tenant admin) */
   const tenantAdminErrors = useMemo(() => {
     const e: Record<string, string> = {};
     const orgId = tenantAdminForm.orgId.trim();
@@ -454,9 +458,9 @@ export default function UsersPage() {
 
   const tenantAdminIsValid = Object.keys(tenantAdminErrors).length === 0;
 
-  /** ✅ Users query */
+    /** ✅ Users query - FIXED to fetch all data and filter client-side */
   const usersQ = useQuery({
-    queryKey: ["users", isPlatformView ? "platform" : effectiveOrgId, page, q],
+    queryKey: ["users", isPlatformView ? "platform" : effectiveOrgId],
     queryFn: async () => {
       if (isPlatformView) {
         return fetchPlatformUsers({
@@ -465,10 +469,11 @@ export default function UsersPage() {
           q: q.trim() || undefined,
         });
       }
+      // ✅ FIXED: Fetch all tenant users and filter client-side
       return fetchUsers(String(effectiveOrgId), {
-        page,
-        size: 20,
-        q: q.trim() || undefined,
+        page: 0,
+        size: 1000,
+        q: undefined,
       });
     },
     enabled: isPlatformView || hasOrgContext,
@@ -478,12 +483,29 @@ export default function UsersPage() {
 
   const { rows, totalPages } = normalizeUsersResponse(usersQ.data);
 
+  // ✅ Filter rows based on search input (BOTH platform and tenant)
+  const filteredRows = useMemo(() => {
+    return filterUsersBySearch(rows, q);
+  }, [rows, q]);
+
+  // ✅ Calculate filtered pagination
+  const filteredTotalPages = useMemo(() => {
+    return Math.ceil(filteredRows.length / 20) || 1;
+  }, [filteredRows]);
+
+  // ✅ Get current page of filtered results
+  const paginatedRows = useMemo(() => {
+    const startIndex = page * 20;
+    const endIndex = startIndex + 20;
+    return filteredRows.slice(startIndex, endIndex);
+  }, [filteredRows, page]);
+
+
   const refreshNow = async () => {
     await qc.invalidateQueries({ queryKey: ["users"] });
     await usersQ.refetch();
   };
 
-  /** ✅ Save (regular users) */
   const saveM = useMutation({
     mutationFn: async () => {
       if (!canManageUsers) throw new Error("No permission.");
@@ -493,7 +515,6 @@ export default function UsersPage() {
         throw new Error("Phone must contain digits only.");
       }
 
-      // ✅ PLATFORM (no org)
       if (isPlatformView) {
         if (!canManagePlatform) throw new Error("Platform users: SYSTEM admin only.");
 
@@ -526,7 +547,6 @@ export default function UsersPage() {
         return await updatePlatformUser(editing.userId, payload);
       }
 
-      // ✅ TENANT (requires org)
       if (!hasOrgContext) throw new Error("Select an organization.");
 
       if (!isSystemMode && HIGH_LEVEL_ROLES.includes(form.roleName as RoleName)) {
@@ -587,7 +607,6 @@ export default function UsersPage() {
     },
   });
 
-  /** ✅ Create Tenant Admin (SYSTEM only) */
   const createTenantAdminM = useMutation({
     mutationFn: async () => {
       if (!isSystemMode) throw new Error("SYSTEM only.");
@@ -622,6 +641,13 @@ export default function UsersPage() {
 
   const deleteM = useMutation({
     mutationFn: async (u: UserDto) => {
+      if (!canManageUsers) throw new Error("No permission to delete users.");
+
+      const userRole = safeStr(u?.roleName);
+      if (userRole === "SYSTEM_ADMIN" || (u as any)?.systemAdmin === true) {
+        throw new Error("Cannot delete SYSTEM_ADMIN user");
+      }
+
       if (!canManageTenant) throw new Error("Select a tenant org to manage users.");
       await deleteUser(String(effectiveOrgId), u.userId);
     },
@@ -660,14 +686,13 @@ export default function UsersPage() {
     onSuccess: refreshNow,
   });
 
-  // ✅ NEW: reset password mutation
   const resetPwM = useMutation({
-    mutationFn: async (args: { userId: string; newPassword: string }) => {
-      if (isPlatformView) throw new Error("Password reset is tenant-scoped only.");
-      if (!canManageTenant) throw new Error("Select a tenant org to manage users.");
-      if (!hasOrgContext) throw new Error("Select an organization first.");
+    mutationFn: async (args: { userId: string; newPassword: string; sendEmail: boolean }) => {
+      if (!canManageUsers) throw new Error("No permission.");
 
-      await adminResetPassword(String(effectiveOrgId), args.userId, args.newPassword);
+      const resetOrgId = isPlatformView ? undefined : String(effectiveOrgId);
+
+      await adminResetPassword(resetOrgId, args.userId, args.newPassword, args.sendEmail);
     },
     onSuccess: async () => {
       await refreshNow();
@@ -704,45 +729,43 @@ export default function UsersPage() {
               type="button"
               onClick={refreshNow}
               disabled={usersQ.isFetching || (!isPlatformView && !hasOrgContext)}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-blue-100 px-3 py-2 text-lg font-semibold hover:bg-slate-50 disabled:opacity-50"
             >
-              <RefreshCw size={16} />
+              <RefreshCw size={18} />
               Refresh
             </button>
 
             <button
               type="button"
               onClick={openCreate}
-              className="inline-flex items-center gap-2 rounded-xl bg-(--org-primary) px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#0000CD] bg-(--org-primary) px-3 py-2 text-lg font-semibold text-white hover:bg-slate-500 disabled:opacity-50"
               disabled={!!addDisabledReason || saveM.isPending}
               title={addDisabledReason || "Add user"}
             >
-              <UserPlus size={16} />
+              <UserPlus size={18} />
               Add User
             </button>
 
-            {/* ✅ SYSTEM ONLY: Create first Tenant Admin */}
             {isSystemMode ? (
               <button
                 type="button"
                 onClick={openTenantAdminCreate}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-50 disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-blue-600 px-3 py-2 text-lg font-semibold text-white hover:bg-slate-500 disabled:opacity-50"
                 disabled={createTenantAdminM.isPending}
                 title="SYSTEM: Create first tenant admin for a target org"
               >
-                <UserPlus size={16} />
+                <UserPlus size={18} />
                 Add Tenant Admin
               </button>
             ) : null}
           </div>
         }
       >
-        {/* ✅ SYSTEM: Organization selector ALWAYS visible */}
         {isSystemMode ? (
           <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label className="block">
               <div className="mb-1 flex items-center justify-between">
-                <div className="text-[11px] font-semibold text-slate-600">
+                <div className="text-sm font-semibold text-slate-600">
                   Organization (optional)
                 </div>
               </div>
@@ -755,7 +778,7 @@ export default function UsersPage() {
                   setQ("");
                 }}
                 disabled={orgsQ.isLoading || orgsQ.isError}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-(--org-primary)"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary)"
               >
                 <option value="">
                   {orgsQ.isLoading ? "Loading organizations…" : "— Platform Users (no org) —"}
@@ -767,7 +790,7 @@ export default function UsersPage() {
                 ))}
               </select>
               {orgsQ.isError ? (
-                <div className="mt-1 text-[11px] font-semibold text-red-600">
+                <div className="mt-1 text-sm font-semibold text-red-600">
                   Failed to load organizations
                 </div>
               ) : null}
@@ -790,13 +813,14 @@ export default function UsersPage() {
                   setPage(0);
                 }}
                 placeholder={isPlatformView ? "Search platform users..." : "Search tenant users..."}
-                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-(--org-primary)"
+                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-base outline-none focus:ring-2 focus:ring-(--org-primary)"
               />
             </div>
             <button
               type="button"
               onClick={() => {
                 setQ("");
+                setSelectedOrgId("");
                 setPage(0);
               }}
               className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50"
@@ -841,7 +865,7 @@ export default function UsersPage() {
                   ].map((h) => (
                     <th
                       key={h}
-                      className="whitespace-nowrap border-b border-slate-200 px-3 py-2 text-[11px] font-extrabold text-slate-700"
+                      className="whitespace-nowrap border-b border-slate-200 px-3 py-2 text-base font-extrabold text-slate-700"
                     >
                       {h}
                     </th>
@@ -850,16 +874,18 @@ export default function UsersPage() {
               </thead>
 
               <tbody>
-                {rows.length === 0 && !usersQ.isLoading ? (
+                {paginatedRows.length === 0 && !usersQ.isLoading ? (
                   <tr>
                     <td colSpan={10} className="px-3 py-6 text-sm text-slate-600">
-                      No users found.
+                      {q.trim() ? "No users matching your search." : "No users found."}
                     </td>
                   </tr>
                 ) : (
-                  rows.map((u: any) => {
+                  paginatedRows.map((u: any) => {
                     const active = pickActive(u);
                     const verified = pickVerified(u);
+                    const userRole = safeStr(u?.roleName);
+                    const isSystemAdmin = userRole === "SYSTEM_ADMIN" || u?.systemAdmin === true;
 
                     const countyName =
                       countyNameById.get(safeStr(u.assignedCountyId)) ||
@@ -869,32 +895,32 @@ export default function UsersPage() {
                     return (
                       <tr key={u.userId} className="hover:bg-slate-50">
                         <td className="border-b border-slate-100 px-3 py-2">
-                          <div className="text-sm font-bold text-slate-900">{fullName(u)}</div>
+                          <div className="text-base font-bold text-slate-900">{fullName(u)}</div>
                         </td>
-                        <td className="border-b border-slate-100 px-3 py-2 text-sm font-semibold text-slate-800">
+                        <td className="border-b border-slate-100 px-3 py-2 text-base font-semibold text-slate-800">
                           @{u.userName}
                         </td>
-                        <td className="border-b border-slate-100 px-3 py-2 text-sm text-slate-700">
+                        <td className="border-b border-slate-100 px-3 py-2 text-base text-slate-700">
                           {safeStr(u.position ?? "—")}
                         </td>
-                        <td className="border-b border-slate-100 px-3 py-2 text-sm text-slate-700">
+                        <td className="border-b border-slate-100 px-3 py-2 text-base text-slate-700">
                           {u.email}
                         </td>
-                        <td className="border-b border-slate-100 px-3 py-2 text-sm text-slate-700">
+                        <td className="border-b border-slate-100 px-3 py-2 text-base text-slate-700">
                           {safeStr(u.phoneNumber ?? "—")}
                         </td>
-                        <td className="border-b border-slate-100 px-3 py-2 text-sm text-slate-700">
+                        <td className="border-b border-slate-100 px-3 py-2 text-base text-slate-700">
                           {safeStr(u.roleName ?? "—")}
                         </td>
-                        <td className="border-b border-slate-100 px-3 py-2 text-sm text-slate-700">
+                        <td className="border-b border-slate-100 px-3 py-2 text-base text-slate-700">
                           {isPlatformView ? "—" : countyName}
                         </td>
-                        <td className="border-b border-slate-100 px-3 py-2 text-xs text-slate-700">
+                        <td className="border-b border-slate-100 px-3 py-2 text-base text-slate-700">
                           {fmtDate(u.dateCreated)}
                         </td>
                         <td className="border-b border-slate-100 px-3 py-2">
                           <div className="flex items-center gap-4">
-                            <label className="inline-flex items-center gap-2 text-xs text-slate-700">
+                            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
                               <input
                                 type="checkbox"
                                 checked={active}
@@ -910,7 +936,7 @@ export default function UsersPage() {
                               <span className="font-semibold">Active</span>
                             </label>
 
-                            <label className="inline-flex items-center gap-2 text-xs text-slate-700">
+                            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
                               <input
                                 type="checkbox"
                                 checked={verified}
@@ -930,47 +956,37 @@ export default function UsersPage() {
 
                         <td className="border-b border-slate-100 px-3 py-2">
                           <div className="flex items-center gap-2">
-                            {/* ✅ Reset password (tenant only) */}
                             <button
                               type="button"
-                              className="h-9 w-9 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
+                              className="h-9 w-9 rounded-xl mr-2 border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
                               title={
-                                isPlatformView
-                                  ? "Reset password not available for platform users"
+                                !canManageUsers
+                                  ? "No permission"
+                                  : isSystemAdmin
+                                  ? "Cannot reset SYSTEM_ADMIN password"
+                                  : !isPlatformView && !hasOrgContext
+                                  ? "Select organization first"
                                   : "Reset password"
                               }
                               disabled={
-                                isPlatformView ||
-                                !canManageTenant ||
-                                !hasOrgContext ||
+                                !canManageUsers ||
+                                isSystemAdmin ||
+                                (!isPlatformView && !hasOrgContext) ||
                                 resetPwM.isPending
                               }
                               onClick={() => openResetPassword(u)}
                             >
-                              <KeyRound size={16} className="mx-auto text-slate-700" />
+                              <KeyRound size={20} className="mx-auto text-[#0000CD]" />
                             </button>
 
                             <button
                               type="button"
-                              className="h-9 w-9 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
+                              className="h-9 w-9 mr-2 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
                               title="Edit"
                               onClick={() => openEdit(u)}
                               disabled={!canManageUsers}
                             >
-                              <Pencil size={16} className="mx-auto text-slate-700" />
-                            </button>
-
-                            <button
-                              type="button"
-                              className="h-9 w-9 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
-                              title={isPlatformView ? "Platform delete not enabled" : "Delete"}
-                              disabled={isPlatformView || !canManageTenant || deleteM.isPending}
-                              onClick={() => {
-                                const ok = window.confirm(`Delete user "${fullName(u)}"?`);
-                                if (ok) deleteM.mutate(u);
-                              }}
-                            >
-                              <Trash2 size={16} className="mx-auto text-red-600" />
+                              <Pencil size={20} className="mx-auto text-[#008000]" />
                             </button>
                           </div>
                         </td>
@@ -984,9 +1000,12 @@ export default function UsersPage() {
 
           {/* Pagination */}
           <div className="mt-3 flex items-center justify-between">
-            <div className="text-xs text-slate-600">
+            <div className="text-sm text-slate-600">
               Page <span className="font-bold">{page + 1}</span> of{" "}
-              <span className="font-bold">{Math.max(totalPages, 1)}</span>
+              <span className="font-bold">{Math.max(filteredTotalPages, 1)}</span>
+              {q.trim() && (
+                <span className="ml-2">({filteredRows.length} results)</span>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -1001,7 +1020,7 @@ export default function UsersPage() {
               <button
                 type="button"
                 className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
-                disabled={totalPages === 0 || page >= totalPages - 1}
+                disabled={filteredTotalPages === 0 || page >= filteredTotalPages - 1}
                 onClick={() => setPage((p) => p + 1)}
               >
                 Next
@@ -1021,16 +1040,18 @@ export default function UsersPage() {
             ]}
           />
           <Note
-            title="County display"
+            title="Platform vs Tenant Users"
             bullets={[
-              "County lookup now loads when an org is selected, not only when the modal opens.",
-              "Assigned County now displays on the table immediately.",
+              "Platform users: No org-id required. Reset password enabled (except SYSTEM_ADMIN).",
+              "Tenant users: Org-id required. Reset password enabled after selecting org (except SYSTEM_ADMIN).",
+              "SYSTEM_ADMIN users cannot be reset for security.",
+              "Reset password can send email notification automatically.",
+              "Search filters by Full Name, Username, Email, Position, and Role.",
             ]}
           />
         </div>
       </Card>
 
-      {/* ✅ Regular Users Modal */}
       <UsersFormModal
         open={modalOpen}
         editing={editing}
@@ -1056,7 +1077,6 @@ export default function UsersPage() {
         isPlatformView={isPlatformView}
       />
 
-      {/* ✅ Tenant Admin Modal (SYSTEM only) */}
       <TenantAdminFormModal
         open={tenantAdminOpen}
         onClose={() => {
@@ -1077,7 +1097,6 @@ export default function UsersPage() {
         partiesQ={partiesQ}
       />
 
-      {/* ✅ Admin Reset Password Modal */}
       <AdminResetPasswordModal
         open={resetPwOpen}
         user={resetPwUser}
@@ -1091,20 +1110,19 @@ export default function UsersPage() {
           resetPwM.isError ? ((resetPwM.error as any)?.message ?? "Reset failed.") : ""
         }
         disabledReason={
-          isPlatformView
-            ? "Platform users: reset password not enabled here."
-            : !hasOrgContext
+          !canManageUsers
+            ? "No permission to manage users."
+            : !isPlatformView && !hasOrgContext
             ? "Select an organization first."
-            : !canManageTenant
-            ? "No permission to manage tenant users."
             : ""
         }
-        onSubmit={(newPassword) => {
+        onSubmit={(newPassword, sendEmail) => {
           if (!resetPwUser?.userId) return;
-          resetPwM.mutate({ userId: resetPwUser.userId, newPassword });
+          resetPwM.mutate({ userId: resetPwUser.userId, newPassword, sendEmail });
         }}
       />
     </AdminShell>
   );
 }
+
 

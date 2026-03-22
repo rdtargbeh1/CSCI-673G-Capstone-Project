@@ -68,19 +68,6 @@ public class CacheConfig {
         return cm;
     }
 
-//    @Bean
-//    public Caffeine<Object, Object> caffeineConfig() {
-//        return Caffeine.newBuilder()
-//                .expireAfterWrite(30, TimeUnit.SECONDS)   // short TTL; adjust per requirements
-//                .maximumSize(10_000);
-//    }
-//
-//    @Bean
-//    public CacheManager cacheManager(Caffeine<Object, Object> caffeine) {
-//        CaffeineCacheManager cm = new CaffeineCacheManager("districtStatsParty");
-//        cm.setCaffeine(caffeine);
-//        return cm;
-//    }
 
 
 }

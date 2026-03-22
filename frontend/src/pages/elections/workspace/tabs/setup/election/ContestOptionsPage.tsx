@@ -1,4 +1,7 @@
-// src/pages/elections/workspace/tabs/setup/election/ContestOptionsPage.tsx
+
+ // src/pages/elections/workspace/tabs/setup/election/ContestOptionsPage.tsx
+
+
 import React, { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,6 +13,8 @@ import {
   Pencil,
   Users,
   Search,
+  X,
+  AlertCircle,
 } from "lucide-react";
 
 import { useAuthStore } from "../../../../../../shared/store/authStore";
@@ -34,13 +39,15 @@ import {
   type ElectionCandidateDto,
 } from "../../../../../../shared/services/electionCandidateService";
 
-/** ---------------- helpers ---------------- */
+/** ============ HELPERS ============ */
 function safeStr(v: any) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
+
 function normalizeName(v: string) {
   return v.trim().replace(/\s+/g, " ");
 }
+
 function friendlySaveError(err: any): string {
   const msg =
     safeStr(err?.response?.data?.message) ||
@@ -49,6 +56,7 @@ function friendlySaveError(err: any): string {
     "Failed to save.";
   return msg;
 }
+
 function boolVal(v: any, fallback = false) {
   return v == null ? fallback : Boolean(v);
 }
@@ -94,6 +102,7 @@ type Props = {
   onBack: () => void;
 };
 
+/** ============ MAIN COMPONENT ============ */
 export default function ContestOptionsPage({ contestId, onBack }: Props) {
   const qc = useQueryClient();
   const { electionId } = useParams<{ electionId: string }>();
@@ -124,7 +133,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
   const [bulkSearch, setBulkSearch] = useState("");
   const [bulkSelected, setBulkSelected] = useState<string[]>([]);
 
-  // candidates
+  /** ============ QUERIES ============ */
   const electionCandidatesQ = useQuery({
     enabled: Boolean(electionId),
     queryKey: ["election-candidates", electionId],
@@ -160,7 +169,6 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
     return m;
   }, [electionCandidatesAll]);
 
-  // options list
   const optionsQ = useQuery({
     enabled: Boolean(contestId),
     queryKey: ["contest-options", contestId, onlyActiveOptions],
@@ -175,6 +183,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
 
   const options = useMemo(() => optionsQ.data ?? [], [optionsQ.data]);
 
+  /** ============ HANDLERS (BEFORE MUTATIONS) ============ */
   const refreshNow = async () => {
     if (!contestId) return;
     await qc.invalidateQueries({ queryKey: ["contest-options", contestId] });
@@ -213,7 +222,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
     setBulkOpen(true);
   };
 
-  // mutations
+  /** ============ MUTATIONS ============ */
   const optionCreateM = useMutation({
     mutationFn: async () => {
       if (!contestId) throw new Error("Missing contestId.");
@@ -306,8 +315,10 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
     },
   });
 
+  /** ============ STATE ============ */
   const savingOption = optionCreateM.isPending || optionUpdateM.isPending;
 
+  /** ============ TABLE ROWS ============ */
   const optionRows = useMemo(() => {
     const sorted = [...options].sort(
       (a, b) => (a.optionOrder ?? 0) - (b.optionOrder ?? 0)
@@ -327,7 +338,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
           <button
             type="button"
             disabled={!canEdit}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-600 ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-600 hover:bg-green-50 transition ${
               !canEdit ? "opacity-60" : ""
             }`}
             onClick={() => openEditOption(o)}
@@ -339,7 +350,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
           <button
             type="button"
             disabled={!canEdit || optionDeleteM.isPending}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 hover:bg-red-50 transition ${
               !canEdit || optionDeleteM.isPending ? "opacity-60" : ""
             }`}
             title={canEdit ? "Delete option" : "Read-only"}
@@ -371,7 +382,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
             activeVal ? "text-emerald-700" : "text-slate-500"
           }`}
         >
-          {activeVal ? "ACTIVE" : "INACTIVE"}
+          {activeVal ? "✅ ACTIVE" : "⚪ INACTIVE"}
         </span>,
         actions,
       ];
@@ -387,6 +398,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
     );
   }
 
+  /** ============ RENDER ============ */
   return (
     <div className="flex flex-col gap-3">
       {!canEdit ? (
@@ -396,13 +408,14 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
         />
       ) : null}
 
+      {/* ============ HEADER ACTIONS ============ */}
       <div className="flex items-center gap-2 flex-wrap">
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-red-200"
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-red-200 hover:bg-red-300 transition"
         >
-          <ArrowLeft size={26} /> Back to Contests
+          <ArrowLeft size={18} /> Back to Contests
         </button>
 
         <Badge text={`Contest: ${contestId}`} />
@@ -411,11 +424,11 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
           type="button"
           onClick={refreshNow}
           disabled={optionsQ.isFetching}
-          className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white ${
+          className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
             optionsQ.isFetching ? "opacity-60" : ""
           }`}
         >
-          <RefreshCw size={18} /> Refresh
+          <RefreshCw size={16} /> Refresh
         </button>
 
         <div className="ml-auto flex items-center gap-2">
@@ -433,11 +446,11 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
             type="button"
             disabled={!canEdit}
             onClick={openCreateOption}
-            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-blue-600 text-white font-bold ${
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition shadow-sm ${
               !canEdit ? "opacity-60" : ""
             }`}
           >
-            <Plus size={18} />
+            <Plus size={16} className="text-red-500" />
             Add Option
           </button>
 
@@ -445,7 +458,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
             type="button"
             disabled={!canEdit}
             onClick={openBulkAssign}
-            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-red-900 text-white font-bold ${
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-red-900 text-white font-bold hover:bg-red-800 transition shadow-sm ${
               !canEdit ? "opacity-60" : ""
             }`}
           >
@@ -455,6 +468,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
         </div>
       </div>
 
+      {/* ============ PANEL ============ */}
       <Panel title="Contest Options">
         {optionsQ.isLoading ? (
           <div className="p-2 text-slate-600">Loading options…</div>
@@ -484,49 +498,65 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
         )}
       </Panel>
 
-      {/* ---------------- Option Modal ---------------- */}
+      {/* ============ OPTION MODAL ============ */}
       {optionOpen ? (
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm"
           onClick={() => {
             if (savingOption) return;
             setOptionOpen(false);
           }}
         >
           <div
-            className="w-full max-w-[860px] bg-white rounded-2xl border border-slate-200 p-4 mx-auto shadow-xl"
+            className="w-full max-w-2xl bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between gap-3">
-              <div>
-                <div className="font-extrabold text-base">
-                  {optionEditing ? "Edit Option" : "Add Option"}
-                </div>
-                <div className="text-sm text-slate-500 mt-0.5">
-                  Contest: {contestId}
-                </div>
+            {/* HEADER */}
+            <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400 px-4 sm:px-8 py-6 sm:py-8 border-b border-blue-600 flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-2">
+                  {optionEditing ? (
+                    <>
+                      <Pencil size={28} className="text-white" />
+                      Edit Option
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={28} className="text-red-500" />
+                      Add Option
+                    </>
+                  )}
+                </h2>
+                <p className="text-sm sm:text-base font-semibold text-blue-100 mt-2">
+                  {optionEditing
+                    ? "Update contest option settings."
+                    : "Create a new option for this contest."}
+                </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => setOptionOpen(false)}
+                onClick={() => {
+                  if (savingOption) return;
+                  setOptionOpen(false);
+                }}
                 disabled={savingOption}
-                className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                  savingOption ? "opacity-60" : ""
-                }`}
+                className="flex-shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border-2 border-blue-300 hover:bg-blue-700 bg-blue-600 transition text-white disabled:opacity-50"
               >
-                Close
+                <X size={20} />
               </button>
             </div>
 
-            <div className="grid gap-2.5 mt-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                <div className="grid gap-1.5">
-                  <div className="text-base font-extrabold text-slate-600">
+            {/* CONTENT */}
+            <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 sm:py-7 space-y-5 sm:space-y-6">
+              {/* Type + Order */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                <div>
+                  <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
                     Option Type
-                  </div>
+                  </label>
                   <select
                     value={optionType}
                     onChange={(e) => {
@@ -536,7 +566,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
                       if (t === "CANDIDATE") setOptionLabel("");
                       else setOptionElectId("");
                     }}
-                    className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none bg-white"
+                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
                   >
                     {OPTION_TYPES.map((t) => (
                       <option key={t} value={t}>
@@ -546,46 +576,48 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
                   </select>
                 </div>
 
-                <div className="grid gap-1.5">
-                  <div className="text-base font-extrabold text-slate-600">
+                <div>
+                  <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
                     Option Order
-                  </div>
+                  </label>
                   <input
                     type="number"
                     value={optionOrder}
                     onChange={(e) =>
                       setOptionOrder(Number(e.target.value || 1))
                     }
-                    className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
                     min={1}
+                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
                   />
                 </div>
               </div>
 
+              {/* LABEL or CANDIDATE */}
               {optionType === "LABEL" ? (
-                <div className="grid gap-1.5">
-                  <div className="text-sm font-extrabold text-slate-600">
+                <div>
+                  <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
                     Option Label <span className="text-red-600">*</span>
-                  </div>
+                  </label>
                   <input
                     value={optionLabel}
                     onChange={(e) => {
                       setOptionLabel(e.target.value);
                       setOptionTouched(true);
                     }}
-                    className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
+                    placeholder="e.g., Abstain, Write-in, etc."
+                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
                   />
-                  {optionTouched && !normalizeName(optionLabel) ? (
-                    <div className="text-[11px] font-bold text-red-600">
-                      Required for LABEL
+                  {optionTouched && !normalizeName(optionLabel) && (
+                    <div className="flex items-center gap-2 mt-2 text-sm text-red-600 font-semibold">
+                      <AlertCircle size={16} /> Required for LABEL
                     </div>
-                  ) : null}
+                  )}
                 </div>
               ) : (
-                <div className="grid gap-1.5">
-                  <div className="text-[18px] font-extrabold text-slate-600">
+                <div>
+                  <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
                     Election Candidate <span className="text-red-600">*</span>
-                  </div>
+                  </label>
 
                   <select
                     value={optionElectId}
@@ -593,11 +625,11 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
                       setOptionElectId(e.target.value);
                       setOptionTouched(true);
                     }}
-                    className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none bg-white"
                     disabled={
                       electionCandidatesQ.isLoading ||
                       electionCandidatesQ.isError
                     }
+                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <option value="">
                       {electionCandidatesQ.isLoading
@@ -619,174 +651,221 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
                     })}
                   </select>
 
-                  {optionTouched && !optionElectId.trim() ? (
-                    <div className="text-[11px] font-bold text-red-600">
-                      Required for CANDIDATE
+                  {optionTouched && !optionElectId.trim() && (
+                    <div className="flex items-center gap-2 mt-2 text-sm text-red-600 font-semibold">
+                      <AlertCircle size={16} /> Required for CANDIDATE
                     </div>
-                  ) : null}
+                  )}
                 </div>
               )}
 
-              <div className="grid gap-1.5">
-                <div className="text-sm font-extrabold text-slate-600">
-                  Active
-                </div>
-                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+              {/* Active */}
+              <div>
+                <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
+                  Status
+                </label>
+                <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer transition">
                   <input
                     type="checkbox"
                     checked={optionActive}
                     onChange={(e) => setOptionActive(e.target.checked)}
-                    className="h-4 w-4 accent-emerald-600"
+                    className="h-5 w-5 accent-blue-600 cursor-pointer"
                   />
-                  Active
+                  <span className="text-base font-semibold text-slate-900">
+                    Active
+                  </span>
                 </label>
               </div>
 
+              {/* Error */}
               {optionCreateM.isError || optionUpdateM.isError ? (
-                <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm font-bold">
-                  {optionCreateM.isError
-                    ? friendlySaveError(optionCreateM.error)
-                    : friendlySaveError(optionUpdateM.error)}
+                <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-3 sm:p-4">
+                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                  <div className="text-sm text-red-700 font-semibold">
+                    {optionCreateM.isError
+                      ? friendlySaveError(optionCreateM.error)
+                      : friendlySaveError(optionUpdateM.error)}
+                  </div>
                 </div>
               ) : null}
+            </div>
 
-              <div className="flex justify-end gap-2 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setOptionOpen(false)}
-                  disabled={savingOption}
-                  className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                    savingOption ? "opacity-60" : ""
-                  }`}
-                >
-                  Cancel
-                </button>
+            {/* FOOTER */}
+            <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-8 py-4 sm:py-5 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (savingOption) return;
+                  setOptionOpen(false);
+                }}
+                disabled={savingOption}
+                className="px-4 sm:px-6 h-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-base font-semibold hover:bg-slate-50 transition disabled:opacity-50 sm:min-w-fit"
+              >
+                Cancel
+              </button>
 
-                <button
-                  type="button"
-                  disabled={!canEdit || savingOption}
-                  onClick={() => {
-                    setOptionTouched(true);
-                    if (!canEdit) return;
-                    if (optionEditing) optionUpdateM.mutate();
-                    else optionCreateM.mutate();
-                  }}
-                  className={`px-3 py-2 rounded-lg border border-slate-200 bg-white font-extrabold ${
-                    !canEdit || savingOption ? "opacity-60" : ""
-                  }`}
-                >
-                  Save
-                </button>
-              </div>
+              <button
+                type="button"
+                disabled={!canEdit || savingOption}
+                onClick={() => {
+                  setOptionTouched(true);
+                  if (!canEdit) return;
+                  if (optionEditing) optionUpdateM.mutate();
+                  else optionCreateM.mutate();
+                }}
+                className={`px-4 sm:px-6 h-10 rounded-lg text-base font-semibold text-white transition flex items-center justify-center gap-2 sm:min-w-fit ${
+                  !canEdit || savingOption
+                    ? "bg-slate-300 cursor-not-allowed opacity-60"
+                    : "bg-blue-600 hover:bg-blue-700 shadow-sm"
+                }`}
+              >
+                {savingOption ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span className="hidden sm:inline">Saving…</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus size={18} className="text-red-500" />
+                    <span className="hidden sm:inline">
+                      {optionEditing ? "Update" : "Save"}
+                    </span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
       ) : null}
 
-      {/* ---------------- Bulk Assign Modal ---------------- */}
+      {/* ============ BULK ASSIGN MODAL ============ */}
       {bulkOpen ? (
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm"
           onClick={() => {
             if (bulkAssignM.isPending) return;
             setBulkOpen(false);
           }}
         >
           <div
-            className="w-full max-w-[980px] bg-white rounded-2xl border border-slate-200 p-4 mx-auto shadow-xl"
+            className="w-full max-w-3xl bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between gap-3">
-              <div>
-                <div className="font-extrabold text-lg">
-                  Bulk Assign Election Candidates
-                </div>
-                <div className="text-sm text-slate-500 mt-0.5">
-                  Contest: {contestId}
-                </div>
+            {/* HEADER */}
+            <div className="bg-gradient-to-r from-red-600 via-red-500 to-red-400 px-4 sm:px-8 py-6 sm:py-8 border-b border-red-600 flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-2">
+                  <Users size={28} className="text-white" />
+                  Bulk Assign Candidates
+                </h2>
+                <p className="text-sm sm:text-base font-semibold text-red-100 mt-2">
+                  Assign election candidates to this contest in bulk.
+                </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => setBulkOpen(false)}
+                onClick={() => {
+                  if (bulkAssignM.isPending) return;
+                  setBulkOpen(false);
+                }}
                 disabled={bulkAssignM.isPending}
-                className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                  bulkAssignM.isPending ? "opacity-60" : ""
-                }`}
+                className="flex-shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border-2 border-red-300 hover:bg-red-700 bg-red-600 transition text-white disabled:opacity-50"
               >
-                Close
+                <X size={20} />
               </button>
             </div>
 
-            <div className="grid gap-3 mt-3">
-              <div className="flex flex-wrap items-center gap-4">
-                <label className="inline-flex items-center gap-2 text-base text-slate-700">
+            {/* CONTENT */}
+            <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 sm:py-7 space-y-5 sm:space-y-6">
+              {/* Mode Selection */}
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer transition">
                   <input
                     type="radio"
                     name="bulkMode"
                     checked={bulkMode === "ALL"}
                     onChange={() => setBulkMode("ALL")}
-                    className="h-4 w-4 accent-emerald-600"
+                    className="h-5 w-5 accent-red-600 cursor-pointer"
                   />
-                  Assign ALL (filtered list)
+                  <span className="text-base font-semibold text-slate-900">
+                    Assign ALL (filtered list)
+                  </span>
                 </label>
 
-                <label className="inline-flex items-center gap-2 text-base text-slate-700">
+                <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer transition">
                   <input
                     type="radio"
                     name="bulkMode"
                     checked={bulkMode === "MANUAL"}
                     onChange={() => setBulkMode("MANUAL")}
-                    className="h-4 w-4 accent-emerald-600"
+                    className="h-5 w-5 accent-red-600 cursor-pointer"
                   />
-                  Select manually
-                </label>
-
-                <label className="inline-flex items-center gap-2 text-base text-slate-700 ml-auto">
-                  <input
-                    type="checkbox"
-                    checked={bulkReplace}
-                    onChange={(e) => setBulkReplace(e.target.checked)}
-                    className="h-4 w-4 accent-emerald-600"
-                  />
-                  Replace mode (deactivate not selected)
-                </label>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <Search
-                    size={16}
-                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                  <input
-                    value={bulkSearch}
-                    onChange={(e) => setBulkSearch(e.target.value)}
-                    placeholder="Search name / party abbrev / center…"
-                    className="pl-8 pr-3 py-2 rounded-lg border border-slate-200 bg-white w-full outline-none"
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  className="px-3 py-2 rounded-lg border border-slate-200 bg-white"
-                  onClick={() => setBulkSearch("")}
-                >
-                  Clear
-                </button>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 overflow-hidden">
-                <div className="bg-slate-50 px-3 py-2 text-base font-extrabold text-slate-600 flex items-center justify-between">
-                  <span>
-                    Candidates: <b>{electionCandidatesFiltered.length}</b>
+                  <span className="text-base font-semibold text-slate-900">
+                    Select manually
                   </span>
-                  {bulkMode === "MANUAL" ? (
+                </label>
+              </div>
+
+              {/* Replace Mode */}
+              <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-300 bg-slate-50 cursor-pointer transition">
+                <input
+                  type="checkbox"
+                  checked={bulkReplace}
+                  onChange={(e) => setBulkReplace(e.target.checked)}
+                  className="h-5 w-5 accent-red-600 cursor-pointer"
+                />
+                <div className="flex-1">
+                  <span className="text-base font-semibold text-slate-900">
+                    Replace mode
+                  </span>
+                  <p className="text-sm text-slate-600">
+                    Deactivate all candidates not selected
+                  </p>
+                </div>
+              </label>
+
+              {/* Search */}
+              <div>
+                <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
+                  Search & Filter
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search
+                      size={16}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                    />
+                    <input
+                      value={bulkSearch}
+                      onChange={(e) => setBulkSearch(e.target.value)}
+                      placeholder="Search name / party abbrev / center…"
+                      className="w-full pl-9 pr-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500 transition"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setBulkSearch("")}
+                    className="px-4 h-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-base font-semibold hover:bg-slate-50 transition"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              {/* Candidates List */}
+              <div className="rounded-xl border border-slate-200 overflow-hidden">
+                <div className="bg-slate-50 px-4 py-3 text-base font-bold text-slate-600 flex items-center justify-between border-b border-slate-200">
+                  <span>
+                    Candidates: <b className="text-slate-900">{electionCandidatesFiltered.length}</b>
+                  </span>
+                  {bulkMode === "MANUAL" && electionCandidatesFiltered.length > 0 ? (
                     <button
                       type="button"
-                      className="text-sm font-bold underline"
+                      className="text-sm font-bold text-blue-600 hover:text-blue-700 underline"
                       onClick={() => {
                         const all = electionCandidatesFiltered.map(
                           (x) => x.electId
@@ -799,13 +878,13 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
                   ) : null}
                 </div>
 
-                <div className="max-h-[420px] overflow-auto">
+                <div className="max-h-[380px] overflow-auto">
                   {electionCandidatesQ.isLoading ? (
-                    <div className="p-3 text-slate-600 text-sm">
+                    <div className="p-4 text-slate-600 text-base">
                       Loading election candidates…
                     </div>
                   ) : electionCandidatesQ.isError ? (
-                    <div className="p-3 text-red-700 text-sm">
+                    <div className="p-4 text-red-700 text-base">
                       Failed to load election candidates.
                     </div>
                   ) : electionCandidatesFiltered.length ? (
@@ -819,7 +898,7 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
                         return (
                           <label
                             key={ec.electId}
-                            className="flex items-start gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50"
+                            className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition"
                           >
                             <input
                               type="checkbox"
@@ -836,60 +915,77 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
                                   return prev.filter((x) => x !== ec.electId);
                                 });
                               }}
-                              className="mt-1 h-4 w-4 accent-emerald-600"
+                              className="mt-1 h-5 w-5 accent-red-600 cursor-pointer"
                             />
                             <div className="grid">
-                              <span className="text-base font-bold text-slate-800">
+                              <span className="text-base font-bold text-slate-900">
                                 {ec.fullName}
                               </span>
-                              <span className="text-base text-slate-500">
-                                {meta || "—"}
-                              </span>
-                              {/* <span className="text-sm text-slate-400 break-all">
-                                electId: {ec.electId}
-                              </span> */}
+                              {meta && (
+                                <span className="text-base text-slate-600">
+                                  {meta}
+                                </span>
+                              )}
                             </div>
                           </label>
                         );
                       })}
                     </div>
                   ) : (
-                    <div className="p-3 text-slate-600 text-sm">
+                    <div className="p-4 text-slate-600 text-base">
                       No candidates match your search.
                     </div>
                   )}
                 </div>
               </div>
 
+              {/* Error */}
               {bulkAssignM.isError ? (
-                <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-base font-bold">
-                  {friendlySaveError(bulkAssignM.error)}
+                <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-3 sm:p-4">
+                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                  <div className="text-sm text-red-700 font-semibold">
+                    {friendlySaveError(bulkAssignM.error)}
+                  </div>
                 </div>
               ) : null}
+            </div>
 
-              <div className="flex justify-end gap-2 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setBulkOpen(false)}
-                  disabled={bulkAssignM.isPending}
-                  className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                    bulkAssignM.isPending ? "opacity-60" : ""
-                  }`}
-                >
-                  Cancel
-                </button>
+            {/* FOOTER */}
+            <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-8 py-4 sm:py-5 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (bulkAssignM.isPending) return;
+                  setBulkOpen(false);
+                }}
+                disabled={bulkAssignM.isPending}
+                className="px-4 sm:px-6 h-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-base font-semibold hover:bg-slate-50 transition disabled:opacity-50 sm:min-w-fit"
+              >
+                Cancel
+              </button>
 
-                <button
-                  type="button"
-                  disabled={!canEdit || bulkAssignM.isPending}
-                  onClick={() => bulkAssignM.mutate()}
-                  className={`px-3 py-2 rounded-lg border border-slate-200 bg-white font-extrabold ${
-                    !canEdit || bulkAssignM.isPending ? "opacity-60" : ""
-                  }`}
-                >
-                  Assign
-                </button>
-              </div>
+              <button
+                type="button"
+                disabled={!canEdit || bulkAssignM.isPending}
+                onClick={() => bulkAssignM.mutate()}
+                className={`px-4 sm:px-6 h-10 rounded-lg text-base font-semibold text-white transition flex items-center justify-center gap-2 sm:min-w-fit ${
+                  !canEdit || bulkAssignM.isPending
+                    ? "bg-slate-300 cursor-not-allowed opacity-60"
+                    : "bg-red-600 hover:bg-red-700 shadow-sm"
+                }`}
+              >
+                {bulkAssignM.isPending ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span className="hidden sm:inline">Assigning…</span>
+                  </>
+                ) : (
+                  <>
+                    <Users size={18} />
+                    <span className="hidden sm:inline">Assign</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -897,3 +993,4 @@ export default function ContestOptionsPage({ contestId, onBack }: Props) {
     </div>
   );
 }
+ 

@@ -1,6 +1,9 @@
 
 
-// src/pages/profile/UserProfileDrawer.tsx
+// // src/pages/profile/UserProfileDrawer.tsx
+
+
+
 import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../../shared/lib/apiClient";
@@ -140,6 +143,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
   });
 
   const me = meQ.data as any;
+  console.log("PROFILE DATA:", me);
 
   // only load tenant lookups when tenant context exists
   const partiesQ = useQuery({
@@ -336,12 +340,13 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
     }
   }, [open]);
 
-  const lastPwChange =
-    safeStr(me?.lastPasswordChange) ||
-    safeStr(me?.lastPasswordChangeAt) ||
-    safeStr(me?.last_password_change) ||
-    safeStr(me?.last_password_change_at) ||
-    "";
+  const lastPwChange = me?.lastPasswordChange ?? null;
+  // const lastPwChange =
+  //   safeStr(me?.lastPasswordChange) ||
+  //   safeStr(me?.lastPasswordChangeAt) ||
+  //   safeStr(me?.last_password_change) ||
+  //   safeStr(me?.last_password_change_at) ||
+  //   "";
 
   const pwValidation = useMemo(() => {
     const current = pwDraft.currentPassword.trim();
@@ -364,11 +369,9 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
 
   const changePasswordM = useMutation({
     mutationFn: async () => {
-      const orgId = String(currentOrgId ?? "").trim();
-      if (!orgId) {
-        // Your userService enforces X-Org-Id, so fail loudly
-        throw new Error("Select an organization before changing your password.");
-      }
+      // ✅ FIXED: Allow null/undefined orgId for platform users
+      const orgId = currentOrgId ? String(currentOrgId).trim() : null;
+      
       if (!userId) throw new Error("Missing userId from profile.");
       if (!pwValidation.canSubmit) {
         throw new Error("Fix the password fields before submitting.");
@@ -385,7 +388,6 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
       setPwDraft({ currentPassword: "", newPassword: "", confirmPassword: "" });
       setPwShow({ current: false, next: false, confirm: false });
       setPwSuccess("Password updated successfully.");
-      // optional: refresh me
       qc.invalidateQueries({ queryKey: ["meProfile"] });
       qc.invalidateQueries({ queryKey: ["me"] });
     },
@@ -423,16 +425,16 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
         {/* Header */}
         <div className="flex items-start justify-between px-4 py-3 border-b border-slate-200">
           <div>
-            <div className="text-base font-extrabold text-slate-900">
+            <div className="text-lg font-extrabold text-slate-900">
               User Profile
             </div>
-            <div className="text-[11px] text-slate-500">Your account details</div>
+            <div className="text-sm text-slate-500">Your account details</div>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="h-9 w-9 rounded-xl border border-slate-200 hover:bg-slate-50 text-sm"
+            className="h-9 w-9 rounded-xl border border-slate-200 hover:bg-slate-50 bg-red-600 text-white font-bold text-sm"
             title="Close"
           >
             ✕
@@ -481,10 +483,10 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <div className="font-bold text-slate-900 truncate text-sm">
+                  <div className="font-bold text-slate-900 truncate text-base">
                     {fullName}
                   </div>
-                  <div className="text-[11px] text-slate-600 truncate">
+                  <div className="text-sm text-slate-600 truncate">
                     @{safeStr(me.userName)} • {safeStr(me.email)}
                   </div>
 
@@ -502,11 +504,11 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
 
               {/* Active / Verified */}
               <div className="flex gap-5">
-                <label className="flex items-center gap-2 text-xs text-slate-700">
+                <label className="flex items-center gap-2 text-sm text-slate-700">
                   <input type="checkbox" checked={!!me.isActive} readOnly />
                   Active
                 </label>
-                <label className="flex items-center gap-2 text-xs text-slate-700">
+                <label className="flex items-center gap-2 text-sm text-slate-700">
                   <input type="checkbox" checked={!!me.isVerified} readOnly />
                   Verified
                 </label>
@@ -523,7 +525,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
                     <button
                       type="button"
                       onClick={() => setIsEditing(true)}
-                      className="rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                      className="rounded-xl bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700"
                     >
                       Edit
                     </button>
@@ -542,7 +544,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
                             phoneNumber: safeStr(me.phoneNumber ?? ""),
                           });
                         }}
-                        className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50"
+                        className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm hover:bg-slate-50"
                         disabled={updateM.isPending}
                       >
                         Cancel
@@ -550,7 +552,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
                       <button
                         type="button"
                         onClick={() => updateM.mutate()}
-                        className="rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                        className="rounded-xl bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
                         disabled={updateM.isPending}
                       >
                         {updateM.isPending ? "Saving…" : "Save"}
@@ -610,7 +612,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
 
               {/* Admin-managed */}
               <div className="rounded-2xl border border-slate-200 p-3">
-                <div className="font-semibold text-slate-900 mb-2 text-sm">
+                <div className="font-bold text-slate-900 mb-2 text-base">
                   Admin-managed
                 </div>
 
@@ -652,14 +654,14 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
                 ) : null}
               </div>
 
-              {/* ✅ NEW: Security */}
+              {/* ✅ FIXED: Security */}
               <div className="rounded-2xl border border-slate-200 p-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="font-semibold text-slate-900 text-sm">
+                    <div className="font-semibold text-slate-900 text-base">
                       Security
                     </div>
-                    <div className="text-[11px] text-slate-500 mt-0.5">
+                    <div className="text-sm text-slate-500 mt-0.5">
                       Manage your account password
                     </div>
                   </div>
@@ -671,7 +673,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
                       setPwSuccess("");
                       changePasswordM.reset();
                     }}
-                    className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-50"
+                    className="rounded-xl border border-slate-200 px-3 py-1.5 bg-blue-300 text-sm hover:bg-slate-500"
                   >
                     {securityOpen ? "Hide" : "Change Password"}
                   </button>
@@ -679,36 +681,34 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
 
                 <div className="mt-2">
                   <ReadOnlyRow
+                  
                     label="Last password change"
                     value={lastPwChange ? fmtHumanDateTime(lastPwChange) : "—"}
+                    
                   />
                 </div>
 
                 {securityOpen ? (
                   <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                     {pwSuccess ? (
-                      <div className="mb-2 rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-xs font-semibold text-emerald-800">
+                      <div className="mb-2 rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-sm font-semibold text-emerald-800">
                         ✓ {pwSuccess}
                       </div>
                     ) : null}
 
                     {changePasswordM.isError ? (
-                      <div className="mb-2 rounded-xl border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+                      <div className="mb-2 rounded-xl border border-red-200 bg-red-50 p-2 text-sm text-red-700">
                         {(changePasswordM.error as any)?.message ??
                           "Password update failed."}
                       </div>
                     ) : null}
 
-                    {!currentOrgId ? (
-                      <div className="mb-2 rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
-                        Select an organization first (X-Org-Id is required).
-                      </div>
-                    ) : null}
+                    {/* ✅ REMOVED: org requirement warning */}
 
                     <div className="space-y-2">
                       {/* Current password */}
                       <div>
-                        <div className="text-[11px] font-semibold text-slate-700 mb-1">
+                        <div className="text-sm font-semibold text-slate-700 mb-1">
                           Current Password
                         </div>
                         <div className="flex items-center gap-2">
@@ -721,7 +721,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
                                 currentPassword: e.target.value,
                               }))
                             }
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                             autoComplete="current-password"
                             disabled={changePasswordM.isPending}
                           />
@@ -730,7 +730,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
                             onClick={() =>
                               setPwShow((p) => ({ ...p, current: !p.current }))
                             }
-                            className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs hover:bg-slate-50"
+                            className="shrink-0 rounded-xl border border-slate-200 bg-blue-100 px-3 py-2 text-sm hover:bg-slate-50"
                             disabled={changePasswordM.isPending}
                           >
                             {pwShow.current ? "Hide" : "Show"}
@@ -740,7 +740,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
 
                       {/* New password */}
                       <div>
-                        <div className="text-[11px] font-semibold text-slate-700 mb-1">
+                        <div className="text-sm font-semibold text-slate-700 mb-1">
                           New Password
                         </div>
                         <div className="flex items-center gap-2">
@@ -753,7 +753,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
                                 newPassword: e.target.value,
                               }))
                             }
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                             autoComplete="new-password"
                             disabled={changePasswordM.isPending}
                           />
@@ -762,20 +762,20 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
                             onClick={() =>
                               setPwShow((p) => ({ ...p, next: !p.next }))
                             }
-                            className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs hover:bg-slate-50"
+                            className="shrink-0 rounded-xl border border-slate-200 bg-blue-100 px-3 py-2 text-sm hover:bg-slate-50"
                             disabled={changePasswordM.isPending}
                           >
                             {pwShow.next ? "Hide" : "Show"}
                           </button>
                         </div>
 
-                        <div className="mt-1 text-[11px] text-slate-600">
+                        <div className="mt-1 text-[12px] text-slate-600">
                           Must be at least <b>8</b> characters and different from
                           your current password.
                         </div>
 
                         {!pwValidation.minLenOk && pwDraft.newPassword ? (
-                          <div className="mt-1 text-[11px] font-semibold text-rose-700">
+                          <div className="mt-1 text-sm font-semibold text-rose-700">
                             New password is too short.
                           </div>
                         ) : null}
@@ -783,7 +783,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
                         {pwValidation.sameAsCurrent &&
                         pwDraft.currentPassword &&
                         pwDraft.newPassword ? (
-                          <div className="mt-1 text-[11px] font-semibold text-rose-700">
+                          <div className="mt-1 text-sm font-semibold text-rose-700">
                             New password must be different from current password.
                           </div>
                         ) : null}
@@ -791,7 +791,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
 
                       {/* Confirm */}
                       <div>
-                        <div className="text-[11px] font-semibold text-slate-700 mb-1">
+                        <div className="text-sm font-semibold text-slate-700 mb-1">
                           Confirm New Password
                         </div>
                         <div className="flex items-center gap-2">
@@ -804,7 +804,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
                                 confirmPassword: e.target.value,
                               }))
                             }
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                             autoComplete="new-password"
                             disabled={changePasswordM.isPending}
                           />
@@ -813,7 +813,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
                             onClick={() =>
                               setPwShow((p) => ({ ...p, confirm: !p.confirm }))
                             }
-                            className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs hover:bg-slate-50"
+                            className="shrink-0 rounded-xl border border-slate-200 bg-blue-100 px-3 py-2 text-sm hover:bg-slate-50"
                             disabled={changePasswordM.isPending}
                           >
                             {pwShow.confirm ? "Hide" : "Show"}
@@ -821,7 +821,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
                         </div>
 
                         {pwDraft.confirmPassword && !pwValidation.matchOk ? (
-                          <div className="mt-1 text-[11px] font-semibold text-rose-700">
+                          <div className="mt-1 text-sm font-semibold text-rose-700">
                             Passwords do not match.
                           </div>
                         ) : null}
@@ -831,7 +831,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
                         <button
                           type="button"
                           onClick={resetPwForm}
-                          className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs hover:bg-white disabled:opacity-60"
+                          className="rounded-xl border border-slate-200 px-3 py-1.5 text-sm hover:bg-white disabled:opacity-60"
                           disabled={changePasswordM.isPending}
                         >
                           Cancel
@@ -840,16 +840,13 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
                         <button
                           type="button"
                           onClick={() => changePasswordM.mutate()}
-                          className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                          className="rounded-xl bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
                           disabled={
                             changePasswordM.isPending ||
-                            !pwValidation.canSubmit ||
-                            !currentOrgId
+                            !pwValidation.canSubmit
                           }
                           title={
-                            !currentOrgId
-                              ? "Select an organization first"
-                              : !pwValidation.canSubmit
+                            !pwValidation.canSubmit
                               ? "Complete the password fields"
                               : ""
                           }
@@ -872,7 +869,7 @@ export default function UserProfileDrawer({ open, onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-slate-200 px-4 py-2 text-xs hover:bg-slate-50"
+            className="rounded-xl border border-slate-200 px-4 py-2 text-sm hover:bg-slate-50"
           >
             Close
           </button>
@@ -897,12 +894,12 @@ function FieldRow(props: {
 
   return (
     <div className="grid grid-cols-[120px_1fr] items-center gap-3 py-1.5 border-b border-slate-100 last:border-b-0">
-      <div className="text-[11px] font-semibold text-slate-600">
+      <div className="text-sm font-semibold text-slate-600">
         {props.label}:
       </div>
 
       {!isEditing ? (
-        <div className="text-xs font-semibold text-slate-900 wrap-break-words text-right">
+        <div className="text-sm font-semibold text-slate-900 wrap-break-words text-right">
           {props.value || "—"}
         </div>
       ) : (
@@ -910,7 +907,7 @@ function FieldRow(props: {
           type={props.type ?? "text"}
           value={props.value}
           onChange={(e) => props.onChange(e.target.value)}
-          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
         />
       )}
     </div>
@@ -933,3 +930,4 @@ function ReadOnlyRow({
     </div>
   );
 }
+

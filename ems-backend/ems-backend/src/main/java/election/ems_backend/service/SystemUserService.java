@@ -8,6 +8,7 @@ import election.ems_backend.utility.ChangePasswordRequest;
 import election.ems_backend.utility.UserSearchRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -56,8 +57,12 @@ public interface SystemUserService {
     /** User-initiated password change (validates current password; updates lastPasswordChange). */
     void changePassword(UUID userId, ChangePasswordRequest req);
 
+    void changePasswordPlatform(UUID userId, ChangePasswordRequest req);
+
     /** Admin password reset within CURRENT tenant. */
-    void adminResetPasswordInTenant(UUID userId, String newPassword);
+    void adminResetPasswordInTenant(UUID userId, String newPassword, boolean sendEmail);
+
+    void adminResetPasswordPlatform(UUID userId, String newPassword, boolean sendEmail);
 
     /** Lock or unlock a tenant user; when unlocking, clears failed attempts. */
     void setLockInTenant(UUID userId, boolean lock, LocalDateTime until);
@@ -96,11 +101,13 @@ public interface SystemUserService {
     Optional<UserDto> getInTenant(UUID id, UUID orgId);
 
     Optional<UserDto> getPlatformUser(UUID userId);
+
     Optional<UserDto> getPlatformUserByUsername(String usernameOrEmail);
 
     Page<UserDto> searchPlatform(UserSearchRequest req, Pageable pageable);
 
     void setActivePlatform(UUID userId, boolean active);
+
     void setVerifiedPlatform(UUID userId, boolean verified);
 
     // SystemUserService.java

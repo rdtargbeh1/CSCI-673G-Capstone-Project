@@ -132,7 +132,8 @@ public class AuthorizationServiceImpl implements AuthorizationService {
         }
 
         // ✅ avoid leaking the full role list in error messages
-        throw new AccessDeniedException("Insufficient role");
+        throw new AccessDeniedException("You have no permission for this action - SORRY!");
+//        throw new AccessDeniedException("Insufficient role");
     }
 
     @Override

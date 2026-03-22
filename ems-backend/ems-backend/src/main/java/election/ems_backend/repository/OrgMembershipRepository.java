@@ -23,6 +23,8 @@ public interface OrgMembershipRepository extends JpaRepository<OrgMembership, UU
 
     Optional<OrgMembership> findByOrganization_OrgIdAndUser_UserIdAndIsEnabledTrue(UUID orgId, UUID userId);
 
+    long countByUser_UserId(UUID userId);
+
     @Query("""
        select m
        from OrgMembership m

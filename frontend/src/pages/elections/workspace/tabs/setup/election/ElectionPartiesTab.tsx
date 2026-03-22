@@ -11,6 +11,8 @@ import {
   RefreshCw,
   CheckCircle2,
   XCircle,
+  X,
+  AlertCircle,
 } from "lucide-react";
 
 import { useAuthStore } from "../../../../../../shared/store/authStore";
@@ -33,10 +35,11 @@ import {
   type PartyDto,
 } from "../../../../../../shared/services/partyService";
 
-/** ---------------- helpers ---------------- */
+/** ============ HELPERS ============ */
 function safeStr(v: any) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
+
 function friendlySaveError(err: any): string {
   return (
     safeStr(err?.response?.data?.message) ||
@@ -81,12 +84,13 @@ function CompactTable(props: { columns: string[]; rows: React.ReactNode[][] }) {
   );
 }
 
+/** ============ MAIN COMPONENT ============ */
 export default function ElectionPartiesTab() {
   const qc = useQueryClient();
   const { electionId } = useParams<{ electionId: string }>();
 
   const dashboardMode = useAuthStore((s) => s.dashboardMode);
-  const isSystemAdmin = useAuthStore((s) => s.isSystemAdmin()); // ✅ use helper
+  const isSystemAdmin = useAuthStore((s) => s.isSystemAdmin());
 
   // ✅ SYSTEM + NEC can CRUD (no role-string comparisons)
   const canEdit =
@@ -101,6 +105,7 @@ export default function ElectionPartiesTab() {
   const [ballotOrder, setBallotOrder] = useState<number | "">("");
   const [isQualified, setIsQualified] = useState<boolean>(true);
 
+  /** ============ QUERIES ============ */
   const partiesQ = useQuery({
     enabled: Boolean(electionId),
     queryKey: ["election-parties", electionId],
@@ -120,6 +125,7 @@ export default function ElectionPartiesTab() {
     retry: 1,
   });
 
+  /** ============ HANDLERS (BEFORE MUTATIONS) ============ */
   const refreshNow = async () => {
     if (!electionId) return;
     await qc.invalidateQueries({ queryKey: ["election-parties", electionId] });
@@ -139,10 +145,11 @@ export default function ElectionPartiesTab() {
     setEditing(row);
     setSelectedPartyId(row.partyId);
     setBallotOrder(row.ballotOrder ?? "");
-    setIsQualified(Boolean(row.isQualified)); // ✅ fetched from DB
+    setIsQualified(Boolean(row.isQualified));
     setOpen(true);
   };
 
+  /** ============ MUTATIONS ============ */
   const addM = useMutation({
     mutationFn: async () => {
       if (!electionId) throw new Error("Missing electionId.");
@@ -185,7 +192,6 @@ export default function ElectionPartiesTab() {
     onSuccess: refreshNow,
   });
 
-  // ✅ icon toggle using existing PUT update endpoint
   const toggleQualifiedM = useMutation({
     mutationFn: async (payload: {
       partyId: string;
@@ -194,14 +200,15 @@ export default function ElectionPartiesTab() {
       if (!electionId) throw new Error("Missing electionId.");
       return updateElectionParty(electionId, payload.partyId, {
         isQualified: payload.nextQualified,
-        // ballotOrder omitted -> backend will not change it (your update logic checks null)
       });
     },
     onSuccess: refreshNow,
   });
 
+  /** ============ STATE ============ */
   const saving = addM.isPending || updateM.isPending;
 
+  /** ============ TABLE ROWS ============ */
   const rows = useMemo(() => {
     const items = partiesQ.data ?? [];
 
@@ -220,7 +227,6 @@ export default function ElectionPartiesTab() {
 
     return items.map((p) => {
       const toggleBtn = (
-        // Activate btn
         <button
           type="button"
           onClick={() => {
@@ -232,7 +238,7 @@ export default function ElectionPartiesTab() {
           }}
           disabled={!canEdit || toggleQualifiedM.isPending}
           title={canEdit ? "Toggle qualified" : "Read-only"}
-          className={`inline-flex items-center px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white ${
+          className={`inline-flex items-center px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
             !canEdit || toggleQualifiedM.isPending ? "opacity-60" : ""
           }`}
         >
@@ -244,7 +250,6 @@ export default function ElectionPartiesTab() {
         </button>
       );
 
-         {/* Edit btn */}
       const actions = (
         <div className="flex flex-wrap gap-2">
           {toggleBtn}
@@ -252,7 +257,7 @@ export default function ElectionPartiesTab() {
           <button
             type="button"
             disabled={!canEdit}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-blue-600 ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-blue-600 hover:bg-blue-50 transition ${
               !canEdit ? "opacity-60" : ""
             }`}
             title={canEdit ? "Edit (SYSTEM/NEC)" : "Read-only"}
@@ -261,11 +266,10 @@ export default function ElectionPartiesTab() {
             <Pencil size={22} />
           </button>
 
-          {/* Delete btn */}
           <button
             type="button"
             disabled={!canEdit || deleteM.isPending}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 ${
+            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 hover:bg-red-50 transition ${
               !canEdit || deleteM.isPending ? "opacity-60" : ""
             }`}
             title={canEdit ? "Delete (SYSTEM/NEC)" : "Read-only"}
@@ -293,9 +297,11 @@ export default function ElectionPartiesTab() {
             p.isQualified ? "text-emerald-700" : "text-slate-500"
           }`}
         >
-          {p.isQualified ? "QUALIFIED" : "NOT QUALIFIED"}
+          {p.isQualified ? "✅ QUALIFIED" : "⚪ NOT QUALIFIED"}
         </span>,
-        <span key="order">{p.ballotOrder ?? "—"}</span>,
+        <span key="order" className="font-semibold">
+          {p.ballotOrder ?? "—"}
+        </span>,
         actions,
       ];
     });
@@ -312,6 +318,7 @@ export default function ElectionPartiesTab() {
     );
   }
 
+  /** ============ RENDER ============ */
   return (
     <div className="flex flex-col gap-3">
       {!canEdit ? (
@@ -321,6 +328,7 @@ export default function ElectionPartiesTab() {
         />
       ) : null}
 
+      {/* ============ HEADER ACTIONS ============ */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div />
 
@@ -329,7 +337,7 @@ export default function ElectionPartiesTab() {
             <button
               type="button"
               onClick={openCreate}
-              className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-600 text-white font-bold"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition shadow-sm"
             >
               <Plus size={18} />
               Assign Party
@@ -342,7 +350,7 @@ export default function ElectionPartiesTab() {
             type="button"
             onClick={refreshNow}
             disabled={partiesQ.isFetching}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-100 ${
+            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
               partiesQ.isFetching ? "opacity-60" : ""
             }`}
           >
@@ -352,6 +360,7 @@ export default function ElectionPartiesTab() {
         </div>
       </div>
 
+      {/* ============ STATUS ============ */}
       {partiesQ.isLoading ? (
         <div className="p-2 text-slate-600">Loading election parties…</div>
       ) : partiesQ.isError ? (
@@ -360,11 +369,13 @@ export default function ElectionPartiesTab() {
         </div>
       ) : null}
 
+      {/* ============ TABLE ============ */}
       <CompactTable
         columns={["Party", "Qualification", "Ballot Order", "Actions"]}
         rows={rows}
       />
 
+      {/* ============ NOTES ============ */}
       <div className="mt-1">
         <PlaceholderNote
           title="Notes"
@@ -376,66 +387,74 @@ export default function ElectionPartiesTab() {
         />
       </div>
 
-      {/* ---------------- Modal ---------------- */}
+      {/* ============ CREATE/EDIT MODAL (ENHANCED UX) ============ */}
       {open ? (
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm"
           onClick={() => {
             if (saving) return;
             setOpen(false);
           }}
         >
           <div
-            className="w-full max-w-[860px] bg-white rounded-2xl border border-slate-200 p-4 mx-auto shadow-xl"
+            className="w-full max-w-2xl bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between gap-3">
-              <div>
-                <div className="font-extrabold text-base">
-                  {editing ? "Edit Election Party" : "Assign Party to Election"}
-                </div>
-                <div className="text-xs text-slate-500 mt-0.5">
+            {/* ============ HEADER WITH BLUE GRADIENT ============ */}
+            <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400 px-4 sm:px-8 py-6 sm:py-8 border-b border-blue-600 flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-2xl sm:text-3xl font-bold text-white">
+                  {editing ? "✏️ Edit Party" : "➕ Assign Party"}
+                </h2>
+                <p className="text-sm sm:text-base font-semibold text-blue-100 mt-2">
                   {editing
-                    ? `partyId: ${editing.partyId}`
-                    : "Select party from Party Master and set ballot order / qualification."}
-                </div>
+                    ? `Update party settings for this election.`
+                    : "Add a party from Party Master to this election."}
+                </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  if (saving) return;
+                  setOpen(false);
+                }}
                 disabled={saving}
-                className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                  saving ? "opacity-60" : ""
-                }`}
+                className="flex-shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border-2 border-blue-300 hover:bg-blue-700 bg-blue-600 transition text-white disabled:opacity-50"
+                title="Close modal"
               >
-                Close
+                <X size={20} />
               </button>
             </div>
 
-            <div className="grid gap-2.5 mt-3">
+            {/* ============ CONTENT ============ */}
+            <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 sm:py-7 space-y-5 sm:space-y-6">
+              {/* Party Selection (Create only) */}
               {!editing ? (
-                <div className="grid gap-1.5">
-                  <div className="text-[18px] font-extrabold text-slate-600">
+                <div>
+                  <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
                     Party <span className="text-red-600">*</span>
-                  </div>
+                  </label>
 
                   {partyMasterQ.isLoading ? (
-                    <div className="px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-600">
+                    <div className="px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-slate-50 text-slate-600 text-base">
                       Loading parties…
                     </div>
                   ) : partyMasterQ.isError ? (
-                    <div className="px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-700">
-                      {(partyMasterQ.error as any)?.message ??
-                        "Failed to load parties."}
+                    <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-3 sm:p-4">
+                      <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                      <div className="text-sm text-red-700 font-semibold">
+                        {(partyMasterQ.error as any)?.message ??
+                          "Failed to load parties."}
+                      </div>
                     </div>
                   ) : (
                     <select
                       value={selectedPartyId}
                       onChange={(e) => setSelectedPartyId(e.target.value)}
-                      className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
+                      className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                     >
                       <option value="">-- Select party --</option>
                       {(partyMasterQ.data ?? []).map((p: PartyDto) => (
@@ -446,12 +465,19 @@ export default function ElectionPartiesTab() {
                     </select>
                   )}
                 </div>
-              ) : null}
-
-              <div className="grid gap-1.5">
-                <div className="text-base font-extrabold text-slate-600">
-                  Ballot Order
+              ) : (
+                <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 sm:p-4">
+                  <p className="text-sm text-blue-800">
+                    <strong className="font-bold">📌 Editing Party:</strong> {editing.partyName}
+                  </p>
                 </div>
+              )}
+
+              {/* Ballot Order Field */}
+              <div>
+                <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
+                  Ballot Order <span className="text-slate-400">(optional)</span>
+                </label>
                 <input
                   value={ballotOrder}
                   onChange={(e) => {
@@ -464,77 +490,125 @@ export default function ElectionPartiesTab() {
                     }
                   }}
                   type="number"
-                  placeholder="Optional numeric ballot order"
-                  className="px-3 py-2.5 rounded-lg border border-slate-200 outline-none"
+                  placeholder="e.g., 1, 2, 3..."
+                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                 />
+                <p className="text-xs sm:text-sm text-slate-500 mt-2">
+                  Numeric order for ballot display (optional)
+                </p>
               </div>
 
-              {/* ✅ RADIO: checked based on DB value */}
-              <div className="grid gap-1.5">
-                <div className="text-base font-extrabold text-slate-600">
-                  Qualification
-                </div>
+              {/* Qualification Radio Buttons */}
+              <div>
+                <label className="block text-base sm:text-lg font-bold text-slate-900 mb-3 sm:mb-4">
+                  Qualification <span className="text-red-600">*</span>
+                </label>
 
-                <div className="flex items-center gap-6 text-base text-slate-700">
-                  <label className="inline-flex items-center gap-2">
+                <div className="space-y-2.5">
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer transition">
                     <input
                       type="radio"
                       name="qualified"
                       checked={isQualified === true}
                       onChange={() => setIsQualified(true)}
-                      className="h-4 w-4 accent-emerald-600"
+                      className="h-5 w-5 accent-blue-600 cursor-pointer"
                     />
-                    Qualified
+                    <span className="text-base font-semibold text-slate-900">
+                      ✅ Qualified
+                    </span>
+                    <span className="text-sm text-slate-500 ml-auto">
+                      Party is eligible
+                    </span>
                   </label>
 
-                  <label className="inline-flex items-center gap-2">
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer transition">
                     <input
                       type="radio"
                       name="qualified"
                       checked={isQualified === false}
                       onChange={() => setIsQualified(false)}
-                      className="h-4 w-4 accent-emerald-600"
+                      className="h-5 w-5 accent-blue-600 cursor-pointer"
                     />
-                    Not Qualified
+                    <span className="text-base font-semibold text-slate-900">
+                      ⚪ Not Qualified
+                    </span>
+                    <span className="text-sm text-slate-500 ml-auto">
+                      Party is ineligible
+                    </span>
                   </label>
                 </div>
               </div>
 
-              {addM.isError || updateM.isError ? (
-                <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700 text-base font-bold">
-                  {addM.isError
-                    ? friendlySaveError(addM.error)
-                    : friendlySaveError(updateM.error)}
+              {/* Error Message */}
+              {(addM.isError || updateM.isError) && (
+                <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-3 sm:p-4">
+                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                  <div className="text-sm text-red-700 font-semibold">
+                    {addM.isError
+                      ? friendlySaveError(addM.error)
+                      : friendlySaveError(updateM.error)}
+                  </div>
                 </div>
-              ) : null}
+              )}
 
-              <div className="flex justify-end gap-2 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  disabled={saving}
-                  className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                    saving ? "opacity-60" : ""
-                  }`}
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="button"
-                  disabled={!canEdit || saving}
-                  onClick={() => {
-                    if (!canEdit) return;
-                    if (editing) updateM.mutate();
-                    else addM.mutate();
-                  }}
-                  className={`px-3 py-2 rounded-lg border border-slate-200 bg-white font-extrabold ${
-                    !canEdit || saving ? "opacity-60" : ""
-                  }`}
-                >
-                  Save
-                </button>
+              {/* Help Text */}
+              <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 sm:p-4">
+                <p className="text-sm text-blue-800">
+                  <strong className="font-bold">💡 Tip:</strong> Use ballot order to arrange parties on the election ballot. Qualified status determines eligibility.
+                </p>
               </div>
+            </div>
+
+            {/* ============ FOOTER ============ */}
+            <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-8 py-4 sm:py-5 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (saving) return;
+                  setOpen(false);
+                }}
+                disabled={saving}
+                className="px-4 sm:px-6 h-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-base font-semibold hover:bg-slate-50 transition disabled:opacity-50 sm:min-w-fit"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={!canEdit || saving || !selectedPartyId}
+                onClick={() => {
+                  if (!canEdit) return;
+                  if (editing) updateM.mutate();
+                  else addM.mutate();
+                }}
+                className={`px-4 sm:px-6 h-10 rounded-lg text-base font-semibold text-white transition flex items-center justify-center gap-2 sm:min-w-fit ${
+                  !canEdit || saving || (!editing && !selectedPartyId)
+                    ? "bg-slate-300 cursor-not-allowed opacity-60"
+                    : "bg-blue-600 hover:bg-blue-700 shadow-sm"
+                }`}
+                title={
+                  !canEdit
+                    ? "Read-only (Tenant)"
+                    : !selectedPartyId && !editing
+                    ? "Select a party"
+                    : "Save party"
+                }
+              >
+                {saving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span className="hidden sm:inline">Saving…</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus size={18} />
+                    <span className="hidden sm:inline">
+                      {editing ? "Update Party" : "Assign Party"}
+                    </span>
+                    <span className="sm:hidden">{editing ? "Update" : "Assign"}</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -542,3 +616,4 @@ export default function ElectionPartiesTab() {
     </div>
   );
 }
+

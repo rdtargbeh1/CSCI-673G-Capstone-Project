@@ -1,20 +1,11 @@
-// ✅ FILE: src/pages/operations/observer-reports/ObserverReportsPage.tsx
-//
-// ✅ UPDATED: Added District support (list column + view modal + form data plumbing)
-// ✅ UPDATED: Added Reporter + Polling Center Name columns on the table
-// ✅ UPDATED: Truncate/ellipsis for Reporter, Center Name, and Description/Summary so table does NOT extend right
-// ✅ UPDATED: Reporter shows FULL NAME (first + last) when fields exist; falls back safely
-// ✅ NEW: SYSTEM dashboard tenant selector (org dropdown) to select a tenant before listing/creating/editing
-//
-// ❗Per request: DO NOT change existing auth/tenant rules or core behavior.
-//    Only ADD tenant dropdown in SYSTEM dashboard mode.
-//    - Tenant dropdown appears ONLY when dashboardMode === "SYSTEM"
-//    - For SYSTEM mode: list/create/edit/delete requires selected tenant org
-//    - For TENANT dashboards: uses currentOrgId as before
 
-import { useMemo, useState } from "react";
+//  ✅ FILE: src/pages/operations/ObserverReportsPage.tsx
+
+
+import { useMemo, useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, RefreshCw, Pencil, Trash2, Eye } from "lucide-react";
+import { Plus, RefreshCw, Pencil, Trash2, Eye, CheckCircle } from "lucide-react";
 
 import {
   Badge,
@@ -22,11 +13,8 @@ import {
   Note,
   OpsPageShell,
   Table,
-} from "../operations/shared/ops-ui";
+} from "./shared/ops-ui";
 import { useAuthStore } from "../../shared/store/authStore";
-
-import { fetchMe } from "../../shared/services/userService";
-import type { UserDto } from "../../auth/userTypes";
 
 import {
   fetchCounties,
@@ -44,28 +32,34 @@ import {
 
 import {
   searchObserverReports,
+  searchObserverReportsNec,
   createObserverReport,
   updateObserverReport,
   deleteObserverReport,
-  getObserverReport,
+  verifyObserverReport,
+  resolveObserverReport,
   type ObserverReportDto,
   type ObserverReportCreateRequest,
   type ObserverReportUpdateRequest,
+  type ObserverReportVerificationRequest,
+  type ObserverReportResolveRequest,
   type ReportType,
 } from "../../shared/services/observerReportService";
 
-import ObserverReportFormModal from "./ObserverReportFormModal";
+import ObserverReportFormModal from "./modal/ObserverReportFormModal";
+import ObserverReportVerifyModal from "./modal/ObserverReportVerifyModal";
+import ObserverReportResolveModal from "./modal/ObserverReportResolveModal";
+import ObserverReportViewModal from "./modal/ObserverReportViewModal";
 
-// ✅ NEW (tenant dropdown data)
 import {
   fetchOrganizations,
   type Organization,
 } from "../../shared/services/organizationService";
 
-/** ---------------- helpers ---------------- */
 function safeStr(v: any) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
+
 function friendlyError(err: any): string {
   return (
     safeStr(err?.response?.data?.message) ||
@@ -74,55 +68,142 @@ function friendlyError(err: any): string {
     "Request failed."
   );
 }
+
 function fullName(u: any) {
   const fn = String(u?.firstName ?? "").trim();
   const ln = String(u?.lastName ?? "").trim();
   const nm = `${fn} ${ln}`.trim();
   return nm || String(u?.userName ?? "—");
 }
+
 function evidenceLabel(r: any) {
   const url = String(r?.mediaUrl ?? "").trim();
   return url ? "Attached" : "Missing";
 }
 
-/**
- * ✅ Reporter full name:
- * Prefer explicit fields if backend provides them:
- * - observerFirstName, observerLastName
- * Fall back to observerName, then observerId.
- */
 function reporterFullName(r: any) {
-  const first = String(
-    r?.observerFirstName ?? r?.observer_first_name ?? ""
-  ).trim();
-  const last = String(
-    r?.observerLastName ?? r?.observer_last_name ?? ""
-  ).trim();
-
+  const first = String(r?.observerFirstName ?? r?.observer_first_name ?? "").trim();
+  const last = String(r?.observerLastName ?? r?.observer_last_name ?? "").trim();
   const full = `${first} ${last}`.trim();
   if (full) return full;
-
   const name = String(r?.observerName ?? "").trim();
   if (name) return name;
-
   const id = String(r?.observerId ?? "").trim();
   return id ? `ID: ${id.slice(0, 8)}…` : "—";
 }
 
-/**
- * ✅ Table-safe text cell: 1-line clamp + ellipsis + tooltip
- * - Prevents long strings from expanding table width
- */
-function ClampCell(props: { text?: any; className?: string }) {
+function getTenantName(r: any) {
+  return String(r?.organizationName ?? r?.organization?.orgName ?? r?.orgName ?? "—");
+}
+
+function getTenantId(r: any) {
+  return String(r?.organizationId ?? r?.organization?.orgId ?? r?.orgId ?? "");
+}
+
+function verificationStatusBadge(status?: string) {
+  if (!status || status === "PENDING") {
+    return (
+      <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-bold border bg-slate-100 text-slate-700 border-slate-200">
+        ⏳ Pending
+      </span>
+    );
+  }
+  if (status === "INTERNAL_VERIFIED") {
+    return (
+      <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-bold border bg-green-100 text-green-700 border-green-200">
+        ✓ Internal
+      </span>
+    );
+  }
+  if (status === "UNDER_INVESTIGATION") {
+    return (
+      <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-bold border bg-yellow-100 text-yellow-700 border-yellow-200">
+        🔍 Investigating
+      </span>
+    );
+  }
+  if (status === "NEC_VERIFIED") {
+    return (
+      <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-bold border bg-emerald-100 text-emerald-700 border-emerald-200">
+        ✓ NEC Verified
+      </span>
+    );
+  }
+  if (status === "REJECTED") {
+    return (
+      <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-bold border bg-rose-100 text-rose-700 border-rose-200">
+        ✕ Rejected
+      </span>
+    );
+  }
+  return null;
+}
+
+function isCriticalBadge(isCritical?: boolean) {
+  if (isCritical) {
+    return (
+      <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-bold border bg-red-100 text-red-700 border-red-200">
+        🔴 Critical
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-bold border bg-slate-100 text-slate-700 border-slate-200">
+      ⚪ Normal
+    </span>
+  );
+}
+
+function resolvedBadge(resolved?: boolean) {
+  if (resolved) {
+    return (
+      <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-bold border bg-emerald-100 text-emerald-700 border-emerald-200">
+        ✓ Resolved
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex rounded-full px-2 py-0.5 text-xs font-bold border bg-amber-100 text-amber-700 border-amber-200">
+      ⏳ Open
+    </span>
+  );
+}
+
+function visibilityBadge(visibility?: string) {
+  const vis = String(visibility ?? "PRIVATE").toUpperCase();
+
+  if (vis === "PRIVATE") {
+    return (
+      <span className="text-xs font-bold px-2 py-0.5 rounded-full border bg-slate-50 text-slate-700 border-slate-200">
+        🔒 Private
+      </span>
+    );
+  }
+  if (vis === "SHARED") {
+    return (
+      <span className="text-xs font-bold px-2 py-0.5 rounded-full border bg-blue-50 text-blue-700 border-blue-200">
+        👥 Shared
+      </span>
+    );
+  }
+  if (vis === "PUBLIC") {
+    return (
+      <span className="text-xs font-bold px-2 py-0.5 rounded-full border bg-purple-50 text-purple-700 border-purple-200">
+        🌍 Public
+      </span>
+    );
+  }
+  return (
+    <span className="text-xs font-bold px-2 py-0.5 rounded-full border bg-slate-50 text-slate-700 border-slate-200">
+      🔒 Private
+    </span>
+  );
+}
+
+function ClampCell(props: { text?: any; className?: string; title?: string }) {
   const t = String(props.text ?? "").trim();
   return (
-    <div
-      title={t || ""}
-      className={[
-        "min-w-0 truncate text-lg text-slate-800",
-        props.className ?? "max-w-[240px]",
-      ].join(" ")}
-    >
+    <div title={props.title || t || ""} className={["min-w-0 truncate text-sm text-slate-800", props.className ?? "max-w-[180px]"].join(" ")}>
       {t || "—"}
     </div>
   );
@@ -130,76 +211,64 @@ function ClampCell(props: { text?: any; className?: string }) {
 
 export default function ObserverReportsPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const user = useAuthStore((s) => s.user);
   const dashboardMode = useAuthStore((s) => s.dashboardMode);
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
 
-  // ✅ role-based access (not dashboardMode)
   const roleLabel = useAuthStore((s: any) =>
     typeof s.getRoleLabel === "function" ? s.getRoleLabel() : ""
   );
 
-  // Who can perform CRUD operations (kept as your current logic)
-  const canCrud =
-    Boolean(currentOrgId) ||
-    dashboardMode === "SYSTEM" ||
-    dashboardMode === "NEC";
+  const userRole = (user as any)?.role?.roleName;
 
-  /**
-   * ✅ NEW: SYSTEM dashboard tenant selector
-   * - On SYSTEM dashboard, currentOrgId may be empty; system admin MUST pick a tenant org to operate on tenant entity.
-   * - We do NOT change your store currentOrgId; we keep selection local to this page.
-   */
-  const isSystemDashboard = dashboardMode === "SYSTEM";
+  // ✅ FIX: Distinguish SYSTEM_ADMIN from NEC_ADMIN
+  const isSystemAdmin = userRole === "SYSTEM_ADMIN" || dashboardMode === "SYSTEM";
+  const isNecAdmin = userRole === "NEC_ADMIN" || dashboardMode === "NEC";
+  const isNEC = isNecAdmin || isSystemAdmin; // isNEC includes both for query routing
+
+  // ✅ canCrud: SYSTEM_ADMIN cannot create (read-only)
+  const canCrud =
+    (Boolean(currentOrgId) && !isSystemAdmin) ||
+    userRole === "NEC_ADMIN";
+
+  const isSystemDashboard = isSystemAdmin && !isNecAdmin;
   const [systemSelectedOrgId, setSystemSelectedOrgId] = useState<string>("");
 
-  // tenant scope:
-  // - Tenant dashboards: use currentOrgId as before
-  // - SYSTEM dashboard: use selected org id (required for list/create/edit)
   const effectiveOrgId = isSystemDashboard
     ? systemSelectedOrgId || undefined
     : currentOrgId || undefined;
 
-  /** ---------------- me ---------------- */
-  const meQ = useQuery<UserDto>({
-    enabled: Boolean(effectiveOrgId),
-    queryKey: ["users", "me", "observer-reports", effectiveOrgId],
-    queryFn: () => fetchMe(effectiveOrgId as string),
-    staleTime: 60_000,
-    retry: 1,
-  });
-  const me = meQ.data ?? (user as any);
+  const me = user as any;
   const meName = fullName(me);
 
-  /** ---------------- NEW: org dropdown data (SYSTEM only) ---------------- */
   const orgsQ = useQuery<{ items: Organization[]; totalElements: number }>({
     enabled: isSystemDashboard,
     queryKey: ["orgs", "dropdown", "observer-reports", "system"],
     queryFn: async () => {
-      // fetch enough orgs for dropdown
       return await fetchOrganizations({
         page: 0,
         size: 500,
         search: "",
         active: true,
-        // orgType: undefined,
         orgId: undefined,
       } as any);
     },
     staleTime: 60_000,
-    retry: 1,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 
   const orgOptions = orgsQ.data?.items ?? [];
 
-  /** ---------------- geo lists for modal ---------------- */
   const countiesQ = useQuery<CountyDto[]>({
     queryKey: ["counties", "all", "observer-reports"],
     queryFn: async () =>
       (await fetchCounties({ page: 0, size: 500 })).items as CountyDto[],
     staleTime: 60_000,
-    retry: 1,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 
   const districtsQ = useQuery<DistrictDto[]>({
@@ -207,7 +276,8 @@ export default function ObserverReportsPage() {
     queryFn: async () =>
       (await fetchDistricts({ page: 0, size: 1000 })).items as DistrictDto[],
     staleTime: 60_000,
-    retry: 1,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 
   const centersQ = useQuery<PollingCenterDto[]>({
@@ -217,29 +287,30 @@ export default function ObserverReportsPage() {
       return p.items as PollingCenterDto[];
     },
     staleTime: 60_000,
-    retry: 1,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 
   const counties = countiesQ.data ?? [];
   const districts = districtsQ.data ?? [];
   const centers = centersQ.data ?? [];
 
-  /** ---------------- filters ---------------- */
   const [q, setQ] = useState("");
   const [type, setType] = useState<ReportType | "">("");
   const [resolved, setResolved] = useState<"" | "true" | "false">("");
+  const [verStatus, setVerStatus] = useState("");
+  const [isCritical, setIsCritical] = useState<"" | "true" | "false">("");
+  const [visibility, setVisibility] = useState("");
 
   const [page, setPage] = useState(0);
   const size = 20;
 
-  // ✅ list requires a tenant org (selected on system dashboard; currentOrgId on tenant dashboards)
-  const listEnabled = Boolean(effectiveOrgId);
+  const listEnabled = isNEC || Boolean(effectiveOrgId);
 
-  /** ---------------- list ---------------- */
   const listQ = useQuery({
     enabled: listEnabled,
     queryKey: [
-      "observer-reports",
+      isNEC ? "observer-reports-nec" : "observer-reports",
       "search",
       effectiveOrgId,
       page,
@@ -247,16 +318,35 @@ export default function ObserverReportsPage() {
       q,
       type,
       resolved,
+      verStatus,
+      isCritical,
+      visibility,
     ],
-    queryFn: () =>
-      searchObserverReports({
-        orgId: effectiveOrgId!,
-        page,
-        size,
-        q: q.trim() ? q.trim() : undefined,
-        type: type || undefined,
-        resolved: resolved === "" ? undefined : resolved === "true",
-      }),
+    queryFn: () => {
+      if (isNEC) {
+        return searchObserverReportsNec({
+          page,
+          size,
+          q: q.trim() ? q.trim() : undefined,
+          type: type || undefined,
+          resolved: resolved === "" ? undefined : resolved === "true",
+          verificationStatus: verStatus || undefined,
+          isCritical: isCritical === "" ? undefined : isCritical === "true",
+          visibility: visibility || undefined,
+        });
+      } else {
+        return searchObserverReports({
+          orgId: effectiveOrgId!,
+          page,
+          size,
+          q: q.trim() ? q.trim() : undefined,
+          type: type || undefined,
+          resolved: resolved === "" ? undefined : resolved === "true",
+          isCritical: isCritical === "" ? undefined : isCritical === "true",
+          visibility: visibility || undefined,
+        });
+      }
+    },
     staleTime: 10_000,
     retry: 1,
   });
@@ -264,19 +354,9 @@ export default function ObserverReportsPage() {
   const items: ObserverReportDto[] = (listQ.data?.items ?? []) as any;
   const totalPages = (listQ.data as any)?.totalPages ?? 1;
 
-  /** ---------------- view modal ---------------- */
   const [openView, setOpenView] = useState(false);
   const [viewId, setViewId] = useState<string>("");
 
-  const viewQ = useQuery<ObserverReportDto>({
-    enabled: openView && Boolean(viewId),
-    queryKey: ["observer-reports", "get", viewId],
-    queryFn: () => getObserverReport(viewId),
-    staleTime: 10_000,
-    retry: 1,
-  });
-
-  /** ---------------- create/edit modal ---------------- */
   const [openForm, setOpenForm] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editId, setEditId] = useState<string>("");
@@ -284,9 +364,13 @@ export default function ObserverReportsPage() {
   const editQ = useQuery<ObserverReportDto>({
     enabled: openForm && formMode === "edit" && Boolean(editId),
     queryKey: ["observer-reports", "edit", editId],
-    queryFn: () => getObserverReport(editId),
+    queryFn: async () => {
+      const { getObserverReport } = await import("../../shared/services/observerReportService");
+      return await getObserverReport(editId);
+    },
     staleTime: 10_000,
-    retry: 1,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 
   const createM = useMutation({
@@ -296,7 +380,7 @@ export default function ObserverReportsPage() {
     }) => createObserverReport(p.req, p.files),
     onSuccess: async () => {
       await qc.invalidateQueries({
-        queryKey: ["observer-reports", "search", effectiveOrgId],
+        queryKey: [isNEC ? "observer-reports-nec" : "observer-reports", "search"],
       });
       setOpenForm(false);
     },
@@ -310,18 +394,53 @@ export default function ObserverReportsPage() {
     }) => updateObserverReport(p.id, p.req, p.files),
     onSuccess: async () => {
       await qc.invalidateQueries({
-        queryKey: ["observer-reports", "search", effectiveOrgId],
+        queryKey: [isNEC ? "observer-reports-nec" : "observer-reports", "search"],
       });
       setOpenForm(false);
     },
   });
 
   const delM = useMutation({
-    mutationFn: async (id: string) => deleteObserverReport(id),
+    mutationFn: async (id: string) => {
+      const { deleteObserverReport: deleteReport } = await import("../../shared/services/observerReportService");
+      return await deleteReport(id);
+    },
     onSuccess: async () => {
       await qc.invalidateQueries({
-        queryKey: ["observer-reports", "search", effectiveOrgId],
+        queryKey: [isNEC ? "observer-reports-nec" : "observer-reports", "search"],
       });
+    },
+  });
+
+  const [openVerify, setOpenVerify] = useState(false);
+  const [verifyId, setVerifyId] = useState<string>("");
+
+  const verifyM = useMutation({
+    mutationFn: async (p: {
+      id: string;
+      req: ObserverReportVerificationRequest;
+    }) => verifyObserverReport(p.id, p.req),
+    onSuccess: async () => {
+      await qc.invalidateQueries({
+        queryKey: [isNEC ? "observer-reports-nec" : "observer-reports", "search"],
+      });
+      setOpenVerify(false);
+    },
+  });
+
+  const [openResolve, setOpenResolve] = useState(false);
+  const [resolveId, setResolveId] = useState<string>("");
+
+  const resolveM = useMutation({
+    mutationFn: async (p: {
+      id: string;
+      req: ObserverReportResolveRequest;
+    }) => resolveObserverReport(p.id, p.req),
+    onSuccess: async () => {
+      await qc.invalidateQueries({
+        queryKey: [isNEC ? "observer-reports-nec" : "observer-reports", "search"],
+      });
+      setOpenResolve(false);
     },
   });
 
@@ -329,15 +448,50 @@ export default function ObserverReportsPage() {
     return items.map((r) => {
       const county = r.countyName ?? "—";
       const district = (r as any).districtName ?? "—";
-
       const centerCode = r.centerCode ? String(r.centerCode) : "—";
       const centerName = String(r.centerName ?? "—");
-
       const reporter = reporterFullName(r as any);
-
+      const tenantName = getTenantName(r as any);
+      const orgId = getTenantId(r as any);
       const desc = String(r.description ?? "");
       const evidence = evidenceLabel(r);
-      const status = r.resolved ? "Resolved" : "Open";
+      const verStatus = String(r.verificationStatus ?? "PENDING");
+      const visibility = String(r.visibility ?? "PRIVATE");
+      const isCrit = Boolean(r.isCritical ?? false);
+      const isResol = Boolean(r.resolved ?? false);
+
+      const isLocked = verStatus === "INTERNAL_VERIFIED" || verStatus === "NEC_VERIFIED";
+
+      // ✅ SYSTEM_ADMIN: READ-ONLY - Cannot edit any report
+      const canEditThisReport = 
+        !isSystemAdmin &&
+        !isLocked && 
+        effectiveOrgId === orgId;
+
+      // ✅ SYSTEM_ADMIN: Cannot verify any report
+      const canVerifyThisReport =
+        !isSystemAdmin &&
+        !isLocked && 
+        !isResol &&
+        (isNecAdmin || effectiveOrgId === orgId);
+
+      // ✅ FIXED: Only tenant owner can resolve (NOT SYSTEM_ADMIN, NOT NEC_ADMIN)
+      const canResolveThisReport =
+        !isSystemAdmin &&
+        !isNecAdmin &&
+        !isResol &&
+        verStatus !== "PENDING" &&
+        effectiveOrgId === orgId;
+
+      // ✅ SYSTEM_ADMIN: Cannot delete any report
+      const canDeleteThisReport = 
+        !isSystemAdmin && 
+        !isLocked && 
+        effectiveOrgId === orgId;
+
+      // ✅ Can ALWAYS view verification/resolution details (read-only when locked/resolved)
+      const canViewVerificationDetails = verStatus !== "PENDING";
+      const canViewResolutionDetails = isResol;
 
       return [
         <Badge key={`t-${r.reportId}`}>{String(r.type ?? "—")}</Badge>,
@@ -345,37 +499,46 @@ export default function ObserverReportsPage() {
         <ClampCell
           key={`rep-${r.reportId}`}
           text={reporter}
-          className="max-w-[200px]"
+          className="max-w-[140px]"
+        />,
+
+        <ClampCell
+          key={`tn-${r.reportId}`}
+          text={tenantName}
+          className="max-w-[140px]"
         />,
 
         <ClampCell
           key={`co-${r.reportId}`}
           text={county}
-          className="max-w-[180px]"
+          className="max-w-[120px]"
         />,
+
         <ClampCell
           key={`di-${r.reportId}`}
           text={district}
-          className="max-w-[180px]"
+          className="max-w-[120px]"
         />,
 
-        centerCode,
+        <span key={`cc-${r.reportId}`} className="text-sm">
+          {centerCode}
+        </span>,
 
         <ClampCell
           key={`cn-${r.reportId}`}
           text={centerName}
-          className="max-w-[240px]"
+          className="max-w-[140px]"
         />,
 
         <ClampCell
           key={`sum-${r.reportId}`}
           text={desc}
-          className="max-w-[340px]"
+          className="max-w-[180px]"
         />,
 
         <span
           key={`e-${r.reportId}`}
-          className={`inline-flex rounded-full px-2 py-0.5 text-base font-extrabold border ${
+          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-bold border ${
             evidence === "Attached"
               ? "bg-green-50 text-green-700 border-green-200"
               : "bg-red-50 text-red-700 border-red-200"
@@ -384,73 +547,139 @@ export default function ObserverReportsPage() {
           {evidence}
         </span>,
 
-        <Badge key={`s-${r.reportId}`}>{status}</Badge>,
+        <div key={`vstat-${r.reportId}`}>
+          {verificationStatusBadge(verStatus)}
+        </div>,
 
-        <div key={`a-${r.reportId}`} className="flex items-center gap-2">
+        <div key={`crit-${r.reportId}`}>
+          {isCriticalBadge(isCrit)}
+        </div>,
+
+        <div key={`vis-${r.reportId}`}>
+          {visibilityBadge(visibility)}
+        </div>,
+
+        <div key={`res-${r.reportId}`}>
+          {resolvedBadge(isResol)}
+        </div>,
+
+        <div key={`a-${r.reportId}`} className="flex items-center gap-1">
+          {/* ✅ VIEW: Everyone can view */}
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1"
+            className="inline-flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1 hover:bg-slate-50"
             onClick={() => {
               setViewId(String(r.reportId));
               setOpenView(true);
             }}
-            title="View"
+            title="View full report details"
           >
-            <Eye size={16} className="text-red-600" />
+            <Eye size={14} className="text-slate-600" />
           </button>
 
-          <button
-            type="button"
-            className={`inline-flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1 ${
-              !canCrud ? "opacity-50" : ""
-            }`}
-            disabled={!canCrud}
-            onClick={() => {
-              // ✅ SYSTEM dashboard must pick tenant first (effectiveOrgId required)
-              if (isSystemDashboard && !effectiveOrgId) {
-                alert("Select a tenant organization first.");
-                return;
-              }
-              setFormMode("edit");
-              setEditId(String(r.reportId));
-              setOpenForm(true);
-            }}
-            title="Edit"
-          >
-            <Pencil size={16} className="text-green-600" />
-          </button>
+          {/* ✅ EDIT: Only tenant owner (not locked, not resolved) */}
+          {canEditThisReport ? (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1 hover:bg-green-50"
+              onClick={() => {
+                if (isSystemDashboard && !effectiveOrgId) {
+                  alert("Select a tenant organization first.");
+                  return;
+                }
+                setFormMode("edit");
+                setEditId(String(r.reportId));
+                setOpenForm(true);
+              }}
+              title="Edit report"
+            >
+              <Pencil size={14} className="text-green-600" />
+            </button>
+          ) : null}
 
-          <button
-            type="button"
-            className={`inline-flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1 ${
-              !canCrud || delM.isPending ? "opacity-50" : ""
-            }`}
-            disabled={!canCrud || delM.isPending}
-            onClick={() => {
-              // ✅ SYSTEM dashboard must pick tenant first
-              if (isSystemDashboard && !effectiveOrgId) {
-                alert("Select a tenant organization first.");
-                return;
-              }
-              if (!confirm("Delete this report?")) return;
-              delM.mutate(String(r.reportId));
-            }}
-            title="Delete"
-          >
-            <Trash2 size={18} className="text-red-600" />
-          </button>
+          {/* ✅ VERIFY: Show for unlocked reports, but also when locked (read-only view) */}
+          {(canVerifyThisReport || canViewVerificationDetails) ? (
+            <button
+              type="button"
+              disabled={verifyM.isPending}
+              className={`inline-flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1 ${
+                canVerifyThisReport ? "hover:bg-blue-50" : "hover:bg-slate-100 opacity-70"
+              }`}
+              onClick={() => {
+                setVerifyId(String(r.reportId));
+                setOpenVerify(true);
+              }}
+              title={canVerifyThisReport ? "Verify report" : "View verification details"}
+            >
+              <CheckCircle size={14} className={canVerifyThisReport ? "text-blue-600" : "text-slate-500"} />
+            </button>
+          ) : null}
+
+          {/* ✅ RESOLVE: Only tenant owner can resolve (not system/nec admin) */}
+          {(canResolveThisReport || canViewResolutionDetails) ? (
+            <button
+              type="button"
+              disabled={resolveM.isPending}
+              className={`inline-flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1 ${
+                canResolveThisReport ? "hover:bg-emerald-50" : "hover:bg-slate-100 opacity-50 cursor-not-allowed"
+              }`}
+              onClick={() => {
+                setResolveId(String(r.reportId));
+                setOpenResolve(true);
+              }}
+              title={canResolveThisReport ? "Mark as resolved" : canViewResolutionDetails ? "View resolution details" : "Only tenant owner can resolve"}
+            >
+              <CheckCircle size={14} className={canResolveThisReport ? "text-emerald-600" : "text-slate-500"} />
+            </button>
+          ) : null}
+
+          {/* ✅ DELETE: Only tenant owner (not locked, not resolved) */}
+          {canDeleteThisReport ? (
+            <button
+              type="button"
+              disabled={delM.isPending}
+              className={`inline-flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1 hover:bg-red-50 ${
+                delM.isPending ? "opacity-50" : ""
+              }`}
+              onClick={() => {
+                if (isSystemDashboard && !effectiveOrgId) {
+                  alert("Select a tenant organization first.");
+                  return;
+                }
+                if (!confirm("Delete this report?")) return;
+                delM.mutate(String(r.reportId));
+              }}
+              title="Delete report"
+            >
+              <Trash2 size={14} className="text-red-600" />
+            </button>
+          ) : null}
         </div>,
       ];
     });
-  }, [items, canCrud, delM.isPending, isSystemDashboard, effectiveOrgId]);
+  }, [
+    items,
+    effectiveOrgId,
+    isNEC,
+    isSystemAdmin,
+    isNecAdmin,
+    delM.isPending,
+    resolveM.isPending,
+    verifyM.isPending,
+    isSystemDashboard,
+  ]);
 
   return (
     <OpsPageShell
       title="Operations • Observer Reports"
-      subtitle={`Actor: ${meName} • Role: ${roleLabel || "—"} • Dashboard: ${
-        dashboardMode ?? "—"
-      } • Tenant(org): ${effectiveOrgId ?? "—"}`}
-      right={<Badge>Evidence-first</Badge>}
+      subtitle={`Actor: ${meName} • Role: ${roleLabel || "—"} • Mode: ${
+        isSystemAdmin ? "🔒 SYSTEM ADMIN (READ-ONLY)" : isNecAdmin ? "🔍 NEC VERIFICATION" : "📝 TENANT REPORTING"
+      }`}
+      right={
+        <Badge>
+          {isSystemAdmin ? "Monitor Only" : isNecAdmin ? "Verification Authority" : "Evidence-first"}
+        </Badge>
+      }
     >
       <Card
         title="Observer Reports"
@@ -466,42 +695,31 @@ export default function ObserverReportsPage() {
               Refresh
             </button>
 
-            <button
-              className={`rounded-xl border px-3 py-2 text-lg font-extrabold inline-flex items-center gap-2 ${
-                canCrud
-                  ? "bg-blue-600 text-white border-blue-700 hover:bg-blue-700"
-                  : "bg-white text-slate-700 border-slate-200 opacity-60"
-              }`}
-              type="button"
-              disabled={!canCrud}
-              onClick={() => {
-                // ✅ SYSTEM dashboard must pick tenant first
-                if (isSystemDashboard && !effectiveOrgId) {
-                  alert("Select a tenant organization first.");
-                  return;
-                }
-                if (!effectiveOrgId) {
-                  alert(
-                    "Tenant orgId is missing. Select a tenant / ensure currentOrgId is set before creating an Observer Report."
-                  );
-                  return;
-                }
-                setFormMode("create");
-                setEditId("");
-                setOpenForm(true);
-              }}
-              title={
-                canCrud ? "Create report" : "Only SYSTEM/NEC admins can create"
-              }
-            >
-              <Plus size={16} />
-              New Report
-            </button>
+            {/* ✅ NEW REPORT: Only for NEC_ADMIN and Tenant (not SYSTEM_ADMIN) */}
+            {canCrud && !isSystemAdmin && (
+              <button
+                className="rounded-xl border px-3 py-2 text-lg font-extrabold inline-flex items-center gap-2 bg-blue-600 text-white border-blue-700 hover:bg-blue-700"
+                type="button"
+                onClick={() => {
+                  if (isSystemDashboard && !effectiveOrgId) {
+                    alert("Select a tenant organization first.");
+                    return;
+                  }
+                  setFormMode("create");
+                  setEditId("");
+                  setOpenForm(true);
+                }}
+                title="Create report"
+              >
+                <Plus size={16} />
+                New Report
+              </button>
+            )}
           </div>
         }
       >
-        {/* ✅ NEW: SYSTEM dashboard tenant dropdown */}
-        {isSystemDashboard ? (
+        {/* ✅ System tenant selector */}
+        {isSystemDashboard && !isNecAdmin ? (
           <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
@@ -509,8 +727,7 @@ export default function ObserverReportsPage() {
                   Select Tenant Organization
                 </div>
                 <div className="text-xs text-slate-500">
-                  Observer Reports are tenant-scoped. Choose an org to
-                  list/create/edit reports.
+                  View tenant reports (read-only monitoring).
                 </div>
               </div>
 
@@ -544,33 +761,20 @@ export default function ObserverReportsPage() {
                 </button>
               </div>
             </div>
-
-            {orgsQ.isError ? (
-              <div className="mt-2 text-sm font-bold text-red-700">
-                {friendlyError(orgsQ.error)}
-              </div>
-            ) : null}
-
-            {!systemSelectedOrgId ? (
-              <div className="mt-2 text-base font-bold text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-                Select a tenant to load reports.
-              </div>
-            ) : null}
           </div>
         ) : null}
 
-        {/* Existing warning (kept) - but will also show for SYSTEM until tenant selected */}
-        {!effectiveOrgId ? (
+        {!listEnabled ? (
           <div className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-sm font-bold">
-            Missing orgId (tenant scope). Observer Reports are tenant-scoped.
-            {canCrud
-              ? " As SYSTEM/NEC admin, select a tenant (org) before listing/creating."
-              : " Ask an admin to set tenant context."}
+            Missing orgId. Select a tenant first.
+          </div>
+        ) : listQ.isError ? (
+          <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-base font-bold">
+            {friendlyError(listQ.error)}
           </div>
         ) : null}
 
-        {/* Filters */}
-        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between flex-wrap">
           <div className="flex flex-wrap gap-2">
             <input
               value={q}
@@ -580,7 +784,7 @@ export default function ObserverReportsPage() {
               }}
               placeholder="Search…"
               className="h-9 rounded-lg border bg-white px-3 text-base w-[220px]"
-              disabled={!effectiveOrgId}
+              disabled={!listEnabled}
             />
 
             <select
@@ -590,7 +794,7 @@ export default function ObserverReportsPage() {
                 setPage(0);
               }}
               className="h-9 rounded-lg border bg-white px-3 text-base font-semibold"
-              disabled={!effectiveOrgId}
+              disabled={!listEnabled}
             >
               <option value="">All types</option>
               <option value="VIOLENCE">VIOLENCE</option>
@@ -608,12 +812,59 @@ export default function ObserverReportsPage() {
                 setPage(0);
               }}
               className="h-9 rounded-lg border bg-white px-3 text-base font-semibold"
-              disabled={!effectiveOrgId}
+              disabled={!listEnabled}
             >
               <option value="">All</option>
               <option value="false">Open</option>
               <option value="true">Resolved</option>
             </select>
+
+            {isNEC && (
+              <>
+                <select
+                  value={verStatus}
+                  onChange={(e) => {
+                    setVerStatus(e.target.value);
+                    setPage(0);
+                  }}
+                  className="h-9 rounded-lg border bg-white px-3 text-base font-semibold"
+                >
+                  <option value="">All Verification</option>
+                  <option value="PENDING">PENDING</option>
+                  <option value="INTERNAL_VERIFIED">INTERNAL_VERIFIED</option>
+                  <option value="UNDER_INVESTIGATION">UNDER_INVESTIGATION</option>
+                  <option value="NEC_VERIFIED">NEC_VERIFIED</option>
+                  <option value="REJECTED">REJECTED</option>
+                </select>
+
+                <select
+                  value={isCritical}
+                  onChange={(e) => {
+                    setIsCritical(e.target.value as any);
+                    setPage(0);
+                  }}
+                  className="h-9 rounded-lg border bg-white px-3 text-base font-semibold"
+                >
+                  <option value="">All Critical</option>
+                  <option value="false">Normal</option>
+                  <option value="true">Critical</option>
+                </select>
+
+                <select
+                  value={visibility}
+                  onChange={(e) => {
+                    setVisibility(e.target.value);
+                    setPage(0);
+                  }}
+                  className="h-9 rounded-lg border bg-white px-3 text-base font-semibold"
+                >
+                  <option value="">All Visibility</option>
+                  <option value="PRIVATE">PRIVATE</option>
+                  <option value="SHARED">SHARED</option>
+                  <option value="PUBLIC">PUBLIC</option>
+                </select>
+              </>
+            )}
           </div>
 
           <div className="text-sm text-slate-500">
@@ -621,32 +872,34 @@ export default function ObserverReportsPage() {
           </div>
         </div>
 
-        {listQ.isError ? (
-          <div className="p-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-base font-bold">
-            {friendlyError(listQ.error)}
-          </div>
-        ) : null}
-
         <Table
           columns={[
             "Report Type",
             "Reporter",
+            "Reported Tenant",
             "County",
             "District",
             "Center Code",
             "Center Name",
             "Description",
             "Evidence",
+            "Verification",
+            "Critical",
+            "Visibility",
             "Status",
             "Actions",
           ]}
           rows={
-            !effectiveOrgId
+            listQ.isLoading
               ? [
                   [
-                    <span key="no-org" className="text-base text-slate-600">
-                      Select a tenant organization to load reports.
+                    <span key="loading" className="text-sm text-slate-600">
+                      Loading…
                     </span>,
+                    "",
+                    "",
+                    "",
+                    "",
                     "",
                     "",
                     "",
@@ -658,12 +911,16 @@ export default function ObserverReportsPage() {
                     "",
                   ],
                 ]
-              : listQ.isLoading
+              : rows.length === 0
               ? [
                   [
-                    <span key="loading" className="text-sm text-slate-600">
-                      Loading…
+                    <span key="empty" className="text-sm text-slate-600">
+                      No reports found.
                     </span>,
+                    "",
+                    "",
+                    "",
+                    "",
                     "",
                     "",
                     "",
@@ -679,14 +936,13 @@ export default function ObserverReportsPage() {
           }
         />
 
-        {/* Pagination */}
         <div className="mt-3 flex items-center justify-between gap-2">
           <div className="flex gap-2">
             <button
               type="button"
               className="h-9 rounded-lg border bg-white px-3 text-sm font-bold"
               onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page <= 0 || listQ.isFetching || !effectiveOrgId}
+              disabled={page <= 0 || listQ.isFetching || !listEnabled}
             >
               Prev
             </button>
@@ -694,9 +950,7 @@ export default function ObserverReportsPage() {
               type="button"
               className="h-9 rounded-lg border bg-white px-3 text-sm font-bold"
               onClick={() => setPage((p) => (p + 1 < totalPages ? p + 1 : p))}
-              disabled={
-                listQ.isFetching || page + 1 >= totalPages || !effectiveOrgId
-              }
+              disabled={listQ.isFetching || page + 1 >= totalPages || !listEnabled}
             >
               Next
             </button>
@@ -704,32 +958,91 @@ export default function ObserverReportsPage() {
         </div>
 
         <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <Note
-            title="Later behavior"
-            bullets={[
-              "Create report with location selectors (county/district/center).",
-              "Attach evidence (multipart files) and optionally link to a vote_submission.",
-              "Supervisor triage: assign → investigate → close with audit trail.",
-            ]}
-          />
-          <Note
-            title="Schema mapping"
-            bullets={[
-              "observer_report stores incident + metadata.",
-              "Attachments come from multipart evidence upload (or mediaUrl).",
-              "audit_log can record triage actions.",
-            ]}
-          />
+          {isSystemAdmin ? (
+            <>
+              <Note
+                title="🔒 System Admin (Read-Only Access)"
+                bullets={[
+                  "✅ View all reports across all tenants",
+                  "✅ Monitor report status and trends",
+                  "✅ See all verification states",
+                  "✅ Cannot create, edit, or delete reports",
+                  "✅ Cannot verify or resolve reports",
+                  "✅ For administrative oversight only",
+                ]}
+              />
+              <Note
+                title="Workflow (System Admin)"
+                bullets={[
+                  "1. Select tenant organization",
+                  "2. Review reports and status",
+                  "3. Monitor verification progress",
+                  "4. Track critical reports",
+                  "5. View all resolutions",
+                  "6. Audit compliance",
+                ]}
+              />
+            </>
+          ) : isNecAdmin ? (
+            <>
+              <Note
+                title="🔍 NEC Verification Authority"
+                bullets={[
+                  "✅ Create & manage your own NEC reports",
+                  "✅ See all your org reports (PRIVATE/SHARED/PUBLIC)",
+                  "✅ See SHARED + PUBLIC from other orgs",
+                  "✅ Cannot edit/delete tenant reports",
+                  "✅ Can verify any org's PENDING/UNDER_INVESTIGATION",
+                  "✅ Can only resolve your own NEC reports",
+                ]}
+              />
+              <Note
+                title="Workflow (NEC)"
+                bullets={[
+                  "1. Create & manage own NEC reports",
+                  "2. Review all your org reports",
+                  "3. Verify UNDER_INVESTIGATION reports",
+                  "4. Set NEC_VERIFIED or REJECTED",
+                  "5. Monitor shared/public cases",
+                  "6. Resolve your own NEC reports only",
+                ]}
+              />
+            </>
+          ) : (
+            <>
+              <Note
+                title="📝 Tenant Reporting Rules"
+                bullets={[
+                  "✅ Create reports with evidence",
+                  "✅ Edit/delete own PENDING reports only",
+                  "✅ Verify internally or escalate to NEC",
+                  "✅ See NEC_VERIFIED shared/public from others",
+                  "✅ Cannot edit/delete locked reports",
+                  "✅ Resolve your own reports when verified",
+                ]}
+              />
+              <Note
+                title="Workflow (Tenant)"
+                bullets={[
+                  "1. Create report with evidence",
+                  "2. Edit/delete before verification",
+                  "3. Click verify button",
+                  "4. Choose: Internal or Escalate",
+                  "5. Mark critical if needed",
+                  "6. Click resolve to close case",
+                ]}
+              />
+            </>
+          )}
         </div>
       </Card>
 
-      {/* ✅ Create/Edit Modal */}
       <ObserverReportFormModal
         open={openForm}
         mode={formMode}
         busy={createM.isPending || updateM.isPending}
         canSubmit={canCrud}
-        effectiveOrgId={effectiveOrgId}
+        effectiveOrgId={(effectiveOrgId || currentOrgId) as string}
         me={me}
         counties={counties}
         districts={districts}
@@ -745,129 +1058,38 @@ export default function ObserverReportsPage() {
         error={createM.error || updateM.error || editQ.error}
       />
 
-      {/* ✅ View Modal */}
-      {openView ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-900/40"
-          onClick={() => setOpenView(false)}
-        >
-          <div
-            className="w-full max-w-3xl bg-white rounded-2xl border shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-3 border-b flex items-start justify-between">
-              <div>
-                <div className="text-xl font-extrabold">Observer Report</div>
-                <div className="text-sm text-slate-500">Details</div>
-              </div>
-              <button
-                className="h-9 rounded-lg border bg-white px-3 text-sm font-bold"
-                onClick={() => setOpenView(false)}
-                type="button"
-              >
-                Close
-              </button>
-            </div>
+      <ObserverReportViewModal
+        open={openView}
+        reportId={viewId}
+        onClose={() => setOpenView(false)}
+        effectiveOrgId={effectiveOrgId}
+      />
 
-            <div className="p-3">
-              {viewQ.isLoading ? (
-                <div className="text-sm text-slate-600">Loading…</div>
-              ) : viewQ.isError ? (
-                <div className="text-sm font-bold text-red-700">
-                  {friendlyError(viewQ.error)}
-                </div>
-              ) : !viewQ.data ? (
-                <div className="text-sm text-slate-600">No data.</div>
-              ) : (
-                <div className="space-y-2 text-base">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div className="rounded-xl border bg-slate-50 p-2">
-                      <div className="text-[11px] font-extrabold text-slate-600">
-                        Report Type
-                      </div>
-                      <div className="font-bold">{viewQ.data.type}</div>
-                    </div>
+      <ObserverReportVerifyModal
+        open={openVerify}
+        reportId={verifyId}
+        busy={verifyM.isPending}
+        onClose={() => setOpenVerify(false)}
+        onSubmit={async (req: ObserverReportVerificationRequest) => {
+          await verifyM.mutateAsync({ id: verifyId, req });
+        }}
+        error={verifyM.error}
+        reportData={items.find((r) => String(r.reportId) === verifyId)}
+      />
 
-                    <div className="rounded-xl border bg-slate-50 p-2">
-                      <div className="text-base font-extrabold text-slate-600">
-                        Resolved
-                      </div>
-
-                      <div className={`font-bold ${viewQ.data.resolved ? "text-green-600" : "text-red-600"}`}>
-                        {viewQ.data.resolved ? "✓ Yes" : "✕ No"}
-                      </div>
-                    </div>
-
-                    {/* ✅ Reporter */}
-                    <div className="rounded-xl border bg-slate-50 p-2">
-                      <div className="text-sm font-extrabold text-slate-600">
-                        Reporter
-                      </div>
-                      <div className="font-bold">
-                        {reporterFullName(viewQ.data as any)}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border bg-slate-50 p-2">
-                      <div className="text-sm font-extrabold text-slate-600">
-                        County
-                      </div>
-                      <div className="font-bold">
-                        {viewQ.data.countyName ?? "—"}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border bg-slate-50 p-2">
-                      <div className="text-sm font-extrabold text-slate-600">
-                        District
-                      </div>
-                      <div className="font-bold">
-                        {(viewQ.data as any).districtName ?? "—"}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border bg-slate-50 p-2">
-                      <div className="text-sm font-extrabold text-slate-600">
-                        Center Code
-                      </div>
-                      <div className="font-bold">
-                        {viewQ.data.centerCode ?? "—"}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border bg-slate-50 p-2 sm:col-span-2">
-                      <div className="text-sm font-extrabold text-slate-600">
-                        Center
-                      </div>
-                      <div className="font-bold">
-                        {viewQ.data.centerName ?? "—"}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border p-2">
-                    <div className="text-sm font-extrabold text-slate-600">
-                      Description
-                    </div>
-                    <div className="whitespace-pre-wrap">
-                      {viewQ.data.description}
-                    </div>
-                  </div>
-
-                  {viewQ.data.mediaUrl ? (
-                    <div className="rounded-xl border p-2">
-                      <div className="text-base font-extrabold text-slate-600">
-                        Media URL
-                      </div>
-                      <div className="break-all">{viewQ.data.mediaUrl}</div>
-                    </div>
-                  ) : null}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <ObserverReportResolveModal
+        open={openResolve}
+        reportId={resolveId}
+        busy={resolveM.isPending}
+        readOnly={isSystemAdmin || isNecAdmin}
+        onClose={() => setOpenResolve(false)}
+        onSubmit={async (req: ObserverReportResolveRequest) => {
+          await resolveM.mutateAsync({ id: resolveId, req });
+        }}
+        error={resolveM.error}
+        reportData={items.find((r) => String(r.reportId) === resolveId)}
+      />
     </OpsPageShell>
   );
 }
+

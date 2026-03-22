@@ -1,3 +1,8 @@
+
+
+
+
+
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../../../shared/store/authStore";
@@ -129,7 +134,7 @@ export default function RolesPage() {
               type="button"
               onClick={refreshNow}
               disabled={rolesQ.isFetching}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
             >
               <RefreshCw size={16} />
               Refresh
@@ -143,9 +148,9 @@ export default function RolesPage() {
               }}
               disabled={!canEdit}
               title={canEdit ? "Create role" : "SYSTEM only"}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200  bg-[#0000CD] text-white px-3 py-2 text-lg font-bold hover:bg-slate-500 disabled:opacity-50"
             >
-              <Plus size={16} />
+              <Plus size={18} />
               Create Role
             </button>
           </div>
@@ -156,7 +161,7 @@ export default function RolesPage() {
           {rolesQ.isLoading ? (
             <div className="text-sm text-slate-600">Loading roles…</div>
           ) : rolesQ.isError ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-base text-red-700">
               {(rolesQ.error as any)?.message ?? "Failed to load roles."}
             </div>
           ) : null}
@@ -170,7 +175,7 @@ export default function RolesPage() {
                 {["Role Name", "Description", "Actions"].map((h) => (
                   <th
                     key={h}
-                    className="whitespace-nowrap border-b border-slate-200 px-3 py-2 text-[11px] font-extrabold text-slate-700"
+                    className="whitespace-nowrap border-b border-slate-200 px-3 py-2 text-base font-extrabold text-slate-700"
                   >
                     {h}
                   </th>
@@ -195,13 +200,13 @@ export default function RolesPage() {
                           {fmtRoleName(r.roleName)}
                         </div>
                         {builtin ? (
-                          <div className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                          <div className="mt-0.5 text-base font-semibold text-slate-500">
                             Built-in
                           </div>
                         ) : null}
                       </td>
 
-                      <td className="border-b border-slate-100 px-3 py-2 text-sm text-slate-700">
+                      <td className="border-b border-slate-100 px-3 py-2 text-base text-slate-700">
                         {safeStr(r.description) || "—"}
                       </td>
 
@@ -209,7 +214,7 @@ export default function RolesPage() {
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-xl border text-[#008000 border-slate-200 hover:bg-slate-50 disabled:opacity-50"
                             title={canEdit ? "Edit" : "Read-only"}
                             disabled={!canEdit}
                             onClick={() => {
@@ -221,7 +226,8 @@ export default function RolesPage() {
                               setOpenEdit(true);
                             }}
                           >
-                            <Pencil size={16} />
+                            <Pencil size={20} className="mx-auto text-[#008000]" />
+                            {/* <Pencil size={20} /> */}
                           </button>
 
                           <button
@@ -242,7 +248,7 @@ export default function RolesPage() {
                               if (ok) deleteM.mutate(r);
                             }}
                           >
-                            <Trash2 size={16} className="text-red-600" />
+                            <Trash2 size={20} className="text-red-600" />
                           </button>
                         </div>
                       </td>
@@ -256,7 +262,7 @@ export default function RolesPage() {
 
         {/* pagination */}
         <div className="mt-3 flex items-center justify-between">
-          <div className="text-xs text-slate-600">
+          <div className="text-sm text-slate-600">
             Page <span className="font-bold">{page + 1}</span> of{" "}
             <span className="font-bold">{totalPages}</span>
           </div>
@@ -314,7 +320,7 @@ export default function RolesPage() {
             <button
               type="button"
               onClick={() => setOpenEdit(false)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50"
             >
               Cancel
             </button>
@@ -322,7 +328,7 @@ export default function RolesPage() {
               type="button"
               onClick={() => updateM.mutate()}
               disabled={!canEdit || updateM.isPending}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-blue-600 text-white font-bold px-3 py-2 text-base font-semibold hover:bg-blue-700 disabled:opacity-50"
             >
               <Save size={16} />
               Save
@@ -348,7 +354,7 @@ export default function RolesPage() {
           />
 
           {updateM.isError ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-base text-red-700">
               {(updateM.error as any)?.message ?? "Failed to update role."}
             </div>
           ) : null}
@@ -366,7 +372,7 @@ export default function RolesPage() {
             <button
               type="button"
               onClick={() => setOpenCreate(false)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50"
             >
               Cancel
             </button>
@@ -374,9 +380,9 @@ export default function RolesPage() {
               type="button"
               onClick={() => createM.mutate()}
               disabled={!canEdit || createM.isPending}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-blue-500 text-white font-bold px-3 py-2 text-base font-semibold hover:bg-blue-700 disabled:opacity-50"
             >
-              <Save size={16} />
+              <Save size={18} />
               Create
             </button>
           </div>

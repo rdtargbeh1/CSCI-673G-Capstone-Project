@@ -1,3 +1,5 @@
+
+
 // src/pages/admin-security/security/shared/admin-ui.tsx
 
 import React from "react";
@@ -20,9 +22,9 @@ export function AdminShell({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-extrabold">{title}</h1>
+          <h1 className="text-2xl font-extrabold">{title}</h1>
           {subtitle ? (
-            <p className="mt-1 text-sm text-slate-600">{subtitle}</p>
+            <p className="mt-1 text-base text-slate-600">{subtitle}</p>
           ) : null}
         </div>
         {right}
@@ -152,7 +154,7 @@ export function Card({
 }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-200 p-4">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200 p-4 text-xl">
         <div className="font-extrabold">{title}</div>
         {right}
       </div>
@@ -283,7 +285,7 @@ export function Modal({
   return (
     <>
       <div
-        className="fixed inset-0 z-40 bg-black/30"
+        className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -291,33 +293,41 @@ export function Modal({
         <div
           role="dialog"
           aria-modal="true"
-          className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl"
+          className="w-full max-w-4xl rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]"
         >
-          <div className="border-b border-slate-200 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-lg font-extrabold text-slate-900">
-                  {title}
-                </div>
-                {subtitle ? (
-                  <div className="mt-1 text-sm text-slate-600">{subtitle}</div>
-                ) : null}
+          {/* HEADER WITH BLUE GRADIENT */}
+          <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400 px-4 sm:px-6 py-5 sm:py-6 border-b border-blue-600 flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-xl sm:text-2xl font-bold text-white">
+                {title}
               </div>
-
-              <button
-                className="h-9 w-9 rounded-xl border border-slate-200 hover:bg-slate-50"
-                onClick={onClose}
-                title="Close"
-              >
-                ✕
-              </button>
+              {subtitle ? (
+                <div className="mt-1 text-xs sm:text-sm font-semibold text-blue-100">
+                  {subtitle}
+                </div>
+              ) : null}
             </div>
+
+            <button
+              className="flex-shrink-0 h-9 w-9 rounded-lg border-2 border-blue-300 hover:bg-blue-700 bg-blue-600 transition text-white flex items-center justify-center disabled:opacity-50"
+              onClick={onClose}
+              title="Close"
+              aria-label="Close dialog"
+            >
+              ✕
+            </button>
           </div>
 
-          <div className="p-4">{children}</div>
+          {/* CONTENT */}
+          <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5">
+            {children}
+          </div>
 
+          {/* FOOTER */}
           {footer ? (
-            <div className="border-t border-slate-200 p-4">{footer}</div>
+            <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-6 py-4 sm:py-5">
+              {footer}
+            </div>
           ) : null}
         </div>
       </div>
@@ -360,11 +370,11 @@ export function TextField({
   return (
     <label className="block">
       <div className="mb-1 flex items-center justify-between">
-        <div className="text-[11px] font-semibold text-slate-600">
+        <div className="text-base font-semibold text-slate-600">
           {label} {required ? <span className="text-red-600">*</span> : null}
         </div>
         {error ? (
-          <div className="text-[11px] font-semibold text-red-600">{error}</div>
+          <div className="text-base font-semibold text-red-600">{error}</div>
         ) : null}
       </div>
 
@@ -382,7 +392,7 @@ export function TextField({
         inputMode={inputMode}
         pattern={pattern}
         className={[
-          "w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2",
+          "w-full rounded-xl border bg-white px-3 py-2 text-xl outline-none focus:ring-2",
           error
             ? "border-red-300 focus:ring-red-400"
             : "border-slate-200 focus:ring-(--org-primary)",
@@ -417,11 +427,11 @@ export function SelectField({
   return (
     <label className="block">
       <div className="mb-1 flex items-center justify-between">
-        <div className="text-[11px] font-semibold text-slate-600">
+        <div className="text-base font-semibold text-slate-600">
           {label} {required ? <span className="text-red-600">*</span> : null}
         </div>
         {error ? (
-          <div className="text-[11px] font-semibold text-red-600">{error}</div>
+          <div className="text-base font-semibold text-red-600">{error}</div>
         ) : null}
       </div>
 
@@ -431,7 +441,7 @@ export function SelectField({
         onBlur={onBlur}
         disabled={disabled}
         className={[
-          "w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none focus:ring-2",
+          "w-full rounded-xl border bg-white px-3 py-2 text-xl outline-none focus:ring-2",
           error
             ? "border-red-300 focus:ring-red-400"
             : "border-slate-200 focus:ring-(--org-primary)",
@@ -446,7 +456,7 @@ export function SelectField({
       </select>
 
       {helper ? (
-        <div className="mt-1 text-[11px] text-slate-500">{helper}</div>
+        <div className="mt-1 text-sm text-slate-500">{helper}</div>
       ) : null}
     </label>
   );

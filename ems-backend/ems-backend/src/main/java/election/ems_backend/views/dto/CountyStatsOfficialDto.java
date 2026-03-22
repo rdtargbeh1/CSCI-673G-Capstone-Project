@@ -16,6 +16,7 @@ public class CountyStatsOfficialDto {
 
     private UUID electionId;
     private UUID contestId;
+    private String contestName;
 
     private UUID countyId;
     private String countyName;
