@@ -157,6 +157,4 @@ public class SystemUser extends BaseAuditedEntity {
 
 
 
-
-
 }

@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -50,6 +51,7 @@ public class VoteSubmissionDto {
     private Map<String, Integer> candidateVotes;
 
     private Integer ballotsInBox;
+    private Integer ballotsReceived;
     private Integer invalidBallots;
     private Integer unmarkedBallots;
     private Integer rejectedBallots;
@@ -59,8 +61,9 @@ public class VoteSubmissionDto {
     // Allocation context (read-only, derived from allocation tables)
     private Integer registeredVoters;   // from place allocation (or center fallback)
     private Integer ballotsIssued;      // from place allocation (or center fallback)
+    private Integer expectedBallotsInBox;
+    private Integer ballotDelta;  // different between actual and expected ballots
     private String allocationSource;    // "PLACE" or "CENTER" (or "NONE")
-
 
     private VoteStatus status;
     private String comments;
@@ -95,5 +98,35 @@ public class VoteSubmissionDto {
     private String chainHash;
     private Long optimisticLock;
     private String idempotencyKey;
+
+    private Boolean hasDiscrepancy;
+    private List<DiscrepancySummaryDto> discrepancies;
+
+
+    // === DERIVED FIELDS (calculated, not persisted) ===
+
+    @JsonIgnore  // Optional: hide from API if needed
+    public Integer getExpectedBallotsInBox() {
+        // Formula: ballotsReceived - (spoiledBallots + unusedBallots)
+        return ballotsReceived - (spoiledBallots + unusedBallots);
+    }
+
+    @JsonIgnore
+    public Integer getBallotDelta() {
+        // Formula: ballotsInBox - expectedBallotsInBox
+        return ballotsInBox - getExpectedBallotsInBox();
+    }
+
+
+    @JsonIgnore
+    public Boolean getHasDiscrepancy() {
+        // Any ballot or vote mismatch
+        Integer totalVotesInBox = invalidBallots + unmarkedBallots +
+                (candidateVotes != null ? candidateVotes.values().stream()
+                        .mapToInt(Integer::intValue).sum() : 0);
+        return getBallotDelta() != 0 || totalVotesInBox != ballotsInBox;
+    }
+
+
 
 }

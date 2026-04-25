@@ -9,6 +9,8 @@ import org.hibernate.annotations.UuidGenerator;
 import org.hibernate.type.SqlTypes;
 import org.locationtech.jts.geom.Point;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -90,6 +92,8 @@ public class VoteSubmission extends AuditBaseEntity {
 
     @Column(name = "ballots_cast", nullable = false)
     private Integer ballotsInBox;
+    @Column(name = "ballots_received", nullable = false)
+    private Integer ballotsReceived;
     @Column(name = "invalid_ballots", nullable = false)
     private Integer invalidBallots = 0;
     @Column(name = "unmarked_ballots", nullable = false)
@@ -150,6 +154,15 @@ public class VoteSubmission extends AuditBaseEntity {
     // Optional idempotency key for client retries
     @Column(name = "idempotency_key", length = 200)
     private String idempotencyKey;
+
+
+
+    // ===== DISCREPANCY INTEGRATION =====
+    @Column(name = "has_discrepancies", nullable = false)
+    private Boolean hasDiscrepancies = false;
+
+    @OneToMany(mappedBy = "voteSubmission", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Discrepancy> discrepancies = new ArrayList<>();
 
 
 

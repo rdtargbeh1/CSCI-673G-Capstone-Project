@@ -29,4 +29,10 @@ public interface DiscrepancyRepository extends JpaRepository<Discrepancy, UUID>,
      */
     long countByElection_ElectionIdAndStatus(UUID electionId, DiscrepancyStatus status);
 
+
+    List<Discrepancy> findByVoteSubmission_SubmissionId(UUID submissionId);
+
+    long countByVoteSubmission_SubmissionIdAndStatus(UUID submissionId, DiscrepancyStatus status);
+
+
 }

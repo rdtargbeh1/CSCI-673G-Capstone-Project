@@ -2,6 +2,7 @@ package election.ems_backend.service;
 
 import election.ems_backend.dto.NotificationCreateRequest;
 import election.ems_backend.dto.NotificationDto;
+import election.ems_backend.entity.Election;
 import election.ems_backend.entity.Notification;
 import election.ems_backend.entity.Organization;
 import election.ems_backend.entity.SystemUser;
@@ -45,6 +46,17 @@ public interface NotificationService {
                                        String roomDisplayName,
                                        UUID messageId);
 
+
+
+    /**
+     * Notify agent that their submission has a discrepancy requiring correction
+     */
+    void notifyAgent(SystemUser agent, String title, String message);
+
+    /**
+     * Notify election judge of a discrepancy requiring escalation/decision
+     */
+    void notifyJudge(Election election, String title, String message);
 
 
 }

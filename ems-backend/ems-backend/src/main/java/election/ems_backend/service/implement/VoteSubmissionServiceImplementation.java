@@ -92,6 +92,8 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     private final VoteSubmissionContestService voteSubmissionContestService;
     private final VoteSubmissionContestRepository voteSubmissionContestRepository;
     private  final VoteSubmissionRankingRepository voteSubmissionRankingRepository;
+    private final DiscrepancyService discrepancyService;
+    private final DiscrepancyRepository discrepancyRepository;
 
     private final NECResultService necResultService;
     private final VoteSubmissionMapper mapper;
@@ -129,11 +131,10 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
 
         if (req == null) throw new ResponseStatusException(BAD_REQUEST, "Request body is required");
 
-        // ✅ DRAFT intent (boolean command, state stored in enum)
         final boolean isDraft = Boolean.TRUE.equals(req.getDraft());
 
         // ---------------------------
-        // 1) Hard validations (prevent JPA "id must not be null")
+        // 1) Hard validations
         // ---------------------------
         if (req.getOrgId() == null) throw new ResponseStatusException(BAD_REQUEST, "orgId is required");
         if (req.getElectionId() == null) throw new ResponseStatusException(BAD_REQUEST, "electionId is required");
@@ -141,20 +142,18 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         if (req.getPlaceId() == null) throw new ResponseStatusException(BAD_REQUEST, "placeId is required");
         if (req.getContestId() == null) throw new ResponseStatusException(BAD_REQUEST, "contestId is required");
 
-        // If you still allow UI to send agentId, keep it optional:
         UUID agentId = (req.getAgentId() != null) ? req.getAgentId() : resolveCurrentUserId();
         if (agentId == null) {
             throw new ResponseStatusException(BAD_REQUEST, "agentId is required");
         }
 
-        // ✅ Draft can be partial: only enforce ballotsCast when NOT draft
         boolean hasVotes = req.getCandidateVotes() != null && !req.getCandidateVotes().isEmpty();
         if (!isDraft && hasVotes && req.getBallotsInBox() == null) {
             throw new ResponseStatusException(BAD_REQUEST, "ballotsCast is required when submitting candidateVotes");
         }
 
         // ---------------------------
-        // 2) Fetch references (now safe: IDs are non-null)
+        // 2) Fetch references
         // ---------------------------
         Organization org = orgRepo.findById(req.getOrgId())
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Organization not found"));
@@ -178,12 +177,10 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
             throw new ResponseStatusException(BAD_REQUEST, "Polling place does not belong to the specified polling center");
         }
 
-        // Ensure polling place is allocated for the election
         var alloc = placeAllocationRepo
                 .findByElection_ElectionIdAndPollingPlace_PlaceId(e.getElectionId(), p.getPlaceId())
                 .orElseThrow(() -> new ResponseStatusException(BAD_REQUEST, "Polling place not allocated for this election"));
 
-        // ✅ contest must exist and belong to election
         Contest contest = contestRepo.findById(req.getContestId())
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Contest not found"));
 
@@ -194,8 +191,6 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
             throw new ResponseStatusException(BAD_REQUEST, "Contest is not active");
         }
 
-        // ✅ One submission per (org, election, place, contest) unless soft-deleted
-        // NOTE: drafts also block duplicates (same as normal) to avoid multiple drafts per place/contest
         boolean alreadyExists = voteSubmissionRepository
                 .existsByOrganization_OrgIdAndElection_ElectionIdAndPollingPlace_PlaceIdAndContestIdAndDateDeletedIsNull(
                         org.getOrgId(), e.getElectionId(), p.getPlaceId(), req.getContestId()
@@ -211,7 +206,6 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
             throw new ResponseStatusException(BAD_REQUEST, "Too many candidate entries");
         }
 
-        // ✅ Strict validations ONLY when not draft
         if (!isDraft) {
             validateCandidateVotes(
                     org.getOrgId(),
@@ -240,14 +234,14 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         VoteSubmission s = mapper.toEntity(req, org, e, c, agent);
         s.setPollingPlace(p);
 
-        // ✅ Ensure DB-required fields always set (draft-safe)
         if (s.getCandidateVotes() == null) s.setCandidateVotes(new HashMap<>());
         if (s.getBallotsInBox() == null) s.setBallotsInBox(0);
 
-        // ✅ Status set by intent
         s.setStatus(isDraft ? VoteStatus.DRAFT : VoteStatus.PENDING);
 
-        // Request-derived fields
+        // ===== INITIALIZE hasDiscrepancies =====
+        s.setHasDiscrepancies(false);
+
         if (request != null) {
             s.setClientIp(RequestUtils.getClientIp(request));
             s.setUserAgent(RequestUtils.getUserAgent(request));
@@ -258,7 +252,6 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
             s.setGpsLocation(gps);
         }
 
-        // Idempotency key check (global uniqueness)
         if (req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) {
             voteSubmissionRepository.findByIdempotencyKey(req.getIdempotencyKey()).ifPresent(existing -> {
                 throw new ResponseStatusException(CONFLICT,
@@ -267,7 +260,6 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
             s.setIdempotencyKey(req.getIdempotencyKey());
         }
 
-        // ✅ Hash/duplicate check ONLY for real submissions (not drafts)
         if (!isDraft) {
             s.setSubmissionHash(buildSubmissionHash(
                     org.getOrgId(),
@@ -289,7 +281,6 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                 throw new ResponseStatusException(CONFLICT, "Duplicate submission (same content).");
             }
         } else {
-            // Draft should not be hashed/signed until submitted
             s.setSubmissionHash(null);
             s.setSubmissionSignature(null);
             s.setSubmissionSignerKeyId(null);
@@ -298,7 +289,6 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
 
         VoteSubmission saved = voteSubmissionRepository.save(s);
 
-        // ✅ Normalize only for non-draft submissions
         if (!isDraft) {
             voteSubmissionContestService.normalizeSubmission(saved.getSubmissionId());
         }
@@ -307,7 +297,6 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
             attachFilesToSubmission(org, saved, agent, files);
         }
 
-        // ✅ Draft path ends here (no ledger/signing/received notification)
         if (isDraft) {
             auditLogService.logSubmissionCreate(
                     org.getOrgId(),
@@ -335,7 +324,7 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         }
 
         // ---------------------------
-        // 4) Non-draft: Ledger (atomic) + sign (existing behavior)
+        // 4) Non-draft: Ledger + sign
         // ---------------------------
         String payloadHash = buildSubmissionPayloadHash(saved);
         Map<String, Object> ledgerRes = jdbc.queryForMap(
@@ -355,6 +344,9 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         jdbc.update("UPDATE vote_submission SET submission_signature = ?, submission_signer_key_id = ? WHERE submission_id = ?",
                 signResult.signature(), signResult.keyId(), saved.getSubmissionId());
 
+        // ===== DISCREPANCY DETECTION =====
+        detectAndCreateDiscrepancies(saved, alloc);
+
         auditLogService.logSubmissionCreate(
                 org.getOrgId(),
                 agent.getUserId(),
@@ -368,9 +360,6 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         String placeDisplay = (p.getLabel() != null && !p.getLabel().isBlank())
                 ? p.getLabel()
                 : "Place " + p.getPlaceNumber();
-
-
-
 
         notify(
                 org.getOrgId(), agent.getUserId(),
@@ -563,6 +552,19 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                         signResult.signature(), signResult.keyId(), saved.getSubmissionId()
                 );
 
+
+                // ===== DISCREPANCY REVALIDATION =====
+                if (alloc != null) {
+                    PollingPlaceAllocationDto allocDto = PollingPlaceAllocationDto.builder()
+                            .electionId(alloc.getElection().getElectionId())
+                            .placeId(alloc.getPollingPlace().getPlaceId())
+                            .registeredVoters(alloc.getRegisteredVoters())
+                            .ballotsIssued(alloc.getBallotsIssued())
+                            .build();
+
+                    discrepancyService.revalidateSubmissionDiscrepancies(saved, allocDto);
+                }
+
                 auditLogService.logSubmissionUpdate(
                         saved.getOrganization().getOrgId(),
                         saved.getAgent().getUserId(),
@@ -633,6 +635,12 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
 
         // ✅ CRITICAL FIX: flush update to DB so JdbcTemplate can see new status
         VoteSubmission saved = voteSubmissionRepository.saveAndFlush(s);
+
+        // ===== DISCREPANCY RESOLUTION ON VERIFICATION =====
+        if (accept) {
+            // Auto-resolve all OPEN discrepancies when submission is verified
+            resolveAllDiscrepancies(saved);
+        }
 
         // ✅ keep your existing tally recompute event untouched
         final RecomputeEvent recomputeEvent = new RecomputeEvent(
@@ -831,6 +839,18 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         // Flush so recompute sees updated values
         VoteSubmission saved = voteSubmissionRepository.saveAndFlush(s);
 
+        // ===== DISCREPANCY REVALIDATION ON AMENDMENT =====
+        if (alloc != null) {
+            PollingPlaceAllocationDto allocDto = PollingPlaceAllocationDto.builder()
+                    .electionId(alloc.getElection().getElectionId())
+                    .placeId(alloc.getPollingPlace().getPlaceId())
+                    .registeredVoters(alloc.getRegisteredVoters())
+                    .ballotsIssued(alloc.getBallotsIssued())
+                    .build();
+
+            discrepancyService.revalidateSubmissionDiscrepancies(saved, allocDto);
+        }
+
         // ✅ Normalize (amend changes vote content)
         voteSubmissionContestService.normalizeSubmission(saved.getSubmissionId());
 
@@ -953,6 +973,9 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
 
         voteSubmissionRepository.save(s);
         voteSubmissionRepository.flush();
+
+        // ===== DISCREPANCY RESOLUTION ON DELETION =====
+        deleteRelatedDiscrepancies(submissionId);
 
         // ✅ Cleanup normalized rows for this submission
         voteSubmissionContestRepository.deleteBySubmissionId(submissionId);
@@ -1077,6 +1100,7 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         return dto;
     }
 
+
     @Override
     @Transactional
     public VoteSubmissionDto flag(UUID id, VoteSubmissionFlagRequest req) {
@@ -1165,6 +1189,7 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
 
         return centerId;
     }
+
 
     /**
      * ✅ FREEZE RULE (Policy):
@@ -1779,5 +1804,102 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     }
 
 
+    /**
+     * Detect and create discrepancies for a new submission during CLOSING phase
+     */
+    private void detectAndCreateDiscrepancies(VoteSubmission submission, PollingPlaceAllocation alloc) {
+        try {
+            // Determine severity based on ballot delta
+            DiscrepancySeverity severity = determineSeverity(submission, alloc);
+
+            // Create CLOSING phase discrepancies
+            discrepancyService.createBallotReconciliationDiscrepancy(submission, alloc.getBallotsIssued(), severity);
+            discrepancyService.createVoteTallyDiscrepancy(submission, severity);
+            discrepancyService.createBallotsInBoxDiscrepancy(submission, severity);
+
+            // Update submission's hasDiscrepancies flag based on any OPEN discrepancies
+            updateSubmissionDiscrepancyFlag(submission);
+
+        } catch (Exception ex) {
+            // Log but don't fail submission creation
+            log.warn("Error detecting discrepancies for submission {}: {}", submission.getSubmissionId(), ex.getMessage());
+        }
+    }
+
+    /**
+     * Update submission's hasDiscrepancies flag based on OPEN discrepancies
+     */
+    private void updateSubmissionDiscrepancyFlag(VoteSubmission submission) {
+        if (submission == null || submission.getSubmissionId() == null) {
+            return;
+        }
+
+        boolean hasOpenDiscrepancies = submission.getDiscrepancies().stream()
+                .anyMatch(d -> d.getStatus() == DiscrepancyStatus.OPEN);
+        submission.setHasDiscrepancies(hasOpenDiscrepancies);
+        voteSubmissionRepository.save(submission);
+    }
+
+    /**
+     * Determine severity level based on ballot delta
+     */
+    private DiscrepancySeverity determineSeverity(VoteSubmission submission, PollingPlaceAllocation alloc) {
+        int expected = alloc.getBallotsIssued();
+        int actual = submission.getBallotsReceived();
+        int delta = Math.abs(actual - expected);
+
+        // Severity based on delta percentage
+        double deltaPercent = (double) delta / expected * 100;
+
+        if (deltaPercent > 10) {
+            return DiscrepancySeverity.CRITICAL;
+        } else if (deltaPercent > 5) {
+            return DiscrepancySeverity.HIGH;
+        } else if (deltaPercent > 0) {
+            return DiscrepancySeverity.MEDIUM;
+        }
+
+        return DiscrepancySeverity.LOW;
+    }
+
+
+
+    /**
+     * Auto-resolve all OPEN discrepancies when submission is verified
+     */
+    private void resolveAllDiscrepancies(VoteSubmission submission) {
+        try {
+            List<Discrepancy> openDiscrepancies = submission.getDiscrepancies().stream()
+                    .filter(d -> d.getStatus() == DiscrepancyStatus.OPEN)
+                    .collect(Collectors.toList());
+
+            for (Discrepancy disc : openDiscrepancies) {
+                disc.setStatus(DiscrepancyStatus.RESOLVED);
+                disc.setResolvedAt(LocalDateTime.now());
+                disc.setResolutionNotes("Auto-resolved: submission verified by verifier");
+                discrepancyRepository.save(disc);
+            }
+
+            submission.setHasDiscrepancies(false);
+            voteSubmissionRepository.save(submission);
+
+        } catch (Exception ex) {
+            log.warn("Error resolving discrepancies for submission {}: {}", submission.getSubmissionId(), ex.getMessage());
+        }
+    }
+
+    /**
+     * Delete all discrepancies associated with a deleted submission
+     */
+    private void deleteRelatedDiscrepancies(UUID submissionId) {
+        try {
+            List<Discrepancy> discrepancies = discrepancyRepository.findByVoteSubmission_SubmissionId(submissionId);
+            if (!discrepancies.isEmpty()) {
+                discrepancyRepository.deleteAll(discrepancies);
+            }
+        } catch (Exception ex) {
+            log.warn("Error deleting discrepancies for submission {}: {}", submissionId, ex.getMessage());
+        }
+    }
 
 }

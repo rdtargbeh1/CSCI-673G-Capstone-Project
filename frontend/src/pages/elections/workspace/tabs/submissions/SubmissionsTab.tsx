@@ -726,7 +726,7 @@ export default function SubmissionsTab() {
           </div>
         ) : null}
 
-        <div className="w-full overflow-x-auto border rounded-xl">
+       <div className="w-full overflow-x-auto border rounded-xl">
           <table className="min-w-1550px w-full text-base">
             <thead className="bg-slate-50 text-slate-600">
               <tr className="text-left">
@@ -735,6 +735,7 @@ export default function SubmissionsTab() {
 
                 <Th className="text-right">Registered</Th>
                 <Th className="text-right">Ballots Issued</Th>
+                <Th className="text-right">Ballots Received</Th>
                 {/* <Th>Alloc Src</Th> */}
 
                 <Th className="text-right">Valid</Th>
@@ -755,13 +756,13 @@ export default function SubmissionsTab() {
             <tbody>
               {submissionsQ.isLoading ? (
                 <tr>
-                  <td className="p-2 text-slate-500" colSpan={16}>
+                  <td className="p-2 text-slate-500" colSpan={17}>
                     Loading submissions…
                   </td>
                 </tr>
               ) : !items.length ? (
                 <tr>
-                  <td className="p-2 text-slate-500" colSpan={16}>
+                  <td className="p-2 text-slate-500" colSpan={17}>
                     No submissions found.
                   </td>
                 </tr>
@@ -796,6 +797,9 @@ export default function SubmissionsTab() {
                       </Td>
                       <Td className="text-right font-semibold">
                         {fmtNum((s as any).ballotsIssued)}
+                      </Td>
+                      <Td className="text-right font-semibold">
+                        {fmtNum((s as any).ballotsReceived)}
                       </Td>
                       {/* <Td className="truncate">
                         {fmtAllocSource((s as any).allocationSource)}

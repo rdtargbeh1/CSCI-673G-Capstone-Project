@@ -22,6 +22,8 @@ public class VoteSubmissionCreateRequest {
     private Map<@NotNull String, @Min(0) Integer> candidateVotes; // candidateId -> votes
 
     @NotNull
+    @Min(0) private Integer ballotsReceived;
+    @NotNull
     @Min(0) private Integer ballotsInBox;
     @Min(0) private Integer invalidBallots = 0;
     @Min(0) private Integer unmarkedBallots = 0;

@@ -41,7 +41,7 @@ import { useTenantOfficialPublished } from "../shared/hooks/useTenantOfficialPub
 
 type Props = { mode: "TENANT" | "NEC" | "SYSTEM" };
 
-const BASE_COLORS = ["#000080", "#0000CD", "#B80000", "#A800EB", "#03E818", "#0f172a",  "#FFF30A"];
+const BASE_COLORS = ["#000080", "#0000CD", "#B80000",  "#A800EB"];
 
 function colorAt(i:number){
   if(i<BASE_COLORS.length) return BASE_COLORS[i];
@@ -335,7 +335,7 @@ export default function LocalResultsDashboard({ mode }:Props){
     <DashboardTabs mode={mode} currentOrgId={orgId} isOfficialPublished={isOfficialPublished} />
     <DashboardFrame
       title="Local Results Dashboard"
-      subtitle="Party Results — Republic of Liberia"
+      subtitle="Organization Results — Republic of Liberia"
       right={
         <div className="flex items-center gap-2 flex-wrap">
           <select
@@ -423,7 +423,7 @@ export default function LocalResultsDashboard({ mode }:Props){
 
     {/* ✅ 2 WINNER HIGHLIGHT - BLUE THEME */}
     {marginAnalysis && (
-      <Panel title="🏆 Local Leader" subtitle="With margin of victory over runner-up">
+      <Panel title="🏆 Leading Candidate" subtitle="With margin of victory over runner-up">
         <div className="rounded-xl border-2 border-blue-300 bg-gradient-to-r from-blue-50 to-cyan-50 p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
@@ -439,7 +439,7 @@ export default function LocalResultsDashboard({ mode }:Props){
               </div>
             </div>
             <div className="border-l-2 border-blue-300 pl-6">
-              <div className="text-sm font-bold text-blue-700 uppercase tracking-wide">Margin of Victory</div>
+              <div className="text-sm font-bold text-blue-700 uppercase tracking-wide">Margin of Victory Over Runner-Up</div>
               <div className="text-3xl font-extrabold text-blue-900 mt-2">
                 +{fmtNum(marginAnalysis.marginVotes)}
               </div>
@@ -498,7 +498,7 @@ export default function LocalResultsDashboard({ mode }:Props){
 
       {/* ✅ 3. WINNER'S STRONGEST COUNTIES */}
       <div className="col-span-12 lg:col-span-6">
-        <Panel title="Leader's Strongest Counties">
+        <Panel title="Leading Candidate Strongest Counties">
           <div className="h-[320px] overflow-y-auto pr-2 text-[12px]">
             {winnerCounties.map((r:any)=>(
               <div key={r.countyId} className="flex justify-between items-center p-1.5 border-b hover:bg-blue-50 rounded text-lg">

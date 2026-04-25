@@ -68,7 +68,7 @@ export function Tabs() {
 
       {showRegistry ? (
         <>
-          <span className="mx-1 self-center text-xs font-bold text-slate-400">
+          {/* <span className="mx-1 self-center text-xs font-bold text-slate-400">
             | Registry
           </span>
           <NavLink
@@ -94,7 +94,7 @@ export function Tabs() {
             className={({ isActive }) => `${base} ${isActive ? active : idle}`}
           >
             Public Roll
-          </NavLink>
+          </NavLink> */}
         </>
       ) : null}
     </div>

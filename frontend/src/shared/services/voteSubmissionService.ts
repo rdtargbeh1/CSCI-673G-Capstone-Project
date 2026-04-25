@@ -67,7 +67,7 @@ export type VoteSubmissionDto = {
   candidateVotes?: Record<string, number>;
 
   ballotsInBox?: number;
-
+  ballotsReceived?: number;
   invalidBallots?: number;
   unmarkedBallots?: number;
   spoiledBallots?: number;
@@ -108,7 +108,7 @@ export type VoteSubmissionCreateRequest = {
   candidateVotes: Record<string, number>;
 
   ballotsInBox?: number;
-
+  ballotsReceived?: number;
   invalidBallots?: number;
   unmarkedBallots?: number;
   rejectedBallots?: number;
@@ -129,6 +129,7 @@ export type VoteSubmissionUpdateRequest = {
   candidateVotes?: Record<string, number>;
 
   ballotsInBox?: number;
+  ballotsReceived?: number;
   invalidBallots?: number;
   unmarkedBallots?: number;
   rejectedBallots?: number;

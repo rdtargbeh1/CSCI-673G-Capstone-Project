@@ -56,7 +56,7 @@ export default function NecWorkflowTab() {
               )}
             </NavLink>
 
-            <NavLink to="staging" className={({ isActive }) => tabClass(isActive)}>
+            {/* <NavLink to="staging" className={({ isActive }) => tabClass(isActive)}>
               {({ isActive }) => (
                 <>
                   <ActiveDot active={isActive} />
@@ -66,7 +66,7 @@ export default function NecWorkflowTab() {
                   )}
                 </>
               )}
-            </NavLink>
+            </NavLink> */}
 
             <NavLink to="history" className={({ isActive }) => tabClass(isActive)}>
               {({ isActive }) => (
@@ -80,7 +80,7 @@ export default function NecWorkflowTab() {
               )}
             </NavLink>
 
-            <NavLink to="geo" className={({ isActive }) => tabClass(isActive)}>
+            {/* <NavLink to="geo" className={({ isActive }) => tabClass(isActive)}>
               {({ isActive }) => (
                 <>
                   <ActiveDot active={isActive} />
@@ -90,7 +90,7 @@ export default function NecWorkflowTab() {
                   )}
                 </>
               )}
-            </NavLink>
+            </NavLink> */}
           </div>
         }
       >

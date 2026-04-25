@@ -101,6 +101,13 @@ public class ApiExceptionHandler {
                 "Request violates a data constraint", req, null, ex, true);
     }
 
+    @ExceptionHandler(InvalidStateException.class)
+    public ResponseEntity<ApiError> handleInvalidState(InvalidStateException ex, HttpServletRequest req) {
+        return respond(HttpStatus.CONFLICT, "INVALID_STATE",
+                ex.getMessage(), req, null, ex, false);
+    }
+
+
     /* ---------- 401 / 403 (Spring Security) ---------- */
     @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
     public ResponseEntity<ApiError> handleSpringAccessDenied(org.springframework.security.access.AccessDeniedException ex, HttpServletRequest req) {

@@ -195,6 +195,7 @@ export default function ElectionWorkspaceLayout() {
     return Array.from(map.values());
   }, [activeElectionsQ.data, election]);
 
+  //  Election config nav 
   const tabs = useMemo(
     () =>
       [
@@ -203,7 +204,7 @@ export default function ElectionWorkspaceLayout() {
         { to: "allocation", label: "Allocation", hidden: false },
         { to: "submissions", label: "Submissions", hidden: false },
         { to: "results", label: "Results", hidden: false },
-        { to: "integrity", label: "Integrity", hidden: false },
+        // { to: "integrity", label: "Integrity", hidden: false },
         { to: "nec-workflow", label: "NEC Workflow", hidden: !isNecOrSystem },
       ].filter((t) => !t.hidden),
     [isNecOrSystem]

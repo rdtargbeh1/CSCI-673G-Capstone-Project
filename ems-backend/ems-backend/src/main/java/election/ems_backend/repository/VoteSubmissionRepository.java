@@ -24,9 +24,6 @@ public interface VoteSubmissionRepository
 
     Optional<VoteSubmission> findByIdempotencyKey(String idempotencyKey);
 
-    Optional<VoteSubmission> findBySubmissionHash(String submissionHash);
-
-
     // Common list queries
     List<VoteSubmission> findByOrganization_OrgIdAndElection_ElectionIdAndStatus(
             UUID orgId,
@@ -44,31 +41,6 @@ public interface VoteSubmissionRepository
     );
 
 
-
-
-    // Overview - Org operational queue counts
-    /**
-     * Org Queue: Count submissions by status for an election & org.
-     * ✅ Used by Overview -> Pending / Flagged / Rejected / Verified / (Draft if added)
-     *
-     * @param electionId election scope
-     * @param orgId tenant scope
-     * @param status VoteStatus enum
-     */
-    long countByElection_ElectionIdAndOrganization_OrgIdAndStatusAndDateDeletedIsNull(
-            UUID electionId,
-            UUID orgId,
-            VoteStatus status
-    );
-
-    /**
-     * Org Queue: Count ALL submissions for election & org (soft-delete aware).
-     * Useful for total submission KPI.
-     */
-    long countByElection_ElectionIdAndOrganization_OrgIdAndDateDeletedIsNull(
-            UUID electionId,
-            UUID orgId
-    );
 
     /**
      * Org Queue: Missing tally sheet count for election & org.
@@ -192,9 +164,6 @@ public interface VoteSubmissionRepository
             @Param("since") LocalDateTime since
     );
 
-    // ---------------------------------------------------------------------
-    // Overview - Coverage indicators
-    // ---------------------------------------------------------------------
 
     /**
      * Overview KPI: Distinct centers that have at least one submission (org + election).
@@ -249,9 +218,14 @@ public interface VoteSubmissionRepository
     );
 
 
-    // ---------------------------------------------------------------------
-    // Helpful lookup patterns (kept from your original)
-    // ---------------------------------------------------------------------
+
+    // ✅ NEW: enforce “one submission per contest per polling place” (soft delete aware)
+    boolean existsByOrganization_OrgIdAndElection_ElectionIdAndPollingPlace_PlaceIdAndContestIdAndDateDeletedIsNull(
+            UUID orgId, UUID electionId, UUID placeId, UUID contestId
+    );
+
+
+    Optional<VoteSubmission> findBySubmissionHash(String submissionHash);
 
     Optional<VoteSubmission> findFirstByOrganization_OrgIdAndElection_ElectionIdAndPollingCenter_CenterIdAndAgent_UserIdOrderBySubmissionTimeDesc(
             UUID orgId,
@@ -261,11 +235,28 @@ public interface VoteSubmissionRepository
     );
 
 
-    // ✅ NEW: enforce “one submission per contest per polling place” (soft delete aware)
-    boolean existsByOrganization_OrgIdAndElection_ElectionIdAndPollingPlace_PlaceIdAndContestIdAndDateDeletedIsNull(
-            UUID orgId, UUID electionId, UUID placeId, UUID contestId
+    // Overview - Org operational queue counts
+    /**
+     * Org Queue: Count submissions by status for an election & org.
+     * ✅ Used by Overview -> Pending / Flagged / Rejected / Verified / (Draft if added)
+     *
+     * @param electionId election scope
+     * @param orgId tenant scope
+     * @param status VoteStatus enum
+     */
+    long countByElection_ElectionIdAndOrganization_OrgIdAndStatusAndDateDeletedIsNull(
+            UUID electionId,
+            UUID orgId,
+            VoteStatus status
     );
 
-
+    /**
+     * Org Queue: Count ALL submissions for election & org (soft-delete aware).
+     * Useful for total submission KPI.
+     */
+    long countByElection_ElectionIdAndOrganization_OrgIdAndDateDeletedIsNull(
+            UUID electionId,
+            UUID orgId
+    );
 
 }

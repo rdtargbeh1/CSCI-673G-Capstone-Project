@@ -9,6 +9,7 @@ import java.util.Map;
 @Setter
 public class VoteSubmissionUpdateRequest {
     private Map<String,Integer> candidateVotes;
+    private Integer ballotsReceived;
     private Integer ballotsInBox;
     private Integer invalidBallots;
     private Integer unmarkedBallots;

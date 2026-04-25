@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -99,5 +100,13 @@ public interface SystemUserRepository extends JpaRepository<SystemUser, UUID>, J
     );
 
 
+    @Query("""
+        select u
+        from SystemUser u
+        join u.role r
+        where r.roleName = :roleName
+          and u.isActive = true
+        """)
+    List<SystemUser> findByRole_RoleName(@Param("roleName") String roleName);
 
 }

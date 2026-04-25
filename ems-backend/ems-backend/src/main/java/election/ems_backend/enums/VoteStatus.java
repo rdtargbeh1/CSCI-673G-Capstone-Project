@@ -1,5 +1,6 @@
 package election.ems_backend.enums;
 
+
 public enum VoteStatus {
     PENDING,
     VERIFIED,
@@ -7,4 +8,6 @@ public enum VoteStatus {
     REJECTED,
     DELETED,
     DRAFT,
+    READY_FOR_VERIFICATION
+
 }
