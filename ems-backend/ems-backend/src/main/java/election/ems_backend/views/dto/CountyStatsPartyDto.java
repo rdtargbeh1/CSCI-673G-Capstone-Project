@@ -1,0 +1,47 @@
+
+package election.ems_backend.views.dto;
+
+import lombok.Data;
+
+import java.math.BigDecimal;
+import java.util.UUID;
+
+/**
+ * DTO returned to the frontend for county-level party stats.
+ *
+ * Maps to view: public.v_county_stats_party
+ */
+@Data
+public class CountyStatsPartyDto {
+
+    private UUID orgId;
+    private UUID electionId;
+    private UUID contestId;
+    private UUID countyId;
+
+    private String countyName;
+
+    // view uses bigint
+    private Long registeredVoters;
+    private Long ballotsCast;
+    private Long validVotes;
+    private Long invalidTotal;
+
+    // fn_pct
+    private BigDecimal turnoutPct;
+    private BigDecimal invalidPct;
+
+    // center reporting
+    private Long centersReported;
+    private Long centersTotal;
+    private BigDecimal reportingPct;
+
+    // district rollups
+    private Long districtsReported;
+    private Long districtsTotal;
+    private Long districtsCompleted;
+    private Long districtsStarted;
+
+    // extra UI metric
+    private Long centersStarted;
+}
