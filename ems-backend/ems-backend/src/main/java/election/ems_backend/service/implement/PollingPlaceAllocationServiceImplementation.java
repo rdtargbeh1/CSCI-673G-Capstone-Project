@@ -37,7 +37,7 @@ public class PollingPlaceAllocationServiceImplementation implements PollingPlace
     private final PollingPlaceRepository placeRepo;
     private final PollingCenterAllocationRepository centerAllocRepo;
 
-    private final PollingPlaceAllocationMapper mapper = new PollingPlaceAllocationMapper();
+    private final PollingPlaceAllocationMapper mapper ;
 
 
     @Override

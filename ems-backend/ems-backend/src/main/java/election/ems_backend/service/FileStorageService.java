@@ -4,58 +4,164 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
 
+
+/**
+ * Storage abstraction used by FileUpload.
+ *
+ * Implementations:
+ *
+ * LOCAL
+ * AWS S3
+ *
+ * Domain entities and FileUploadService do not need to know
+ * which physical storage provider is active.
+ */
 public interface FileStorageService {
 
-    /**
-     * Store a single uploaded file and return a storage URL or key that is safe to persist.
-     *
-     * @param folder folder/prefix used by storage implementation (e.g. "vote_submission/{id}/2025-11-29")
-     * @param storedName sanitized, unique name to store
-     * @param input input stream providing the binary content
-     * @param size number of bytes
-     * @param contentType mime-type
-     * @return storage location / URL / key (opaque string to persist)
-     */
-    String store(String folder, String storedName, InputStream input, long size, String contentType) throws IOException;
+    // =========================================================================
+    // STORE
+    // =========================================================================
 
     /**
-     * Delete stored object previously returned by store().
+     * Stores a single file and returns an opaque storage location
+     * that is safe to persist.
      *
-     * Implementations should attempt best-effort deletion; errors should be logged but not bubble out
-     * during cleanup callbacks.
+     * LOCAL example:
      *
-     * @param fileUrlOrKey opaque string previously returned by store
+     * file:///.../uploaded_files/party/.../logo.png
+     *
+     * S3 example:
+     *
+     * election-vote-tracker/party/.../logo.png
      */
-    void delete(String fileUrlOrKey);
+    String store(
+            String folder,
+            String storedName,
+            InputStream input,
+            long size,
+            String contentType
+    ) throws IOException;
+
+
+    // =========================================================================
+    // READ
+    // =========================================================================
 
     /**
-     * Human-friendly provider name (e.g., "LOCAL", "S3", "GCS") used when persisting storageProvider enum.
+     * Reads a previously stored object.
+     *
+     * Primarily used when the application needs to proxy file content,
+     * such as local-development images.
+     */
+    byte[] read(
+            String fileUrlOrKey
+    ) throws IOException;
+
+
+    // =========================================================================
+    // DELETE
+    // =========================================================================
+
+    /**
+     * Best-effort delete of a previously stored object.
+     */
+    void delete(
+            String fileUrlOrKey
+    );
+
+
+    // =========================================================================
+    // PROVIDER
+    // =========================================================================
+
+    /**
+     * Human-readable provider name.
+     *
+     * Expected values:
+     *
+     * LOCAL
+     * S3
      */
     String getProviderName();
 
+
+    // =========================================================================
+    // PRESIGNED UPLOAD
+    // =========================================================================
+
     /**
-     * Optional: generate presigned upload URL for direct client uploads.
-     * Default: not supported.
+     * Optional direct-upload support.
+     *
+     * LOCAL storage does not need to implement this.
      */
-    default PresignResult presignUpload(String folder,
-                                        String originalFileName,
-                                        String contentType,
-                                        long contentLength,
-                                        Duration ttl) {
-        throw new UnsupportedOperationException("Presign not supported");
+    default PresignResult presignUpload(
+            String folder,
+            String originalFileName,
+            String contentType,
+            long contentLength,
+            Duration ttl
+    ) {
+
+        throw new UnsupportedOperationException(
+                "Presigned upload is not supported by this storage provider"
+        );
     }
 
+
+    // =========================================================================
+    // PRESIGNED READ
+    // =========================================================================
+
+    /**
+     * Optional temporary read URL.
+     *
+     * S3 implements this using a presigned GET request.
+     *
+     * LOCAL returns null because local files are served through
+     * the application's FileUpload content endpoint.
+     */
+    default String presignRead(
+            String fileUrlOrKey,
+            Duration ttl
+    ) {
+
+        return null;
+    }
+
+
+    // =========================================================================
+    // PRESIGN RESULT
+    // =========================================================================
+
     class PresignResult {
+
         public final String key;
+
         public final String url;
+
         public final long maxContentLength;
+
         public final String contentType;
 
-        public PresignResult(String key, String url, long maxContentLength, String contentType) {
-            this.key = key;
-            this.url = url;
-            this.maxContentLength = maxContentLength;
-            this.contentType = contentType;
+
+        public PresignResult(
+                String key,
+                String url,
+                long maxContentLength,
+                String contentType
+        ) {
+
+            this.key =
+                    key;
+
+            this.url =
+                    url;
+
+            this.maxContentLength =
+                    maxContentLength;
+
+            this.contentType =
+                    contentType;
         }
     }
 }

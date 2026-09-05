@@ -92,16 +92,22 @@ public class VoteSubmission extends AuditBaseEntity {
 
     @Column(name = "ballots_cast", nullable = false)
     private Integer ballotsInBox;
+
     @Column(name = "ballots_received", nullable = false)
     private Integer ballotsReceived;
+
     @Column(name = "invalid_ballots", nullable = false)
     private Integer invalidBallots = 0;
+
     @Column(name = "unmarked_ballots", nullable = false)
     private Integer unmarkedBallots = 0;   // blank-in-box (cast but no mark)
+
     @Column(name = "rejected_ballots", nullable = false)
     private Integer rejectedBallots = 0;
+
     @Column(name = "spoiled_ballots", nullable = false)
     private Integer spoiledBallots = 0;
+
     @Column(name = "unused_ballots", nullable = false)
     private Integer unusedBallots = 0; // leftover (not cast)
 

@@ -1,5 +1,6 @@
 package election.ems_backend.controller;
 
+import election.ems_backend.dto.PollingCenterAllocationBulkRequest;
 import election.ems_backend.dto.PollingCenterAllocationCreateRequest;
 import election.ems_backend.dto.PollingCenterAllocationDto;
 import election.ems_backend.dto.PollingCenterAllocationUpdateRequest;
@@ -12,8 +13,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -37,6 +40,17 @@ public class PollingCenterAllocationController {
     ) {
         authz.requireNecAdminOrPlatformAdmin();  // required system admin
         return allocationService.create(req);
+    }
+
+    /**
+     * Create a bulk allocation for (election, polling center).
+     */
+    @PostMapping("/bulk")
+    public ResponseEntity<List<PollingCenterAllocationDto>> bulkCreate(
+            @Valid @RequestBody PollingCenterAllocationBulkRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(allocationService.bulkCreate(request));
     }
 
     /**

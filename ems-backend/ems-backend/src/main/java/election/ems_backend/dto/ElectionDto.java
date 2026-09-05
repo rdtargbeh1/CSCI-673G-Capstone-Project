@@ -12,28 +12,69 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-
 public class ElectionDto {
+
     private UUID electionId;
     private String electionName;
     private int year;
     private ElectionType electionType;
     private boolean isActive;
-    private LocalDateTime dateCreated;
-    private LocalDateTime dateUpdated;
+
+
+    // ========================================================================
+    // BALLOT POLICY
+    // ========================================================================
 
     private Integer ballotSparePercent;
     private boolean enforceBallotsGteRegistered;
 
+    private LocalDateTime dateCreated;
+    private LocalDateTime dateUpdated;
+
+
+    /**
+     * Raw audit value stored in the database.
+     *
+     * Keep this for backend traceability.
+     * Frontend should normally display createdByName instead.
+     */
+    private String createdBy;
+
+    /**
+     * Human-readable name of the user who created the election.
+     */
+    private String createdByName;
+
+    /**
+     * Raw audit value stored in the database.
+     *
+     * Frontend should normally display updatedByName instead.
+     */
+    private String updatedBy;
+
+    /**
+     * Human-readable name of the user who last updated the election.
+     */
+    private String updatedByName;
+
+
+    // ========================================================================
+    // JSON ACTIVE PROPERTY
+    // ========================================================================
+
     @JsonProperty("isActive")
     public boolean getIsActive() {
+
         return isActive;
     }
 
+
     @JsonProperty("isActive")
-    public void setIsActive(boolean isActive) {
-        this.isActive = isActive;
+    public void setIsActive(
+            boolean isActive
+    ) {
+
+        this.isActive =
+                isActive;
     }
-
-
 }

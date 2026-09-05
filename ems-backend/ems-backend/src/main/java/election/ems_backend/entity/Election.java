@@ -6,6 +6,9 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.Min;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
+import org.springframework.data.annotation.CreatedBy;
+import org.springframework.data.annotation.LastModifiedBy;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -17,12 +20,21 @@ import java.util.UUID;
 @Builder
 
 @Entity
-@Table(name = "election",
+@Table(
+        name = "election",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uq_election_name_year",
-                        columnNames = {"election_name", "year"})
-        })
+                @UniqueConstraint(
+                        name = "uq_election_name_year",
+                        columnNames = {
+                                "election_name",
+                                "year"
+                        }
+                )
+        }
+)
+@EntityListeners(AuditingEntityListener.class)
 public class Election extends BaseAuditedEntity {
+
     @Id
     @GeneratedValue
     @UuidGenerator
@@ -43,49 +55,97 @@ public class Election extends BaseAuditedEntity {
     @Column(name = "is_active", nullable = false)
     private boolean isActive;
 
+
     /**
-     * ✅ NEC-configurable spare ballots percent (e.g., 20 = +20%).
-     * If null => no spare cap enforced (NEC hasn’t set policy yet).
+     * NEC-configurable spare ballots percentage.
+     *
+     * Example:
+     * 20 = registered voters + maximum 20% spare ballots.
+     *
+     * Null means NEC has not configured an upper spare-ballot cap.
      */
     @Column(name = "ballot_spare_percent")
     private Integer ballotSparePercent;
 
+
     /**
-     * ✅ Liberia default: ballotsIssued should be >= registeredVoters.
-     * Keep configurable per election to match NEC policy changes.
+     * Liberia default:
+     *
+     * ballotsIssued >= registeredVoters
+     *
+     * This remains configurable per election.
      */
     @Column(name = "enforce_ballots_gte_registered", nullable = false)
     private boolean enforceBallotsGteRegistered = true;
 
-    // Simple audit stamps (optional)
-    @Column(name = "date_created", nullable = false)
+    @Column(name = "date_created", nullable = false, updatable = false)
     private LocalDateTime dateCreated;
 
     @Column(name = "date_updated", nullable = false)
     private LocalDateTime dateUpdated;
 
 
+    /**
+     * Internal audit value.
+     *
+     * The Spring AuditorAware implementation may currently store
+     * the authenticated SystemUser UUID as a String.
+     *
+     * This raw value is preserved internally.
+     *
+     * The API DTO will resolve it to the actual user's name.
+     */
+    @CreatedBy
+    @Column(name = "created_by", length = 120, updatable = false)
+    private String createdBy;
+
+
+    /**
+     * Internal audit value for the last user who updated this election.
+     *
+     * The API DTO resolves this value to a human-readable user name.
+     */
+    @LastModifiedBy
+    @Column(name = "updated_by", length = 120)
+    private String updatedBy;
+
     @PrePersist
     public void onCreate() {
-        var now = LocalDateTime.now();
-        dateCreated = now;
-        dateUpdated = now;
 
-        // safety defaults
-        if (!enforceBallotsGteRegistered) {
-            // keep whatever caller set; no-op
+        LocalDateTime now =
+                LocalDateTime.now();
+
+
+        if (dateCreated == null) {
+            dateCreated =
+                    now;
+        }
+
+
+        if (dateUpdated == null) {
+            dateUpdated =
+                    now;
         }
     }
 
 
     @PreUpdate
     public void onUpdate() {
-        dateUpdated = LocalDateTime.now();
+        dateUpdated =
+                LocalDateTime.now();
     }
 
-    // Optional: nice label for dropdowns
+
+    // ========================================================================
+    // DISPLAY
+    // ========================================================================
+
     @Transient
     public String getDisplayLabel() {
-        return electionName + " (" + year + ")";
+
+        return electionName
+                + " ("
+                + year
+                + ")";
     }
 }

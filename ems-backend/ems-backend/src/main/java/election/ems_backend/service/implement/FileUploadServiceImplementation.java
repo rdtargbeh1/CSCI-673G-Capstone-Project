@@ -29,236 +29,919 @@ import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.util.*;
 
-/**
- * Enhanced FileUploadServiceImplementation:
- *  - Enforces configurable size/type limits
- *  - Registers transaction synchronization to delete stored files on rollback (best-effort)
- *  - Uses storage.getProviderName() to set storageProvider
- *  - Adds structured logging
- */
 
+/**
+ * Central FileUpload service.
+ *
+ * Responsibilities:
+ *
+ * 1. Validate uploaded files.
+ * 2. Store binaries through FileStorageService.
+ * 3. Persist FileUpload metadata.
+ * 4. Support Local / S3 transparently.
+ * 5. Maintain existing tally-sheet integration.
+ * 6. Synchronize primary media fields for supported entities.
+ *
+ * Primary-media synchronization is intentionally limited to fields
+ * directly related to FileUpload:
+ *
+ * party               -> Party.logoUrl
+ * candidate           -> Candidate.photoUrl
+ * organization        -> Organization.logoUrl
+ * system_users        -> SystemUser.profileImageUrl
+ *                        SystemUser.profileImageUpload
+ * voter_registration  -> VoterRegistration.pictureUrl
+ * observer_report     -> ObserverReport.mediaUrl
+ *
+ * Other application/domain logic is not handled here.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class FileUploadServiceImplementation implements FileUploadService {
 
+    // =========================================================================
+    // FILE UPLOAD
+    // =========================================================================
+
     private final FileUploadRepository fileUploadRepository;
+
+
+    // =========================================================================
+    // CORE RELATED ENTITIES
+    // =========================================================================
+
     private final OrganizationRepository orgRepo;
+
     private final SystemUserRepository userRepo;
+
+    private final PartyRepository partyRepository;
+
+    private final CandidateRepository candidateRepository;
+
+    private final VoterRegistrationRepository voterRegistrationRepository;
+
+
+    // =========================================================================
+    // EXISTING FILE-RELATED ENTITIES
+    // =========================================================================
+
+    private final TallySheetRepository tallyRepo;
+
+    private final VoteSubmissionRepository submissionRepo;
+
+    private final ObserverReportRepository observerRepo;
+
+    private final ChatMessageRepository chatRepo;
+
+
+    // =========================================================================
+    // STORAGE
+    // =========================================================================
+
     private final FileStorageService storage;
 
-    // Optionally wire these to auto-create companion records:
-    private final TallySheetRepository tallyRepo;              // optional
-    private final VoteSubmissionRepository submissionRepo;     // for guard when related_table=vote_submission
-    private final ObserverReportRepository observerRepo;       // guard when related_table=observer_report
-    private final ChatMessageRepository chatRepo;              // guard when related_table=chat_message
 
-    private static final String RELATED_TABLE_SUBMISSION = "vote_submission";
+    // =========================================================================
+    // CONSTANTS
+    // =========================================================================
 
-    private final FileUploadMapper mapper = new FileUploadMapper();
+    private static final String RELATED_TABLE_SUBMISSION =
+            "vote_submission";
 
 
-    // Configurable limits
-    @Value("${app.upload.maxFileSizeBytes:52428800}") // default 50MB
+    private static final String RELATED_TABLE_PARTY =
+            "party";
+
+
+    private static final String RELATED_TABLE_CANDIDATE =
+            "candidate";
+
+
+    private static final String RELATED_TABLE_ORGANIZATION =
+            "organization";
+
+
+    private static final String RELATED_TABLE_SYSTEM_USERS =
+            "system_users";
+
+
+    private static final String RELATED_TABLE_VOTER_REGISTRATION =
+            "voter_registration";
+
+
+    private static final String RELATED_TABLE_OBSERVER_REPORT =
+            "observer_report";
+
+
+    // =========================================================================
+    // MAPPER
+    // =========================================================================
+
+    private final FileUploadMapper mapper =
+            new FileUploadMapper();
+
+
+    // =========================================================================
+    // CONFIGURATION
+    // =========================================================================
+
+    @Value("${app.upload.maxFileSizeBytes:52428800}")
     private long maxFileSizeBytes;
 
-    @Value("${app.upload.allowedMimeTypes: image/jpeg,image/png,image/webp,application/pdf,video/mp4,video/quicktime}")
+
+    @Value(
+            "${app.upload.allowedMimeTypes:"
+                    + "image/jpeg,"
+                    + "image/png,"
+                    + "image/webp,"
+                    + "application/pdf,"
+                    + "video/mp4,"
+                    + "video/quicktime}"
+    )
     private String allowedMimeTypesCsv;
+
 
     @Value("${app.upload.maxFilesPerRequest:10}")
     private int maxFilesPerRequest;
 
+
     private Set<String> allowedMimeTypes;
+
+
+    // =========================================================================
+    // ALLOWED RELATED TABLES
+    // =========================================================================
+
+    private static final Set<String> ALLOWED_TABLES =
+            Set.of(
+                    "system_users",
+                    "vote_submission",
+                    "tally_sheet",
+                    "observer_report",
+                    "chat_message",
+                    "party",
+                    "candidate",
+                    "organization",
+                    "voter_registration"
+            );
+
+
+    // =========================================================================
+    // ALLOWED MIME TYPES
+    // =========================================================================
+
     private Set<String> getAllowedMimeTypes() {
+
         if (allowedMimeTypes == null) {
-            allowedMimeTypes = new HashSet<>();
-            for (String s : allowedMimeTypesCsv.split(",")) {
-                allowedMimeTypes.add(s.trim().toLowerCase(Locale.ROOT));
+
+            allowedMimeTypes =
+                    new HashSet<>();
+
+
+            for (
+                    String value :
+                    allowedMimeTypesCsv.split(",")
+            ) {
+
+                if (
+                        value != null &&
+                                !value.isBlank()
+                ) {
+
+                    allowedMimeTypes.add(
+                            value
+                                    .trim()
+                                    .toLowerCase(
+                                            Locale.ROOT
+                                    )
+                    );
+                }
             }
         }
+
+
         return allowedMimeTypes;
     }
 
-    @Override
-    @Transactional
-    public FileUploadDto uploadMultipart(FileUploadCreateRequest meta, MultipartFile file, UUID uploadedBy) {
-        Organization org = orgRepo.findById(meta.getOrgId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Organization not found"));
-        SystemUser user = userRepo.findById(uploadedBy)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        requireRelatedExistsAndSameOrg(meta.getRelatedTable(), meta.getRelatedId(), org.getOrgId());
-
-        if (file == null || file.isEmpty())
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "file is required");
-
-        if (file.getSize() > maxFileSizeBytes) {
-            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "File exceeds maximum allowed size");
-        }
-
-        String contentType = safeContentType(meta.getMimeType() != null ? meta.getMimeType() : file.getContentType(), file.getOriginalFilename());
-        if (!getAllowedMimeTypes().contains(contentType.toLowerCase(Locale.ROOT))) {
-            throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "File content type not allowed: " + contentType);
-        }
-
-        String sha = safeSha256(file);
-
-        // org-scoped de-dup (matches SQL unique index uq_file_by_org_sha on non-deleted)
-        if (sha != null && fileUploadRepository.existsActiveByOrgAndSha(org.getOrgId(), sha)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate file for this organization (same SHA-256)");
-        }
-
-        String original = Objects.requireNonNullElse(file.getOriginalFilename(), "upload.bin");
-        String ext = original.contains(".") ? original.substring(original.lastIndexOf('.') + 1) : "bin";
-        String storedName = meta.getRelatedId() + "-" + UUID.randomUUID() + "." + ext;
-
-        String url;
-        try (InputStream in = file.getInputStream()) {
-            log.debug("Storing file for org={} relatedTable={} relatedId={} name={} size={}", org.getOrgId(), meta.getRelatedTable(), meta.getRelatedId(), storedName, file.getSize());
-            url = storage.store(meta.getRelatedTable(), storedName, in, file.getSize(), contentType);
-            // register cleanup if transaction rolls back
-            String finalUrl = url;
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCompletion(int status) {
-                    if (status == TransactionSynchronization.STATUS_ROLLED_BACK) {
-                        try {
-                            log.warn("Transaction rolled back; deleting stored file {}", finalUrl);
-                            storage.delete(finalUrl);
-                        } catch (Exception ex) {
-                            log.error("Failed to delete stored file after rollback: {}", finalUrl, ex);
-                        }
-                    }
-                }
-            });
-        } catch (IOException e) {
-            log.error("Failed to store file", e);
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to store file");
-        }
-
-        FileUpload f = new FileUpload();
-        f.setOrganization(org);
-        f.setRelatedTable(meta.getRelatedTable());
-        f.setRelatedId(meta.getRelatedId());
-        f.setFileType(meta.getFileType());
-        f.setFileUrl(url);
-        f.setMimeType(meta.getMimeType() != null ? meta.getMimeType() : file.getContentType());
-        f.setSizeBytes(meta.getSizeBytes() != null ? meta.getSizeBytes() : file.getSize());
-        f.setSha256(sha);
-        // derive storage provider from the storage implementation
-        try {
-            f.setStorageProvider(StorageProvider.valueOf(storage.getProviderName().toUpperCase(Locale.ROOT)));
-        } catch (IllegalArgumentException ex) {
-            f.setStorageProvider(StorageProvider.LOCAL); // fallback
-        }
-        f.setUploadedBy(user);
-        f.setTags(meta.getTags() != null ? new HashMap<>(meta.getTags()) : new HashMap<>());
-
-        FileUpload saved = persistWithConflictHandling(f);
-
-        // Optional: if this is a TALLY_SHEET for a vote_submission, also persist a TallySheet row
-        maybeMirrorToTallySheet(saved);
-
-        return mapper.toDTO(saved);
-    }
+    // =========================================================================
+    // SINGLE MULTIPART UPLOAD
+    // =========================================================================
 
     @Override
     @Transactional
-    public FileUploadDto createByUrl(FileUploadCreateRequest req, UUID uploadedBy) {
-        Organization org = orgRepo.findById(req.getOrgId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Organization not found"));
-        SystemUser user = userRepo.findById(uploadedBy)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+    public FileUploadDto uploadMultipart(
+            FileUploadCreateRequest meta,
+            MultipartFile file,
+            UUID uploadedBy
+    ) {
 
-        requireRelatedExistsAndSameOrg(req.getRelatedTable(), req.getRelatedId(), org.getOrgId());
+        if (meta == null) {
 
-        if (req.getFileUrl() == null || req.getFileUrl().isBlank())
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "fileUrl is required");
-
-        if (req.getSizeBytes() != null && req.getSizeBytes() > maxFileSizeBytes) {
-            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "File exceeds maximum allowed size");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Upload metadata is required"
+            );
         }
 
-        if (req.getSha256() != null && fileUploadRepository.existsActiveByOrgAndSha(org.getOrgId(), req.getSha256())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate file for this organization (same SHA-256)");
+
+        Organization org =
+                orgRepo
+                        .findById(
+                                meta.getOrgId()
+                        )
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND,
+                                                "Organization not found"
+                                        )
+                        );
+
+
+        SystemUser user =
+                userRepo
+                        .findById(
+                                uploadedBy
+                        )
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND,
+                                                "User not found"
+                                        )
+                        );
+
+
+        String relatedTable =
+                normalizeRelatedTable(
+                        meta.getRelatedTable()
+                );
+
+
+        requireRelatedExistsAndSameOrg(
+                relatedTable,
+                meta.getRelatedId(),
+                org.getOrgId()
+        );
+
+
+        if (
+                file == null ||
+                        file.isEmpty()
+        ) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "file is required"
+            );
         }
 
-        FileUpload f = new FileUpload();
-        f.setOrganization(org);
-        f.setRelatedTable(req.getRelatedTable());
-        f.setRelatedId(req.getRelatedId());
-        f.setFileType(req.getFileType());
-        f.setFileUrl(req.getFileUrl());
-        f.setMimeType(req.getMimeType());
-        f.setSizeBytes(req.getSizeBytes());
-        f.setSha256(req.getSha256());
-        // storageProvider is provided by caller; if missing try to infer
-        f.setStorageProvider(req.getStorageProvider() != null ? req.getStorageProvider() : StorageProvider.LOCAL);
-        f.setUploadedBy(user);
-        f.setTags(req.getTags() != null ? new HashMap<>(req.getTags()) : new HashMap<>());
 
-        FileUpload saved = persistWithConflictHandling(f);
-        maybeMirrorToTallySheet(saved);
-        return mapper.toDTO(saved);
+        if (
+                file.getSize() >
+                        maxFileSizeBytes
+        ) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.PAYLOAD_TOO_LARGE,
+                    "File exceeds maximum allowed size"
+            );
+        }
+
+
+        String contentType =
+                safeContentType(
+                        meta.getMimeType() != null
+                                ? meta.getMimeType()
+                                : file.getContentType(),
+
+                        file.getOriginalFilename()
+                );
+
+
+        validateAllowedContentType(
+                contentType
+        );
+
+
+        String sha =
+                safeSha256(
+                        file
+                );
+
+
+        /*
+         * Preserve the existing org-level duplicate protection.
+         */
+        if (
+                sha != null &&
+                        fileUploadRepository.existsActiveByOrgAndSha(
+                                org.getOrgId(),
+                                sha
+                        )
+        ) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Duplicate file for this organization (same SHA-256)"
+            );
+        }
+
+
+        String original =
+                Objects.requireNonNullElse(
+                        file.getOriginalFilename(),
+                        "upload.bin"
+                );
+
+
+        String extension =
+                getExtension(
+                        original
+                );
+
+
+        String storedName =
+                meta.getRelatedId()
+                        + "-"
+                        + UUID.randomUUID()
+                        + (
+                        extension.isBlank()
+                                ? ""
+                                : "." + extension
+                );
+
+
+        String fileUrl;
+
+
+        try (
+                InputStream input =
+                        file.getInputStream()
+        ) {
+
+            log.debug(
+                    "Storing file: org={}, relatedTable={}, relatedId={}, name={}, size={}",
+                    org.getOrgId(),
+                    relatedTable,
+                    meta.getRelatedId(),
+                    storedName,
+                    file.getSize()
+            );
+
+
+            fileUrl =
+                    storage.store(
+                            relatedTable,
+                            storedName,
+                            input,
+                            file.getSize(),
+                            contentType
+                    );
+
+
+            registerRollbackCleanup(
+                    fileUrl
+            );
+
+        } catch (IOException ex) {
+
+            log.error(
+                    "Failed to store file",
+                    ex
+            );
+
+
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Failed to store file"
+            );
+        }
+
+
+        FileUpload entity =
+                new FileUpload();
+
+
+        entity.setOrganization(
+                org
+        );
+
+
+        entity.setRelatedTable(
+                relatedTable
+        );
+
+
+        entity.setRelatedId(
+                meta.getRelatedId()
+        );
+
+
+        entity.setFileType(
+                meta.getFileType() != null
+                        ? meta.getFileType()
+                        : guessType(
+                        contentType,
+                        original
+                )
+        );
+
+
+        entity.setFileUrl(
+                fileUrl
+        );
+
+
+        entity.setMimeType(
+                contentType
+        );
+
+
+        entity.setSizeBytes(
+                file.getSize()
+        );
+
+
+        entity.setSha256(
+                sha
+        );
+
+
+        entity.setStorageProvider(
+                currentStorageProvider()
+        );
+
+
+        entity.setUploadedBy(
+                user
+        );
+
+
+        entity.setTags(
+                meta.getTags() != null
+                        ? new HashMap<>(
+                        meta.getTags()
+                )
+                        : new HashMap<>()
+        );
+
+
+        FileUpload saved =
+                persistWithConflictHandling(
+                        entity
+                );
+
+
+        /*
+         * Existing tally-sheet behavior remains intact.
+         */
+        maybeMirrorToTallySheet(
+                saved
+        );
+
+
+        /*
+         * Synchronize only the related entity's media field.
+         */
+        syncRelatedMediaField(
+                relatedTable,
+                meta.getRelatedId(),
+                saved
+        );
+
+
+        return mapper.toDTO(
+                saved
+        );
     }
 
-    /**
-     * Create a submission, and upload associated files atomically in a single transaction.
-     * If any file fails to upload, the submission is rolled back entirely.
-     *
-     * @param submission The submission entity to create.
-     * @param files      List of files to upload alongside the submission.
-     */
+
+    // =========================================================================
+    // CREATE BY URL
+    //
+    // Preserved because this is already part of the working FileUpload API.
+    // If a FileUpload row is legitimately created this way, its related media
+    // field is synchronized using the same central mechanism.
+    // =========================================================================
+
+    @Override
     @Transactional
-    public void createSubmissionWithFiles(VoteSubmission submission, List<MultipartFile> files, UUID uploaderId) {
-        log.info("Bundling submission creation and files upload into a transaction.");
-        Organization org = orgRepo.findById(submission.getOrganization().getOrgId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Organization not found."));
-        SystemUser uploader = userRepo.findById(uploaderId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Uploader not found."));
+    public FileUploadDto createByUrl(
+            FileUploadCreateRequest req,
+            UUID uploadedBy
+    ) {
 
-        // Save submission first
-        VoteSubmission savedSubmission = submissionRepo.save(submission);
+        if (req == null) {
 
-        // Upload files atomically
-        for (MultipartFile file : files) {
-            FileUploadCreateRequest meta = new FileUploadCreateRequest();
-            meta.setRelatedTable(RELATED_TABLE_SUBMISSION);
-            meta.setRelatedId(savedSubmission.getSubmissionId());
-            meta.setOrgId(org.getOrgId());
-            meta.setFileType(FileType.TALLY_SHEET);
-            uploadMultipart(meta, file, uploaderId);
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Upload request is required"
+            );
         }
 
-        log.info("Submission and files committed successfully for submissionId={}", savedSubmission.getSubmissionId());
+
+        Organization org =
+                orgRepo
+                        .findById(
+                                req.getOrgId()
+                        )
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND,
+                                                "Organization not found"
+                                        )
+                        );
+
+
+        SystemUser user =
+                userRepo
+                        .findById(
+                                uploadedBy
+                        )
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND,
+                                                "User not found"
+                                        )
+                        );
+
+
+        String relatedTable =
+                normalizeRelatedTable(
+                        req.getRelatedTable()
+                );
+
+
+        requireRelatedExistsAndSameOrg(
+                relatedTable,
+                req.getRelatedId(),
+                org.getOrgId()
+        );
+
+
+        if (
+                req.getFileUrl() == null ||
+                        req.getFileUrl().isBlank()
+        ) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "fileUrl is required"
+            );
+        }
+
+
+        if (
+                req.getSizeBytes() != null &&
+                        req.getSizeBytes() >
+                                maxFileSizeBytes
+        ) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.PAYLOAD_TOO_LARGE,
+                    "File exceeds maximum allowed size"
+            );
+        }
+
+
+        if (
+                req.getSha256() != null &&
+                        fileUploadRepository.existsActiveByOrgAndSha(
+                                org.getOrgId(),
+                                req.getSha256()
+                        )
+        ) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Duplicate file for this organization (same SHA-256)"
+            );
+        }
+
+
+        FileUpload entity =
+                new FileUpload();
+
+
+        entity.setOrganization(
+                org
+        );
+
+
+        entity.setRelatedTable(
+                relatedTable
+        );
+
+
+        entity.setRelatedId(
+                req.getRelatedId()
+        );
+
+
+        entity.setFileType(
+                req.getFileType()
+        );
+
+
+        entity.setFileUrl(
+                req.getFileUrl()
+        );
+
+
+        entity.setMimeType(
+                req.getMimeType()
+        );
+
+
+        entity.setSizeBytes(
+                req.getSizeBytes()
+        );
+
+
+        entity.setSha256(
+                req.getSha256()
+        );
+
+
+        /*
+         * createByUrl represents an already-known external/storage URL.
+         * Preserve the existing request contract here.
+         */
+        entity.setStorageProvider(
+                req.getStorageProvider() != null
+                        ? req.getStorageProvider()
+                        : StorageProvider.LOCAL
+        );
+
+
+        entity.setUploadedBy(
+                user
+        );
+
+
+        entity.setTags(
+                req.getTags() != null
+                        ? new HashMap<>(
+                        req.getTags()
+                )
+                        : new HashMap<>()
+        );
+
+
+        FileUpload saved =
+                persistWithConflictHandling(
+                        entity
+                );
+
+
+        maybeMirrorToTallySheet(
+                saved
+        );
+
+
+        syncRelatedMediaField(
+                relatedTable,
+                req.getRelatedId(),
+                saved
+        );
+
+
+        return mapper.toDTO(
+                saved
+        );
     }
 
+
+    // =========================================================================
+    // CREATE SUBMISSION WITH FILES
+    //
+    // Existing behavior preserved.
+    // =========================================================================
+
+    @Transactional
+    public void createSubmissionWithFiles(
+            VoteSubmission submission,
+            List<MultipartFile> files,
+            UUID uploaderId
+    ) {
+
+        log.info(
+                "Bundling submission creation and files upload into a transaction."
+        );
+
+
+        Organization org =
+                orgRepo
+                        .findById(
+                                submission
+                                        .getOrganization()
+                                        .getOrgId()
+                        )
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND,
+                                                "Organization not found."
+                                        )
+                        );
+
+
+        SystemUser uploader =
+                userRepo
+                        .findById(
+                                uploaderId
+                        )
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND,
+                                                "Uploader not found."
+                                        )
+                        );
+
+
+        VoteSubmission savedSubmission =
+                submissionRepo.save(
+                        submission
+                );
+
+
+        if (files != null) {
+
+            for (
+                    MultipartFile file :
+                    files
+            ) {
+
+                FileUploadCreateRequest meta =
+                        new FileUploadCreateRequest();
+
+
+                meta.setRelatedTable(
+                        RELATED_TABLE_SUBMISSION
+                );
+
+
+                meta.setRelatedId(
+                        savedSubmission
+                                .getSubmissionId()
+                );
+
+
+                meta.setOrgId(
+                        org.getOrgId()
+                );
+
+
+                meta.setFileType(
+                        FileType.TALLY_SHEET
+                );
+
+
+                uploadMultipart(
+                        meta,
+                        file,
+                        uploaderId
+                );
+            }
+        }
+
+
+        log.info(
+                "Submission and files committed successfully for submissionId={}",
+                savedSubmission.getSubmissionId()
+        );
+    }
+
+
+    // =========================================================================
+    // LIST
+    // =========================================================================
 
     @Override
     @Transactional(readOnly = true)
-    public List<FileUploadDto> list(UUID orgId, String relatedTable, UUID relatedId) {
-        return fileUploadRepository.listActive(orgId, relatedTable, relatedId).stream().map(mapper::toDTO).toList();
+    public List<FileUploadDto> list(
+            UUID orgId,
+            String relatedTable,
+            UUID relatedId
+    ) {
+
+        String normalized =
+                normalizeRelatedTable(
+                        relatedTable
+                );
+
+
+        return fileUploadRepository
+                .listActive(
+                        orgId,
+                        normalized,
+                        relatedId
+                )
+                .stream()
+                .map(
+                        mapper::toDTO
+                )
+                .toList();
     }
+
+
+    // =========================================================================
+    // SOFT DELETE
+    // =========================================================================
 
     @Override
     @Transactional
-    public void softDelete(UUID fileId, UUID requesterId) {
-        FileUpload f = fileUploadRepository.findById(fileId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found"));
-        // (Optional) check requester permissions here
-        if (f.isDeleted()) return;
-        f.softDelete();
-        fileUploadRepository.save(f);
+    public void softDelete(
+            UUID fileId,
+            UUID requesterId
+    ) {
+
+        FileUpload file =
+                fileUploadRepository
+                        .findById(
+                                fileId
+                        )
+                        .orElseThrow(
+                                () ->
+                                        new ResponseStatusException(
+                                                HttpStatus.NOT_FOUND,
+                                                "File not found"
+                                        )
+                        );
+
+
+        /*
+         * Existing soft-delete behavior preserved.
+         */
+        if (
+                file.isDeleted()
+        ) {
+            return;
+        }
+
+
+        file.softDelete();
+
+
+        FileUpload saved =
+                fileUploadRepository.save(
+                        file
+                );
+
+
+        /*
+         * Only clear an entity's primary-media field when that field
+         * currently references THIS FileUpload.
+         *
+         * Other FileUpload records attached to the entity are untouched.
+         */
+        clearRelatedMediaFieldIfCurrent(
+                saved
+        );
     }
+
+
+    // =========================================================================
+    // GET
+    // =========================================================================
 
     @Override
     @Transactional(readOnly = true)
-    public FileUploadDto get(UUID fileId) {
-        return fileUploadRepository.findById(fileId).map(mapper::toDTO)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found"));
+    public FileUploadDto get(
+            UUID fileId
+    ) {
+
+        return fileUploadRepository
+                .findById(
+                        fileId
+                )
+                .map(
+                        mapper::toDTO
+                )
+                .orElseThrow(
+                        () ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        "File not found"
+                                )
+                );
     }
 
+
+    // =========================================================================
+    // SAVE MULTIPLE FILES FOR ENTITY
+    //
+    // Used by ObserverReport and other existing entity workflows.
+    // =========================================================================
+
     @Override
+    @Transactional
     public List<FileUploadDto> saveAllForEntity(
             Organization org,
             String relatedTable,
@@ -267,254 +950,993 @@ public class FileUploadServiceImplementation implements FileUploadService {
             List<MultipartFile> files,
             Map<String, Object> tags
     ) {
-        if (org == null || org.getOrgId() == null) {
-            throw new IllegalArgumentException("Organization is required");
+
+        if (
+                org == null ||
+                        org.getOrgId() == null
+        ) {
+
+            throw new IllegalArgumentException(
+                    "Organization is required"
+            );
         }
-        if (relatedTable == null || relatedTable.isBlank()) {
-            throw new IllegalArgumentException("relatedTable is required");
+
+
+        String normalizedTable =
+                normalizeRelatedTable(
+                        relatedTable
+                );
+
+
+        if (
+                relatedId == null
+        ) {
+
+            throw new IllegalArgumentException(
+                    "relatedId is required"
+            );
         }
-        if (relatedId == null) {
-            throw new IllegalArgumentException("relatedId is required");
+
+
+        if (
+                uploadedBy == null ||
+                        uploadedBy.getUserId() == null
+        ) {
+
+            throw new IllegalArgumentException(
+                    "uploadedBy is required"
+            );
         }
-        if (files == null || files.isEmpty()) {
+
+
+        if (
+                files == null ||
+                        files.isEmpty()
+        ) {
+
             return List.of();
         }
 
-        if (files.size() > maxFilesPerRequest) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Too many files in request");
+
+        if (
+                files.size() >
+                        maxFilesPerRequest
+        ) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Too many files in request"
+            );
         }
 
-        final String folder = buildFolder(relatedTable, relatedId); // e.g. observer_report/{UUID}/2025-11-12
-        final Map<String, Object> baseTags = tags != null ? new HashMap<>(tags) : new HashMap<>();
 
-        List<FileUploadDto> out = new ArrayList<>(files.size());
-        for (MultipartFile mf : files) {
-            if (mf.isEmpty()) continue;
-            if (mf.getSize() > maxFileSizeBytes) {
-                throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "File exceeds maximum allowed size");
+        requireRelatedExistsAndSameOrg(
+                normalizedTable,
+                relatedId,
+                org.getOrgId()
+        );
+
+
+        final String folder =
+                buildFolder(
+                        normalizedTable,
+                        relatedId
+                );
+
+
+        final Map<String, Object> baseTags =
+                tags != null
+                        ? new HashMap<>(
+                        tags
+                )
+                        : new HashMap<>();
+
+
+        List<FileUploadDto> output =
+                new ArrayList<>(
+                        files.size()
+                );
+
+
+        for (
+                MultipartFile file :
+                files
+        ) {
+
+            if (
+                    file == null ||
+                            file.isEmpty()
+            ) {
+                continue;
             }
 
-            try (InputStream in = mf.getInputStream()) {
 
-                // 1) Compute SHA-256 for de-dup (per org)
-                String sha256 = DigestUtils.sha256Hex(in);
+            if (
+                    file.getSize() >
+                            maxFileSizeBytes
+            ) {
 
-                // Re-open stream (already consumed) for actual store:
-                try (InputStream in2 = mf.getInputStream()) {
+                throw new ResponseStatusException(
+                        HttpStatus.PAYLOAD_TOO_LARGE,
+                        "File exceeds maximum allowed size"
+                );
+            }
 
-                    // If identical file already exists for this org, re-use it
-                    Optional<FileUpload> existing = fileUploadRepository.findActiveByOrgAndSha(org.getOrgId(), sha256);
-                    if (existing.isPresent()) {
-                        out.add(mapper.toDTO(existing.get()));
-                        continue;
-                    }
 
-                    String originalName = sanitize(mf.getOriginalFilename());
-                    String safeName = uniqueName(sha256, originalName);
-                    String contentType = safeContentType(mf.getContentType(), originalName);
-                    long size = mf.getSize();
+            String originalName =
+                    sanitize(
+                            file.getOriginalFilename()
+                    );
 
-                    // 2) Store the binary (local/S3/etc.) and register cleanup on rollback
-                    String fileUrl = storage.store(folder, safeName, in2, size, contentType);
-                    String finalFileUrl = fileUrl;
-                    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                        @Override
-                        public void afterCompletion(int status) {
-                            if (status == TransactionSynchronization.STATUS_ROLLED_BACK) {
-                                try {
-                                    log.warn("Transaction rolled back; deleting stored file {}", finalFileUrl);
-                                    storage.delete(finalFileUrl);
-                                } catch (Exception ex) {
-                                    log.error("Failed to delete stored file after rollback: {}", finalFileUrl, ex);
-                                }
-                            }
-                        }
-                    });
 
-                    // 3) Persist file_upload row
-                    FileUpload entity = new FileUpload();
-                    entity.setOrganization(org);
-                    entity.setRelatedTable(relatedTable);
-                    entity.setRelatedId(relatedId);
-                    entity.setUploadedBy(uploadedBy);
-                    entity.setFileUrl(fileUrl);
-                    entity.setMimeType(contentType);
-                    entity.setSizeBytes(size);
-                    entity.setSha256(sha256);
-                    try {
-                        entity.setStorageProvider(StorageProvider.valueOf(storage.getProviderName().toUpperCase(Locale.ROOT)));
-                    } catch (Exception x) {
-                        entity.setStorageProvider(StorageProvider.LOCAL);
-                    }
-                    entity.setDateUpdated(java.time.LocalDateTime.now());
-                    entity.setTags(mergedTags(baseTags, originalName, safeName));
+            String contentType =
+                    safeContentType(
+                            file.getContentType(),
+                            originalName
+                    );
 
-                    // Infer FileType from mime/extension
-                    entity.setFileType(guessType(contentType, originalName));
+
+            validateAllowedContentType(
+                    contentType
+            );
+
+
+            try (
+                    InputStream hashStream =
+                            file.getInputStream()
+            ) {
+
+                String sha256 =
+                        DigestUtils.sha256Hex(
+                                hashStream
+                        );
+
+
+                /*
+                 * Preserve the existing de-duplication behavior.
+                 *
+                 * If the binary already exists for this organization,
+                 * re-use its stored path.
+                 *
+                 * The target entity's media field can still reference
+                 * that same stored binary.
+                 */
+                Optional<FileUpload> existing =
+                        fileUploadRepository
+                                .findActiveByOrgAndSha(
+                                        org.getOrgId(),
+                                        sha256
+                                );
+
+
+                if (
+                        existing.isPresent()
+                ) {
+
+                    FileUpload existingFile =
+                            existing.get();
+
+
+                    syncRelatedMediaField(
+                            normalizedTable,
+                            relatedId,
+                            existingFile
+                    );
+
+
+                    output.add(
+                            mapper.toDTO(
+                                    existingFile
+                            )
+                    );
+
+
+                    continue;
+                }
+
+
+                try (
+                        InputStream storageStream =
+                                file.getInputStream()
+                ) {
+
+                    String safeName =
+                            uniqueName(
+                                    sha256,
+                                    originalName
+                            );
+
+
+                    long size =
+                            file.getSize();
+
+
+                    String fileUrl =
+                            storage.store(
+                                    folder,
+                                    safeName,
+                                    storageStream,
+                                    size,
+                                    contentType
+                            );
+
+
+                    registerRollbackCleanup(
+                            fileUrl
+                    );
+
+
+                    FileUpload entity =
+                            new FileUpload();
+
+
+                    entity.setOrganization(
+                            org
+                    );
+
+
+                    entity.setRelatedTable(
+                            normalizedTable
+                    );
+
+
+                    entity.setRelatedId(
+                            relatedId
+                    );
+
+
+                    entity.setUploadedBy(
+                            uploadedBy
+                    );
+
+
+                    entity.setFileUrl(
+                            fileUrl
+                    );
+
+
+                    entity.setMimeType(
+                            contentType
+                    );
+
+
+                    entity.setSizeBytes(
+                            size
+                    );
+
+
+                    entity.setSha256(
+                            sha256
+                    );
+
+
+                    entity.setStorageProvider(
+                            currentStorageProvider()
+                    );
+
+
+                    entity.setTags(
+                            mergedTags(
+                                    baseTags,
+                                    originalName,
+                                    safeName
+                            )
+                    );
+
+
+                    entity.setFileType(
+                            guessType(
+                                    contentType,
+                                    originalName
+                            )
+                    );
+
 
                     FileUpload saved;
+
+
                     try {
-                        saved = fileUploadRepository.save(entity);
-                    } catch (DataIntegrityViolationException dup) {
-                        // unique constraint hit (org_id + sha256). Fetch existing & return it
-                        saved = fileUploadRepository.findActiveByOrgAndSha(org.getOrgId(), sha256)
-                                .orElseThrow(() -> dup);
+
+                        saved =
+                                fileUploadRepository.save(
+                                        entity
+                                );
+
+                    } catch (
+                            DataIntegrityViolationException duplicate
+                    ) {
+
+                        saved =
+                                fileUploadRepository
+                                        .findActiveByOrgAndSha(
+                                                org.getOrgId(),
+                                                sha256
+                                        )
+                                        .orElseThrow(
+                                                () ->
+                                                        duplicate
+                                        );
                     }
 
-                    out.add(mapper.toDTO(saved));
+
+                    /*
+                     * Preserve existing tally functionality.
+                     */
+                    maybeMirrorToTallySheet(
+                            saved
+                    );
+
+
+                    /*
+                     * Update only the primary media field related
+                     * to this FileUpload.
+                     */
+                    syncRelatedMediaField(
+                            normalizedTable,
+                            relatedId,
+                            saved
+                    );
+
+
+                    output.add(
+                            mapper.toDTO(
+                                    saved
+                            )
+                    );
                 }
-            } catch (Exception e) {
-                log.error("Failed to store file in saveAllForEntity: {}", mf.getOriginalFilename(), e);
-                throw new RuntimeException("Failed to store file: " + mf.getOriginalFilename(), e);
+
+            } catch (
+                    ResponseStatusException ex
+            ) {
+
+                throw ex;
+
+            } catch (
+                    Exception ex
+            ) {
+
+                log.error(
+                        "Failed to store file in saveAllForEntity: {}",
+                        file.getOriginalFilename(),
+                        ex
+                );
+
+
+                throw new RuntimeException(
+                        "Failed to store file: "
+                                + file.getOriginalFilename(),
+                        ex
+                );
             }
         }
-        return out;
+
+
+        return output;
     }
 
-    // ---------- helpers ----------
 
-    private static String buildFolder(String relatedTable, UUID relatedId) {
-        return relatedTable + "/" + relatedId + "/" + LocalDate.now();
-    }
+    // =========================================================================
+    // SYNCHRONIZE RELATED PRIMARY MEDIA FIELD
+    // =========================================================================
 
-    private static String sanitize(String name) {
-        if (name == null || name.isBlank()) return "file";
-        // strip path segments and risky chars
-        String base = name.replace("\\", "/");
-        base = base.substring(base.lastIndexOf('/') + 1);
-        base = base.replaceAll("[\\r\\n]", "_");
-        return base;
-    }
+    private void syncRelatedMediaField(
+            String relatedTable,
+            UUID relatedId,
+            FileUpload file
+    ) {
 
-    private static String uniqueName(String sha256, String originalName) {
-        String ext = "";
-        int dot = originalName.lastIndexOf('.');
-        if (dot > -1 && dot < originalName.length() - 1) {
-            ext = originalName.substring(dot).toLowerCase(Locale.ROOT);
+        if (
+                file == null ||
+                        relatedId == null ||
+                        relatedTable == null
+        ) {
+            return;
         }
-        return sha256 + ext; // content-addressed
-    }
-
-    private static String safeContentType(String provided, String filename) {
-        if (provided != null && !provided.isBlank()) return provided;
-        // guess from extension
-        String lower = filename == null ? "" : filename.toLowerCase(Locale.ROOT);
-        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return MediaType.IMAGE_JPEG_VALUE;
-        if (lower.endsWith(".png")) return MediaType.IMAGE_PNG_VALUE;
-        if (lower.endsWith(".gif")) return MediaType.IMAGE_GIF_VALUE;
-        if (lower.endsWith(".pdf")) return "application/pdf";
-        if (lower.endsWith(".mp4")) return "video/mp4";
-        if (lower.endsWith(".mov")) return "video/quicktime";
-        return MediaType.APPLICATION_OCTET_STREAM_VALUE;
-    }
 
 
-    private static Map<String, Object> mergedTags(Map<String, Object> base, String original, String stored) {
-        Map<String, Object> t = new HashMap<>(base);
-        t.putIfAbsent("original_name", original);
-        t.putIfAbsent("stored_name", stored);
-        return t;
-    }
+        String table =
+                normalizeRelatedTable(
+                        relatedTable
+                );
 
-    private static FileType guessType(String mime, String filename) {
-        if (mime == null) mime = "";
-        String m = mime.toLowerCase(Locale.ROOT);
-        String f = filename == null ? "" : filename.toLowerCase(Locale.ROOT);
 
-        if (m.startsWith("image/") || f.matches(".*\\.(png|jpg|jpeg|gif|webp|bmp)$")) return FileType.PHOTO;
-        if (m.startsWith("video/") || f.matches(".*\\.(mp4|mov|avi|mkv|webm)$")) return FileType.VIDEO;
-        if (m.startsWith("audio/") || f.matches(".*\\.(mp3|wav|m4a|aac|ogg)$")) return FileType.AUDIO;
-        if (f.endsWith(".pdf") || m.equals("application/pdf")) return FileType.DOCUMENT;
-        // Default
-        return FileType.DOCUMENT;
-    }
+        /*
+         * Logo/photo/profile/picture fields must only be synchronized
+         * from image uploads.
+         *
+         * This allows the same entity to have other FileUpload attachments
+         * without accidentally replacing its primary image.
+         */
+        boolean image =
+                isImage(
+                        file
+                );
 
-    private String storageProviderName() {
-        return storage.getProviderName();
-    }
 
-    private static String safeSha256(MultipartFile file) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            try (InputStream in = file.getInputStream()) {
-                byte[] buf = new byte[8192];
-                int r;
-                while ((r = in.read(buf)) != -1) md.update(buf, 0, r);
+        switch (table) {
+
+            // =================================================================
+            // PARTY LOGO
+            // =================================================================
+
+            case RELATED_TABLE_PARTY -> {
+
+                if (!image) {
+                    return;
+                }
+
+
+                Party party =
+                        partyRepository
+                                .findById(
+                                        relatedId
+                                )
+                                .orElseThrow(
+                                        () ->
+                                                new ResponseStatusException(
+                                                        HttpStatus.BAD_REQUEST,
+                                                        "party not found"
+                                                )
+                                );
+
+
+                party.setLogoUrl(
+                        file.getFileUrl()
+                );
+
+
+                partyRepository.save(
+                        party
+                );
             }
-            byte[] digest = md.digest();
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) sb.append(String.format("%02x", b));
-            return sb.toString();
-        } catch (Exception e) {
-            log.warn("Unable to compute SHA-256 for file {}: {}", file.getOriginalFilename(), e.getMessage());
-            return null;
-        }
-    }
 
 
-    private FileUpload persistWithConflictHandling(FileUpload f) {
-        try {
-            return fileUploadRepository.save(f);
-        } catch (DataIntegrityViolationException ex) {
-            // covers unique index uq_file_by_org_sha (non-deleted)
-            // Try to fetch existing active file (concurrent dedupe)
-            Optional<FileUpload> existing = fileUploadRepository.findActiveByOrgAndSha(f.getOrganization().getOrgId(), f.getSha256());
-            if (existing.isPresent()) {
-                return existing.get();
+            // =================================================================
+            // CANDIDATE PHOTO
+            // =================================================================
+
+            case RELATED_TABLE_CANDIDATE -> {
+
+                if (!image) {
+                    return;
+                }
+
+
+                Candidate candidate =
+                        candidateRepository
+                                .findById(
+                                        relatedId
+                                )
+                                .orElseThrow(
+                                        () ->
+                                                new ResponseStatusException(
+                                                        HttpStatus.BAD_REQUEST,
+                                                        "candidate not found"
+                                                )
+                                );
+
+
+                candidate.setPhotoUrl(
+                        file.getFileUrl()
+                );
+
+
+                candidateRepository.save(
+                        candidate
+                );
             }
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate file for this organization", ex);
-        }
-    }
 
-    /** If the upload corresponds to a tally sheet for a submission, mirror it into the tally_sheet table. */
-    private void maybeMirrorToTallySheet(FileUpload saved) {
-        if (saved.getFileType() == FileType.TALLY_SHEET && "vote_submission".equals(saved.getRelatedTable())) {
-            // create a simple TallySheet row; org consistency is enforced by DB trigger as well
-            VoteSubmission sub = submissionRepo.findById(saved.getRelatedId())
-                    .orElse(null);
-            if (sub != null && sub.getOrganization().getOrgId().equals(saved.getOrganization().getOrgId())) {
-                TallySheet t = new TallySheet();
-                t.setOrganization(saved.getOrganization());
-                t.setSubmission(sub);
-                t.setImageUrl(saved.getFileUrl());
-                t.setFileSha256(saved.getSha256());
-                tallyRepo.save(t);
+
+            // =================================================================
+            // ORGANIZATION LOGO
+            // =================================================================
+
+            case RELATED_TABLE_ORGANIZATION -> {
+
+                if (!image) {
+                    return;
+                }
+
+
+                Organization organization =
+                        orgRepo
+                                .findById(
+                                        relatedId
+                                )
+                                .orElseThrow(
+                                        () ->
+                                                new ResponseStatusException(
+                                                        HttpStatus.BAD_REQUEST,
+                                                        "organization not found"
+                                                )
+                                );
+
+
+                organization.setLogoUrl(
+                        file.getFileUrl()
+                );
+
+
+                orgRepo.save(
+                        organization
+                );
+            }
+
+
+            // =================================================================
+            // SYSTEM USER PROFILE IMAGE
+            // =================================================================
+
+            case RELATED_TABLE_SYSTEM_USERS -> {
+
+                if (!image) {
+                    return;
+                }
+
+
+                SystemUser user =
+                        userRepo
+                                .findById(
+                                        relatedId
+                                )
+                                .orElseThrow(
+                                        () ->
+                                                new ResponseStatusException(
+                                                        HttpStatus.BAD_REQUEST,
+                                                        "system_user not found"
+                                                )
+                                );
+
+
+                user.setProfileImageUrl(
+                        file.getFileUrl()
+                );
+
+
+                user.setProfileImageUpload(
+                        file
+                );
+
+
+                userRepo.save(
+                        user
+                );
+            }
+
+
+            // =================================================================
+            // VOTER PICTURE
+            // =================================================================
+
+            case RELATED_TABLE_VOTER_REGISTRATION -> {
+
+                if (!image) {
+                    return;
+                }
+
+
+                VoterRegistration voter =
+                        voterRegistrationRepository
+                                .findById(
+                                        relatedId
+                                )
+                                .orElseThrow(
+                                        () ->
+                                                new ResponseStatusException(
+                                                        HttpStatus.BAD_REQUEST,
+                                                        "voter_registration not found"
+                                                )
+                                );
+
+
+                voter.setPictureUrl(
+                        file.getFileUrl()
+                );
+
+
+                voterRegistrationRepository.save(
+                        voter
+                );
+            }
+
+
+            // =================================================================
+            // OBSERVER REPORT MEDIA
+            //
+            // All files remain in file_upload.
+            // mediaUrl is only the report's primary/first media reference.
+            // =================================================================
+
+            case RELATED_TABLE_OBSERVER_REPORT -> {
+
+                ObserverReport report =
+                        observerRepo
+                                .findById(
+                                        relatedId
+                                )
+                                .orElseThrow(
+                                        () ->
+                                                new ResponseStatusException(
+                                                        HttpStatus.BAD_REQUEST,
+                                                        "observer_report not found"
+                                                )
+                                );
+
+
+                if (
+                        report.getMediaUrl() == null ||
+                                report.getMediaUrl().isBlank()
+                ) {
+
+                    report.setMediaUrl(
+                            file.getFileUrl()
+                    );
+
+
+                    observerRepo.save(
+                            report
+                    );
+                }
+            }
+
+
+            // =================================================================
+            // ALL OTHER FILEUPLOAD RELATIONSHIPS
+            //
+            // Their existing behavior remains unchanged.
+            // =================================================================
+
+            default -> {
+                // No primary media field to synchronize.
             }
         }
     }
 
-    // ---------- helpers ----------
+
+    // =========================================================================
+    // CLEAR RELATED PRIMARY MEDIA FIELD
+    // =========================================================================
+
+    private void clearRelatedMediaFieldIfCurrent(
+            FileUpload file
+    ) {
+
+        if (
+                file == null ||
+                        file.getRelatedTable() == null ||
+                        file.getRelatedId() == null
+        ) {
+            return;
+        }
+
+
+        String table =
+                normalizeRelatedTable(
+                        file.getRelatedTable()
+                );
+
+
+        UUID relatedId =
+                file.getRelatedId();
+
+
+        String fileUrl =
+                file.getFileUrl();
+
+
+        switch (table) {
+
+            // =================================================================
+            // PARTY
+            // =================================================================
+
+            case RELATED_TABLE_PARTY ->
+
+                    partyRepository
+                            .findById(
+                                    relatedId
+                            )
+                            .ifPresent(
+                                    party -> {
+
+                                        if (
+                                                Objects.equals(
+                                                        party.getLogoUrl(),
+                                                        fileUrl
+                                                )
+                                        ) {
+
+                                            party.setLogoUrl(
+                                                    null
+                                            );
+
+
+                                            partyRepository.save(
+                                                    party
+                                            );
+                                        }
+                                    }
+                            );
+
+
+            // =================================================================
+            // CANDIDATE
+            // =================================================================
+
+            case RELATED_TABLE_CANDIDATE ->
+
+                    candidateRepository
+                            .findById(
+                                    relatedId
+                            )
+                            .ifPresent(
+                                    candidate -> {
+
+                                        if (
+                                                Objects.equals(
+                                                        candidate.getPhotoUrl(),
+                                                        fileUrl
+                                                )
+                                        ) {
+
+                                            candidate.setPhotoUrl(
+                                                    null
+                                            );
+
+
+                                            candidateRepository.save(
+                                                    candidate
+                                            );
+                                        }
+                                    }
+                            );
+
+
+            // =================================================================
+            // ORGANIZATION
+            // =================================================================
+
+            case RELATED_TABLE_ORGANIZATION ->
+
+                    orgRepo
+                            .findById(
+                                    relatedId
+                            )
+                            .ifPresent(
+                                    organization -> {
+
+                                        if (
+                                                Objects.equals(
+                                                        organization.getLogoUrl(),
+                                                        fileUrl
+                                                )
+                                        ) {
+
+                                            organization.setLogoUrl(
+                                                    null
+                                            );
+
+
+                                            orgRepo.save(
+                                                    organization
+                                            );
+                                        }
+                                    }
+                            );
+
+
+            // =================================================================
+            // SYSTEM USER
+            // =================================================================
+
+            case RELATED_TABLE_SYSTEM_USERS ->
+
+                    userRepo
+                            .findById(
+                                    relatedId
+                            )
+                            .ifPresent(
+                                    user -> {
+
+                                        boolean changed =
+                                                false;
+
+
+                                        if (
+                                                Objects.equals(
+                                                        user.getProfileImageUrl(),
+                                                        fileUrl
+                                                )
+                                        ) {
+
+                                            user.setProfileImageUrl(
+                                                    null
+                                            );
+
+
+                                            changed =
+                                                    true;
+                                        }
+
+
+                                        if (
+                                                user.getProfileImageUpload() != null &&
+                                                        Objects.equals(
+                                                                user
+                                                                        .getProfileImageUpload()
+                                                                        .getFileId(),
+
+                                                                file.getFileId()
+                                                        )
+                                        ) {
+
+                                            user.setProfileImageUpload(
+                                                    null
+                                            );
+
+
+                                            changed =
+                                                    true;
+                                        }
+
+
+                                        if (changed) {
+
+                                            userRepo.save(
+                                                    user
+                                            );
+                                        }
+                                    }
+                            );
+
+
+            // =================================================================
+            // VOTER
+            // =================================================================
+
+            case RELATED_TABLE_VOTER_REGISTRATION ->
+
+                    voterRegistrationRepository
+                            .findById(
+                                    relatedId
+                            )
+                            .ifPresent(
+                                    voter -> {
+
+                                        if (
+                                                Objects.equals(
+                                                        voter.getPictureUrl(),
+                                                        fileUrl
+                                                )
+                                        ) {
+
+                                            voter.setPictureUrl(
+                                                    null
+                                            );
+
+
+                                            voterRegistrationRepository.save(
+                                                    voter
+                                            );
+                                        }
+                                    }
+                            );
+
+
+            // =================================================================
+            // OBSERVER REPORT
+            // =================================================================
+
+            case RELATED_TABLE_OBSERVER_REPORT ->
+
+                    observerRepo
+                            .findById(
+                                    relatedId
+                            )
+                            .ifPresent(
+                                    report -> {
+
+                                        if (
+                                                Objects.equals(
+                                                        report.getMediaUrl(),
+                                                        fileUrl
+                                                )
+                                        ) {
+
+                                            report.setMediaUrl(
+                                                    null
+                                            );
+
+
+                                            observerRepo.save(
+                                                    report
+                                            );
+                                        }
+                                    }
+                            );
+
+
+            default -> {
+                // No primary media field.
+            }
+        }
+    }
+
+
+    // =========================================================================
+    // RELATED ENTITY VALIDATION
+    // =========================================================================
+
     private void requireRelatedExistsAndSameOrg(
             String table,
             UUID relatedId,
             UUID orgId
     ) {
-        // 1️⃣ Normalize
-        if (table == null || table.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "related_table is required");
-        }
-        String t = table.trim().toLowerCase(Locale.ROOT);
 
-        // 2️⃣ Whitelist check
-        if (!ALLOWED_TABLES.contains(t)) {
+        if (
+                relatedId == null
+        ) {
+
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "Unsupported related_table: " + table
+                    "related_id is required"
             );
         }
 
-        // 3️⃣ Entity existence + org consistency (only where it matters)
-        switch (t) {
+
+        String normalized =
+                normalizeRelatedTable(
+                        table
+                );
+
+
+        if (
+                !ALLOWED_TABLES.contains(
+                        normalized
+                )
+        ) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Unsupported related_table: "
+                            + table
+            );
+        }
+
+
+        switch (normalized) {
+
+            // =================================================================
+            // SYSTEM USERS
+            // =================================================================
 
             case "system_users" -> {
-                SystemUser u = userRepo.findById(relatedId)
-                        .orElseThrow(() ->
-                                new ResponseStatusException(HttpStatus.BAD_REQUEST, "system_user not found"));
 
-                // If SystemUser is org-scoped, enforce org
-                if (u.getDefaultOrg() != null
-                        && u.getDefaultOrg().getOrgId() != null
-                        && !u.getDefaultOrg().getOrgId().equals(orgId)) {
+                SystemUser user =
+                        userRepo
+                                .findById(
+                                        relatedId
+                                )
+                                .orElseThrow(
+                                        () ->
+                                                new ResponseStatusException(
+                                                        HttpStatus.BAD_REQUEST,
+                                                        "system_user not found"
+                                                )
+                                );
+
+
+                if (
+                        user.getDefaultOrg() != null &&
+                                user.getDefaultOrg()
+                                        .getOrgId() != null &&
+                                !user.getDefaultOrg()
+                                        .getOrgId()
+                                        .equals(
+                                                orgId
+                                        )
+                ) {
+
                     throw new ResponseStatusException(
                             HttpStatus.BAD_REQUEST,
                             "system_user belongs to another organization"
@@ -522,12 +1944,36 @@ public class FileUploadServiceImplementation implements FileUploadService {
                 }
             }
 
-            case "vote_submission" -> {
-                VoteSubmission s = submissionRepo.findById(relatedId)
-                        .orElseThrow(() ->
-                                new ResponseStatusException(HttpStatus.BAD_REQUEST, "vote_submission not found"));
 
-                if (!s.getOrganization().getOrgId().equals(orgId)) {
+            // =================================================================
+            // VOTE SUBMISSION
+            // =================================================================
+
+            case "vote_submission" -> {
+
+                VoteSubmission submission =
+                        submissionRepo
+                                .findById(
+                                        relatedId
+                                )
+                                .orElseThrow(
+                                        () ->
+                                                new ResponseStatusException(
+                                                        HttpStatus.BAD_REQUEST,
+                                                        "vote_submission not found"
+                                                )
+                                );
+
+
+                if (
+                        !submission
+                                .getOrganization()
+                                .getOrgId()
+                                .equals(
+                                        orgId
+                                )
+                ) {
+
                     throw new ResponseStatusException(
                             HttpStatus.BAD_REQUEST,
                             "vote_submission belongs to another organization"
@@ -535,12 +1981,36 @@ public class FileUploadServiceImplementation implements FileUploadService {
                 }
             }
 
-            case "tally_sheet" -> {
-                TallySheet ts = tallyRepo.findById(relatedId)
-                        .orElseThrow(() ->
-                                new ResponseStatusException(HttpStatus.BAD_REQUEST, "tally_sheet not found"));
 
-                if (!ts.getOrganization().getOrgId().equals(orgId)) {
+            // =================================================================
+            // TALLY SHEET
+            // =================================================================
+
+            case "tally_sheet" -> {
+
+                TallySheet tally =
+                        tallyRepo
+                                .findById(
+                                        relatedId
+                                )
+                                .orElseThrow(
+                                        () ->
+                                                new ResponseStatusException(
+                                                        HttpStatus.BAD_REQUEST,
+                                                        "tally_sheet not found"
+                                                )
+                                );
+
+
+                if (
+                        !tally
+                                .getOrganization()
+                                .getOrgId()
+                                .equals(
+                                        orgId
+                                )
+                ) {
+
                     throw new ResponseStatusException(
                             HttpStatus.BAD_REQUEST,
                             "tally_sheet belongs to another organization"
@@ -548,12 +2018,36 @@ public class FileUploadServiceImplementation implements FileUploadService {
                 }
             }
 
-            case "observer_report" -> {
-                ObserverReport r = observerRepo.findById(relatedId)
-                        .orElseThrow(() ->
-                                new ResponseStatusException(HttpStatus.BAD_REQUEST, "observer_report not found"));
 
-                if (!r.getOrganization().getOrgId().equals(orgId)) {
+            // =================================================================
+            // OBSERVER REPORT
+            // =================================================================
+
+            case "observer_report" -> {
+
+                ObserverReport report =
+                        observerRepo
+                                .findById(
+                                        relatedId
+                                )
+                                .orElseThrow(
+                                        () ->
+                                                new ResponseStatusException(
+                                                        HttpStatus.BAD_REQUEST,
+                                                        "observer_report not found"
+                                                )
+                                );
+
+
+                if (
+                        !report
+                                .getOrganization()
+                                .getOrgId()
+                                .equals(
+                                        orgId
+                                )
+                ) {
+
                     throw new ResponseStatusException(
                             HttpStatus.BAD_REQUEST,
                             "observer_report belongs to another organization"
@@ -561,12 +2055,36 @@ public class FileUploadServiceImplementation implements FileUploadService {
                 }
             }
 
-            case "chat_message" -> {
-                ChatMessage m = chatRepo.findById(relatedId)
-                        .orElseThrow(() ->
-                                new ResponseStatusException(HttpStatus.BAD_REQUEST, "chat_message not found"));
 
-                if (!m.getOrganization().getOrgId().equals(orgId)) {
+            // =================================================================
+            // CHAT MESSAGE
+            // =================================================================
+
+            case "chat_message" -> {
+
+                ChatMessage message =
+                        chatRepo
+                                .findById(
+                                        relatedId
+                                )
+                                .orElseThrow(
+                                        () ->
+                                                new ResponseStatusException(
+                                                        HttpStatus.BAD_REQUEST,
+                                                        "chat_message not found"
+                                                )
+                                );
+
+
+                if (
+                        !message
+                                .getOrganization()
+                                .getOrgId()
+                                .equals(
+                                        orgId
+                                )
+                ) {
+
                     throw new ResponseStatusException(
                             HttpStatus.BAD_REQUEST,
                             "chat_message belongs to another organization"
@@ -574,105 +2092,1145 @@ public class FileUploadServiceImplementation implements FileUploadService {
                 }
             }
 
-            // party / candidate / organization may be global or org-scoped
-            case "party", "candidate", "organization" -> {
-                // existence checks optional here
-                // org consistency can be added later if needed
+
+            // =================================================================
+            // PARTY
+            //
+            // Global record. Existence check only.
+            // =================================================================
+
+            case "party" ->
+
+                    partyRepository
+                            .findById(
+                                    relatedId
+                            )
+                            .orElseThrow(
+                                    () ->
+                                            new ResponseStatusException(
+                                                    HttpStatus.BAD_REQUEST,
+                                                    "party not found"
+                                            )
+                            );
+
+
+            // =================================================================
+            // CANDIDATE
+            //
+            // Global master record. Existence check only.
+            // =================================================================
+
+            case "candidate" ->
+
+                    candidateRepository
+                            .findById(
+                                    relatedId
+                            )
+                            .orElseThrow(
+                                    () ->
+                                            new ResponseStatusException(
+                                                    HttpStatus.BAD_REQUEST,
+                                                    "candidate not found"
+                                            )
+                            );
+
+
+            // =================================================================
+            // ORGANIZATION
+            //
+            // Existing authorization remains outside FileUploadService.
+            // We only confirm the related entity exists.
+            // =================================================================
+
+            case "organization" ->
+
+                    orgRepo
+                            .findById(
+                                    relatedId
+                            )
+                            .orElseThrow(
+                                    () ->
+                                            new ResponseStatusException(
+                                                    HttpStatus.BAD_REQUEST,
+                                                    "organization not found"
+                                            )
+                            );
+
+
+            // =================================================================
+            // VOTER REGISTRATION
+            // =================================================================
+
+            case "voter_registration" -> {
+
+                VoterRegistration voter =
+                        voterRegistrationRepository
+                                .findById(
+                                        relatedId
+                                )
+                                .orElseThrow(
+                                        () ->
+                                                new ResponseStatusException(
+                                                        HttpStatus.BAD_REQUEST,
+                                                        "voter_registration not found"
+                                                )
+                                );
+
+
+                /*
+                 * Voter registration already has an owning organization.
+                 * Only enforce the match when that relationship exists.
+                 */
+                if (
+                        voter.getOrg() != null &&
+                                voter.getOrg()
+                                        .getOrgId() != null &&
+                                !voter.getOrg()
+                                        .getOrgId()
+                                        .equals(
+                                                orgId
+                                        )
+                ) {
+
+                    throw new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST,
+                            "voter_registration belongs to another organization"
+                    );
+                }
+            }
+
+
+            default -> {
+                // Whitelist already handles unsupported tables.
             }
         }
     }
 
-    private static final Set<String> ALLOWED_TABLES = Set.of(
-            "system_users",
-            "vote_submission",
-            "tally_sheet",
-            "observer_report",
-            "chat_message",
-            "party",
-            "candidate",
-            "organization"
-    );
 
-    /**
-     * Validates and uploads multiple files atomically.
-     * If any file fails, the transaction is rolled back, leaving no traces of partially uploaded files.
-     *
-     * @param files       List of files to upload.
-     * @param org         Organization that owns the files.
-     * @param uploader    User uploading the files.
-     * @param relatedTable Table associated with the files.
-     * @param relatedId   ID of the entity in the associated table.
-     */
-    private void uploadFilesAtomic(List<MultipartFile> files, Organization org, SystemUser uploader, String relatedTable, UUID relatedId) {
-        if (files == null || files.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Files are required for upload");
+    // =========================================================================
+    // EXISTING TALLY-SHEET MIRROR
+    // =========================================================================
+
+    private void maybeMirrorToTallySheet(
+            FileUpload saved
+    ) {
+
+        if (
+                saved == null ||
+                        saved.getFileType() !=
+                                FileType.TALLY_SHEET ||
+                        !RELATED_TABLE_SUBMISSION.equals(
+                                saved.getRelatedTable()
+                        )
+        ) {
+
+            return;
         }
 
-        for (MultipartFile file : files) {
-            if (file.isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File cannot be empty: " + file.getOriginalFilename());
+
+        VoteSubmission submission =
+                submissionRepo
+                        .findById(
+                                saved.getRelatedId()
+                        )
+                        .orElse(
+                                null
+                        );
+
+
+        if (
+                submission == null ||
+                        submission.getOrganization() == null ||
+                        !submission
+                                .getOrganization()
+                                .getOrgId()
+                                .equals(
+                                        saved
+                                                .getOrganization()
+                                                .getOrgId()
+                                )
+        ) {
+
+            return;
+        }
+
+
+        TallySheet tally =
+                new TallySheet();
+
+
+        tally.setOrganization(
+                saved.getOrganization()
+        );
+
+
+        tally.setSubmission(
+                submission
+        );
+
+
+        tally.setImageUrl(
+                saved.getFileUrl()
+        );
+
+
+        tally.setFileSha256(
+                saved.getSha256()
+        );
+
+
+        tallyRepo.save(
+                tally
+        );
+    }
+
+
+    // =========================================================================
+    // PERSIST WITH DUPLICATE HANDLING
+    // =========================================================================
+
+    private FileUpload persistWithConflictHandling(
+            FileUpload file
+    ) {
+
+        try {
+
+            return fileUploadRepository.save(
+                    file
+            );
+
+        } catch (
+                DataIntegrityViolationException ex
+        ) {
+
+            if (
+                    file.getSha256() != null &&
+                            file.getOrganization() != null
+            ) {
+
+                Optional<FileUpload> existing =
+                        fileUploadRepository
+                                .findActiveByOrgAndSha(
+                                        file
+                                                .getOrganization()
+                                                .getOrgId(),
+
+                                        file.getSha256()
+                                );
+
+
+                if (
+                        existing.isPresent()
+                ) {
+
+                    return existing.get();
+                }
             }
 
-            if (file.getSize() > maxFileSizeBytes) {
-                throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "File exceeds maximum allowed size: " + file.getOriginalFilename());
+
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Duplicate file for this organization",
+                    ex
+            );
+        }
+    }
+
+
+    // =========================================================================
+    // ROLLBACK CLEANUP
+    // =========================================================================
+
+    private void registerRollbackCleanup(
+            String fileUrl
+    ) {
+
+        if (
+                fileUrl == null ||
+                        fileUrl.isBlank()
+        ) {
+            return;
+        }
+
+
+        if (
+                !TransactionSynchronizationManager
+                        .isSynchronizationActive()
+        ) {
+
+            return;
+        }
+
+
+        TransactionSynchronizationManager
+                .registerSynchronization(
+                        new TransactionSynchronization() {
+
+                            @Override
+                            public void afterCompletion(
+                                    int status
+                            ) {
+
+                                if (
+                                        status ==
+                                                TransactionSynchronization
+                                                        .STATUS_ROLLED_BACK
+                                ) {
+
+                                    try {
+
+                                        log.warn(
+                                                "Transaction rolled back; deleting stored file {}",
+                                                fileUrl
+                                        );
+
+
+                                        storage.delete(
+                                                fileUrl
+                                        );
+
+                                    } catch (
+                                            Exception ex
+                                    ) {
+
+                                        log.error(
+                                                "Failed to delete stored file after rollback: {}",
+                                                fileUrl,
+                                                ex
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                );
+    }
+
+
+    // =========================================================================
+    // STORAGE PROVIDER
+    // =========================================================================
+
+    private StorageProvider currentStorageProvider() {
+
+        try {
+
+            return StorageProvider.valueOf(
+                    storage
+                            .getProviderName()
+                            .toUpperCase(
+                                    Locale.ROOT
+                            )
+            );
+
+        } catch (
+                Exception ex
+        ) {
+
+            return StorageProvider.LOCAL;
+        }
+    }
+
+
+    // =========================================================================
+    // IMAGE CHECK
+    // =========================================================================
+
+    private static boolean isImage(
+            FileUpload file
+    ) {
+
+        if (
+                file.getFileType() ==
+                        FileType.PHOTO
+        ) {
+
+            return true;
+        }
+
+
+        String mimeType =
+                file.getMimeType();
+
+
+        return mimeType != null &&
+                mimeType
+                        .toLowerCase(
+                                Locale.ROOT
+                        )
+                        .startsWith(
+                                "image/"
+                        );
+    }
+
+
+    // =========================================================================
+    // NORMALIZE RELATED TABLE
+    // =========================================================================
+
+    private static String normalizeRelatedTable(
+            String table
+    ) {
+
+        if (
+                table == null ||
+                        table.isBlank()
+        ) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "related_table is required"
+            );
+        }
+
+
+        return table
+                .trim()
+                .toLowerCase(
+                        Locale.ROOT
+                );
+    }
+
+
+    // =========================================================================
+    // VALIDATE MIME TYPE
+    // =========================================================================
+
+    private void validateAllowedContentType(
+            String contentType
+    ) {
+
+        if (
+                contentType == null ||
+                        !getAllowedMimeTypes()
+                                .contains(
+                                        contentType
+                                                .toLowerCase(
+                                                        Locale.ROOT
+                                                )
+                                )
+        ) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "File content type not allowed: "
+                            + contentType
+            );
+        }
+    }
+
+
+    // =========================================================================
+    // BUILD STORAGE FOLDER
+    // =========================================================================
+
+    private static String buildFolder(
+            String relatedTable,
+            UUID relatedId
+    ) {
+
+        return relatedTable
+                + "/"
+                + relatedId
+                + "/"
+                + LocalDate.now();
+    }
+
+
+    // =========================================================================
+    // SANITIZE FILE NAME
+    // =========================================================================
+
+    private static String sanitize(
+            String name
+    ) {
+
+        if (
+                name == null ||
+                        name.isBlank()
+        ) {
+
+            return "file";
+        }
+
+
+        String base =
+                name.replace(
+                        "\\",
+                        "/"
+                );
+
+
+        base =
+                base.substring(
+                        base.lastIndexOf('/') + 1
+                );
+
+
+        return base.replaceAll(
+                "[\\r\\n]",
+                "_"
+        );
+    }
+
+
+    // =========================================================================
+    // CONTENT-ADDRESSED FILE NAME
+    // =========================================================================
+
+    private static String uniqueName(
+            String sha256,
+            String originalName
+    ) {
+
+        String extension =
+                "";
+
+
+        int dot =
+                originalName.lastIndexOf(
+                        '.'
+                );
+
+
+        if (
+                dot > -1 &&
+                        dot <
+                                originalName.length() - 1
+        ) {
+
+            extension =
+                    originalName
+                            .substring(
+                                    dot
+                            )
+                            .toLowerCase(
+                                    Locale.ROOT
+                            );
+        }
+
+
+        return sha256 +
+                extension;
+    }
+
+
+    // =========================================================================
+    // EXTRACT EXTENSION
+    // =========================================================================
+
+    private static String getExtension(
+            String filename
+    ) {
+
+        if (
+                filename == null ||
+                        filename.isBlank()
+        ) {
+
+            return "";
+        }
+
+
+        int dot =
+                filename.lastIndexOf(
+                        '.'
+                );
+
+
+        if (
+                dot < 0 ||
+                        dot ==
+                                filename.length() - 1
+        ) {
+
+            return "";
+        }
+
+
+        return filename
+                .substring(
+                        dot + 1
+                )
+                .replaceAll(
+                        "[^a-zA-Z0-9]",
+                        ""
+                )
+                .toLowerCase(
+                        Locale.ROOT
+                );
+    }
+
+
+    // =========================================================================
+    // SAFE CONTENT TYPE
+    // =========================================================================
+
+    private static String safeContentType(
+            String provided,
+            String filename
+    ) {
+
+        if (
+                provided != null &&
+                        !provided.isBlank()
+        ) {
+
+            return provided
+                    .trim()
+                    .toLowerCase(
+                            Locale.ROOT
+                    );
+        }
+
+
+        String lower =
+                filename == null
+                        ? ""
+                        : filename.toLowerCase(
+                        Locale.ROOT
+                );
+
+
+        if (
+                lower.endsWith(
+                        ".jpg"
+                ) ||
+                        lower.endsWith(
+                                ".jpeg"
+                        )
+        ) {
+
+            return MediaType.IMAGE_JPEG_VALUE;
+        }
+
+
+        if (
+                lower.endsWith(
+                        ".png"
+                )
+        ) {
+
+            return MediaType.IMAGE_PNG_VALUE;
+        }
+
+
+        if (
+                lower.endsWith(
+                        ".webp"
+                )
+        ) {
+
+            return "image/webp";
+        }
+
+
+        if (
+                lower.endsWith(
+                        ".gif"
+                )
+        ) {
+
+            return MediaType.IMAGE_GIF_VALUE;
+        }
+
+
+        if (
+                lower.endsWith(
+                        ".pdf"
+                )
+        ) {
+
+            return "application/pdf";
+        }
+
+
+        if (
+                lower.endsWith(
+                        ".mp4"
+                )
+        ) {
+
+            return "video/mp4";
+        }
+
+
+        if (
+                lower.endsWith(
+                        ".mov"
+                )
+        ) {
+
+            return "video/quicktime";
+        }
+
+
+        return MediaType
+                .APPLICATION_OCTET_STREAM_VALUE;
+    }
+
+
+    // =========================================================================
+    // MERGE TAGS
+    // =========================================================================
+
+    private static Map<String, Object> mergedTags(
+            Map<String, Object> base,
+            String original,
+            String stored
+    ) {
+
+        Map<String, Object> tags =
+                new HashMap<>(
+                        base
+                );
+
+
+        tags.putIfAbsent(
+                "original_name",
+                original
+        );
+
+
+        tags.putIfAbsent(
+                "stored_name",
+                stored
+        );
+
+
+        return tags;
+    }
+
+
+    // =========================================================================
+    // GUESS FILE TYPE
+    // =========================================================================
+
+    private static FileType guessType(
+            String mime,
+            String filename
+    ) {
+
+        String normalizedMime =
+                mime == null
+                        ? ""
+                        : mime.toLowerCase(
+                        Locale.ROOT
+                );
+
+
+        String normalizedFilename =
+                filename == null
+                        ? ""
+                        : filename.toLowerCase(
+                        Locale.ROOT
+                );
+
+
+        if (
+                normalizedMime.startsWith(
+                        "image/"
+                ) ||
+                        normalizedFilename.matches(
+                                ".*\\.(png|jpg|jpeg|gif|webp|bmp)$"
+                        )
+        ) {
+
+            return FileType.PHOTO;
+        }
+
+
+        if (
+                normalizedMime.startsWith(
+                        "video/"
+                ) ||
+                        normalizedFilename.matches(
+                                ".*\\.(mp4|mov|avi|mkv|webm)$"
+                        )
+        ) {
+
+            return FileType.VIDEO;
+        }
+
+
+        if (
+                normalizedMime.startsWith(
+                        "audio/"
+                ) ||
+                        normalizedFilename.matches(
+                                ".*\\.(mp3|wav|m4a|aac|ogg)$"
+                        )
+        ) {
+
+            return FileType.AUDIO;
+        }
+
+
+        if (
+                normalizedFilename.endsWith(
+                        ".pdf"
+                ) ||
+                        normalizedMime.equals(
+                                "application/pdf"
+                        )
+        ) {
+
+            return FileType.DOCUMENT;
+        }
+
+
+        return FileType.DOCUMENT;
+    }
+
+
+    // =========================================================================
+    // SHA-256
+    // =========================================================================
+
+    private static String safeSha256(
+            MultipartFile file
+    ) {
+
+        try {
+
+            MessageDigest digest =
+                    MessageDigest.getInstance(
+                            "SHA-256"
+                    );
+
+
+            try (
+                    InputStream input =
+                            file.getInputStream()
+            ) {
+
+                byte[] buffer =
+                        new byte[8192];
+
+
+                int read;
+
+
+                while (
+                        (
+                                read =
+                                        input.read(
+                                                buffer
+                                        )
+                        ) != -1
+                ) {
+
+                    digest.update(
+                            buffer,
+                            0,
+                            read
+                    );
+                }
             }
 
-            String contentType = safeContentType(file.getContentType(), file.getOriginalFilename());
-            if (!getAllowedMimeTypes().contains(contentType.toLowerCase(Locale.ROOT))) {
-                throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "File content type not allowed: " + contentType);
+
+            byte[] hash =
+                    digest.digest();
+
+
+            StringBuilder output =
+                    new StringBuilder(
+                            hash.length * 2
+                    );
+
+
+            for (
+                    byte value :
+                    hash
+            ) {
+
+                output.append(
+                        String.format(
+                                "%02x",
+                                value
+                        )
+                );
             }
+
+
+            return output.toString();
+
+        } catch (
+                Exception ex
+        ) {
+
+            log.warn(
+                    "Unable to compute SHA-256 for file {}: {}",
+                    file.getOriginalFilename(),
+                    ex.getMessage()
+            );
+
+
+            return null;
+        }
+    }
+
+
+    // =========================================================================
+    // EXISTING PRIVATE ATOMIC UPLOAD HELPER
+    //
+    // Retained to avoid changing unrelated existing behavior.
+    // =========================================================================
+
+    private void uploadFilesAtomic(
+            List<MultipartFile> files,
+            Organization org,
+            SystemUser uploader,
+            String relatedTable,
+            UUID relatedId
+    ) {
+
+        if (
+                files == null ||
+                        files.isEmpty()
+        ) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Files are required for upload"
+            );
+        }
+
+
+        for (
+                MultipartFile file :
+                files
+        ) {
+
+            if (
+                    file.isEmpty()
+            ) {
+
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "File cannot be empty: "
+                                + file.getOriginalFilename()
+                );
+            }
+
+
+            if (
+                    file.getSize() >
+                            maxFileSizeBytes
+            ) {
+
+                throw new ResponseStatusException(
+                        HttpStatus.PAYLOAD_TOO_LARGE,
+                        "File exceeds maximum allowed size: "
+                                + file.getOriginalFilename()
+                );
+            }
+
+
+            String contentType =
+                    safeContentType(
+                            file.getContentType(),
+                            file.getOriginalFilename()
+                    );
+
+
+            validateAllowedContentType(
+                    contentType
+            );
+
 
             try {
-                uploadSingleFile(org, uploader, file, relatedTable, relatedId, contentType);
-            } catch (Exception e) {
-                log.error("File upload failed during transaction: relatedTable={}, relatedId={}, file={}", relatedTable, relatedId,
-                        file.getOriginalFilename(), e);
-                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "File upload failed: " + file.getOriginalFilename(), e);
+
+                uploadSingleFile(
+                        org,
+                        uploader,
+                        file,
+                        relatedTable,
+                        relatedId,
+                        contentType
+                );
+
+            } catch (
+                    Exception ex
+            ) {
+
+                log.error(
+                        "File upload failed during transaction: relatedTable={}, relatedId={}, file={}",
+                        relatedTable,
+                        relatedId,
+                        file.getOriginalFilename(),
+                        ex
+                );
+
+
+                throw new ResponseStatusException(
+                        HttpStatus.INTERNAL_SERVER_ERROR,
+                        "File upload failed: "
+                                + file.getOriginalFilename(),
+                        ex
+                );
             }
         }
     }
 
-    /**
-     * Validates and uploads a single file.
-     *
-     * @param org         Organization that owns the file.
-     * @param uploader    User uploading the file.
-     * @param file        The file to upload.
-     * @param relatedTable Table associated with the file.
-     * @param relatedId   ID of the entity in the associated table.
-     * @param contentType Validated MIME type of the file.
-     */
-    private void uploadSingleFile(Organization org, SystemUser uploader, MultipartFile file, String relatedTable, UUID relatedId, String contentType) throws IOException {
-        String sha256 = safeSha256(file);
-        if (sha256 != null && fileUploadRepository.existsActiveByOrgAndSha(org.getOrgId(), sha256)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate file for organization: " + file.getOriginalFilename());
+
+    // =========================================================================
+    // EXISTING PRIVATE SINGLE-FILE HELPER
+    //
+    // Retained and aligned with the active FileStorageService.
+    // =========================================================================
+
+    private void uploadSingleFile(
+            Organization org,
+            SystemUser uploader,
+            MultipartFile file,
+            String relatedTable,
+            UUID relatedId,
+            String contentType
+    ) throws IOException {
+
+        String normalizedTable =
+                normalizeRelatedTable(
+                        relatedTable
+                );
+
+
+        String sha256 =
+                safeSha256(
+                        file
+                );
+
+
+        if (
+                sha256 != null &&
+                        fileUploadRepository.existsActiveByOrgAndSha(
+                                org.getOrgId(),
+                                sha256
+                        )
+        ) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Duplicate file for organization: "
+                            + file.getOriginalFilename()
+            );
         }
 
-        String originalName = Objects.requireNonNullElse(file.getOriginalFilename(), "unknown.bin");
-        String uniqueName = UUID.randomUUID() + "-" + originalName;
+
+        String originalName =
+                Objects.requireNonNullElse(
+                        file.getOriginalFilename(),
+                        "unknown.bin"
+                );
+
+
+        String uniqueName =
+                UUID.randomUUID()
+                        + "-"
+                        + sanitize(
+                        originalName
+                );
+
+
         String fileUrl;
 
-        try (InputStream inputStream = file.getInputStream()) {
-            fileUrl = storage.store(relatedTable, uniqueName, inputStream, file.getSize(), contentType);
+
+        try (
+                InputStream inputStream =
+                        file.getInputStream()
+        ) {
+
+            fileUrl =
+                    storage.store(
+                            normalizedTable,
+                            uniqueName,
+                            inputStream,
+                            file.getSize(),
+                            contentType
+                    );
         }
 
-        FileUpload fileUpload = new FileUpload();
-        fileUpload.setOrganization(org);
-        fileUpload.setUploadedBy(uploader);
-        fileUpload.setRelatedTable(relatedTable);
-        fileUpload.setRelatedId(relatedId);
-        fileUpload.setFileType(FileType.TALLY_SHEET); // Adjust file type logic if necessary.
-        fileUpload.setFileUrl(fileUrl);
-        fileUpload.setMimeType(contentType);
-        fileUpload.setSha256(sha256);
-        fileUploadRepository.save(fileUpload);
 
-        log.debug("Uploaded file: relatedTable={}, relatedId={}, file={}, url={}",
-                relatedTable, relatedId, file.getOriginalFilename(), fileUrl);
+        registerRollbackCleanup(
+                fileUrl
+        );
+
+
+        FileUpload upload =
+                new FileUpload();
+
+
+        upload.setOrganization(
+                org
+        );
+
+
+        upload.setUploadedBy(
+                uploader
+        );
+
+
+        upload.setRelatedTable(
+                normalizedTable
+        );
+
+
+        upload.setRelatedId(
+                relatedId
+        );
+
+
+        upload.setFileType(
+                guessType(
+                        contentType,
+                        originalName
+                )
+        );
+
+
+        upload.setFileUrl(
+                fileUrl
+        );
+
+
+        upload.setMimeType(
+                contentType
+        );
+
+
+        upload.setSizeBytes(
+                file.getSize()
+        );
+
+
+        upload.setSha256(
+                sha256
+        );
+
+
+        upload.setStorageProvider(
+                currentStorageProvider()
+        );
+
+
+        FileUpload saved =
+                fileUploadRepository.save(
+                        upload
+                );
+
+
+        syncRelatedMediaField(
+                normalizedTable,
+                relatedId,
+                saved
+        );
+
+
+        log.debug(
+                "Uploaded file: relatedTable={}, relatedId={}, file={}, url={}",
+                normalizedTable,
+                relatedId,
+                file.getOriginalFilename(),
+                fileUrl
+        );
     }
-
-
 }
-
-
-

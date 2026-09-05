@@ -92,6 +92,10 @@ public enum ActivityType {
     SYSTEM_EVENT,
     SYSTEM_ERROR,
 
+    // Elections
+    ELECTION_CANDIDATE_CREATE,
+    CANDIDATE_CREATE,
+
 
     // Vote tally recompute (new)
     TALLY_RECOMPUTE,

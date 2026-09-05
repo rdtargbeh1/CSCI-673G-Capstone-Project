@@ -1,5 +1,6 @@
 package election.ems_backend.service.implement;
 
+import election.ems_backend.dto.PollingCenterAllocationBulkRequest;
 import election.ems_backend.dto.PollingCenterAllocationCreateRequest;
 import election.ems_backend.dto.PollingCenterAllocationDto;
 import election.ems_backend.dto.PollingCenterAllocationUpdateRequest;
@@ -18,6 +19,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import static org.springframework.http.HttpStatus.*;
@@ -34,7 +37,8 @@ public class PollingCenterAllocationServiceImplementation implements PollingCent
     private final PollingPlaceAllocationRepository placeAllocRepo; // ✅ add
 
     private final NecResultGeoRepository geoRepo; // to keep projection in sync
-    private final PollingCenterAllocationMapper mapper = new PollingCenterAllocationMapper();
+
+    private final PollingCenterAllocationMapper mapper;
 
     @Override
     @Transactional
@@ -53,6 +57,80 @@ public class PollingCenterAllocationServiceImplementation implements PollingCent
 
         var saved = repository.save(mapper.toEntity(req, election, center));
         return mapper.toDTO(saved);
+    }
+
+
+    @Override
+    @Transactional
+    public List<PollingCenterAllocationDto> bulkCreate(
+            PollingCenterAllocationBulkRequest req
+    ) {
+
+        Election election = electionRepo.findById(req.getElectionId())
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                NOT_FOUND,
+                                "Election not found"
+                        )
+                );
+
+        List<PollingCenterAllocation> allocations = new ArrayList<>();
+
+        for (PollingCenterAllocationBulkRequest.Item item : req.getAllocations()) {
+
+            var center = centerRepo.findById(item.getCenterId())
+                    .orElseThrow(() ->
+                            new ResponseStatusException(
+                                    NOT_FOUND,
+                                    "Polling center not found: " + item.getCenterId()
+                            )
+                    );
+
+            // Center must belong to selected district
+            if (center.getDistrict() == null
+                    || !center.getDistrict().getDistrictId().equals(req.getDistrictId())) {
+
+                throw new ResponseStatusException(
+                        BAD_REQUEST,
+                        "Polling center does not belong to selected district: "
+                                + center.getCenterId()
+                );
+            }
+
+            // KEEP EXISTING ONE-ALLOCATION-PER-CENTER RULE
+            if (repository.existsByElection_ElectionIdAndPollingCenter_CenterId(
+                    election.getElectionId(),
+                    center.getCenterId()
+            )) {
+                throw new ResponseStatusException(
+                        CONFLICT,
+                        "Allocation already exists for election and polling center: "
+                                + center.getCenterId()
+                );
+            }
+
+            // KEEP EXISTING ELECTION BALLOT VALIDATION
+            validateNumbers(
+                    item.getRegisteredVoters(),
+                    item.getBallotsIssued(),
+                    election
+            );
+
+            PollingCenterAllocation allocation =
+                    PollingCenterAllocation.builder()
+                            .election(election)
+                            .pollingCenter(center)
+                            .registeredVoters(item.getRegisteredVoters())
+                            .ballotsIssued(item.getBallotsIssued())
+                            .build();
+
+            allocations.add(allocation);
+        }
+
+        return repository.saveAll(allocations)
+                .stream()
+                .map(mapper::toDTO)
+                .toList();
     }
 
 

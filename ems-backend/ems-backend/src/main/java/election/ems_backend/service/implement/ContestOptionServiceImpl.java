@@ -268,79 +268,204 @@ public class ContestOptionServiceImpl implements ContestOptionService {
         return items.stream().map(contestOptionMapper::toDto).collect(Collectors.toList());
     }
 
+
     @Override
     public List<ContestOptionDto> bulkAssignCandidates(ContestCandidateBulkAssignRequest req) {
+
         authz.requireNecAdminOrPlatformAdmin();
 
         Contest contest = contestRepo.findById(req.getContestId())
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Contest not found"));
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                NOT_FOUND,
+                                "Contest not found"
+                        )
+                );
 
         if (contest.getStatus() == ContestStatus.LOCKED) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Contest is LOCKED. Options cannot be modified.");
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Contest is LOCKED. Options cannot be modified."
+            );
         }
 
-        // Clean input
-        List<UUID> incoming = req.getElectIds().stream()
+        /*
+         * ContestOption.election_id is NOT optional.
+         *
+         * Every option must belong to the same election as its contest.
+         */
+        UUID electionId = contest.getElectionId();
+
+        if (electionId == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Contest is not associated with an election."
+            );
+        }
+
+
+        // ------------------------------------------------------------
+        // Clean incoming ElectionCandidate IDs
+        // ------------------------------------------------------------
+
+        List<UUID> incoming = req.getElectIds()
+                .stream()
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
 
         if (incoming.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "candidateIds cannot be empty.");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "electIds cannot be empty."
+            );
         }
 
-        // Get existing candidate options for this contest
-        List<ContestOption> existingCandidateOptions =
-                optionRepo.findByContestIdAndOptionType(req.getContestId(), ContestOptionType.CANDIDATE);
 
-        Map<UUID, ContestOption> byCandidateId = existingCandidateOptions.stream()
-                .filter(o -> o.getElectId() != null)
-                .collect(Collectors.toMap(ContestOption::getElectId, x -> x, (a, b) -> a));
+        // ------------------------------------------------------------
+        // Get existing candidate options for this contest
+        // ------------------------------------------------------------
+
+        List<ContestOption> existingCandidateOptions =
+                optionRepo.findByContestIdAndOptionType(
+                        req.getContestId(),
+                        ContestOptionType.CANDIDATE
+                );
+
+
+        Map<UUID, ContestOption> byElectId =
+                existingCandidateOptions.stream()
+                        .filter(o -> o.getElectId() != null)
+                        .collect(
+                                Collectors.toMap(
+                                        ContestOption::getElectId,
+                                        o -> o,
+                                        (a, b) -> a
+                                )
+                        );
+
+
+        // ------------------------------------------------------------
+        // Determine next option order
+        // ------------------------------------------------------------
 
         int order = optionRepo.maxOrder(req.getContestId());
+
         List<ContestOption> toSave = new ArrayList<>();
 
-        // Add missing candidates
-        for (UUID candidateId : incoming) {
-            ContestOption found = byCandidateId.get(candidateId);
+
+        // ------------------------------------------------------------
+        // Add missing ElectionCandidates
+        // ------------------------------------------------------------
+
+        for (UUID electId : incoming) {
+
+            ContestOption found = byElectId.get(electId);
+
             if (found != null) {
-                // ensure active if already exists
+
+                /*
+                 * Existing records should already have election_id,
+                 * but repair it if an old row was created without one.
+                 */
+                if (found.getElectionId() == null) {
+                    found.setElectionId(electionId);
+                }
+
                 if (!found.isActive()) {
                     found.setActive(true);
                     toSave.add(found);
                 }
+
                 continue;
             }
 
-            ContestOption o = new ContestOption();
-            o.setContestId(req.getContestId());
-            o.setOptionType(ContestOptionType.CANDIDATE);
-            o.setElectId(candidateId);
-            o.setOptionLabel(null);
-            o.setActive(true);
 
-            o.setOptionOrder(++order);
-            toSave.add(o);
+            ContestOption option = new ContestOption();
+
+            option.setContestId(contest.getContestId());
+
+            /*
+             * IMPORTANT:
+             * This was missing and caused:
+             *
+             * contest_option.election_id (<NULL>)
+             * must match contest.election_id (...)
+             */
+            option.setElectionId(electionId);
+
+            option.setOptionType(
+                    ContestOptionType.CANDIDATE
+            );
+
+            /*
+             * electId references:
+             * election_candidate.elect_id
+             */
+            option.setElectId(electId);
+
+            option.setOptionLabel(null);
+            option.setActive(true);
+
+            option.setOptionOrder(++order);
+
+            toSave.add(option);
         }
 
-        // Replace mode: deactivate candidates not included
+
+        // ------------------------------------------------------------
+        // Replace mode
+        //
+        // Deactivate candidate options that are no longer included.
+        // ------------------------------------------------------------
+
         if (req.isReplace()) {
-            Set<UUID> incomingSet = new HashSet<>(incoming);
-            for (ContestOption o : existingCandidateOptions) {
-                UUID cid = o.getElectId();
-                if (cid != null && !incomingSet.contains(cid) && o.isActive()) {
-                    o.setActive(false);
-                    toSave.add(o);
+
+            Set<UUID> incomingSet =
+                    new HashSet<>(incoming);
+
+            for (ContestOption option :
+                    existingCandidateOptions) {
+
+                UUID electId =
+                        option.getElectId();
+
+                if (electId != null
+                        && !incomingSet.contains(electId)
+                        && option.isActive()) {
+
+                    option.setActive(false);
+
+                    /*
+                     * Preserve/repair election ownership.
+                     */
+                    if (option.getElectionId() == null) {
+                        option.setElectionId(electionId);
+                    }
+
+                    toSave.add(option);
                 }
             }
         }
+
+
+        // ------------------------------------------------------------
+        // Persist
+        // ------------------------------------------------------------
 
         if (!toSave.isEmpty()) {
             optionRepo.saveAll(toSave);
         }
 
-        // Return refreshed list (ordered) for UI
-        return optionRepo.findByContestIdOrderByOptionOrderAsc(req.getContestId())
+
+        // ------------------------------------------------------------
+        // Return refreshed ordered options for UI
+        // ------------------------------------------------------------
+
+        return optionRepo
+                .findByContestIdOrderByOptionOrderAsc(
+                        req.getContestId()
+                )
                 .stream()
                 .map(contestOptionMapper::toDto)
                 .collect(Collectors.toList());
