@@ -1,638 +1,775 @@
-// // src/pages/elections/workspace/tabs/setup/masters/PartiesMasterTab.tsx
+// src/pages/elections/workspace/tabs/setup/masters/PartiesMasterTab.tsx
 
+import { useEffect, useMemo, useState } from "react";
 
-/**
- * PARTY MASTER TAB (party)
- *
- * PURPOSE:
- * - Global master list used when assigning election parties
- *
- * Backend:
- * - GET    /api/parties?q=&page=&size=
- * - POST   /api/parties
- * - PUT    /api/parties/{partyId}
- * - DELETE /api/parties/{partyId}
- */
+import { useNavigate, useParams } from "react-router-dom";
 
-import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, RefreshCw, Search, Trash2, X, AlertCircle, CheckCircle } from "lucide-react";
 
-// ✅ use the same auth store used across your app
+import {
+  AlertCircle,
+  ChevronRight,
+  ImageIcon,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  Users,
+} from "lucide-react";
+
 import { useAuthStore } from "../../../../../../shared/store/authStore";
 
-import {
-  ReadOnlyBanner,
-  PlaceholderNote,
-  Badge,
-} from "../../../../shared/elections-ui";
+import { ReadOnlyBanner, Badge } from "../../../../shared/elections-ui";
 
 import {
-  createParty,
   deleteParty,
   searchParties,
-  updateParty,
   type PartyDto,
 } from "../../../../../../shared/services/partyService";
 
-/** ============ HELPERS ============ */
-function safeStr(v: any) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
+import {
+  fetchFileBlob,
+  findCurrentPhoto,
+  listEntityFiles,
+} from "../../../../../../shared/services/fileUploadService";
 
-function normalizeName(v: string) {
-  return v.trim().replace(/\s+/g, " ");
-}
+// ============================================================================
+// HELPERS
+// ============================================================================
 
-function normalizeAbbrev(v: string) {
-  return v.trim().replace(/\s+/g, "").toUpperCase();
-}
-
-function friendlySaveError(err: any): string {
-  const msg =
-    safeStr(err?.response?.data?.message) ||
-    safeStr(err?.response?.data?.error) ||
-    safeStr(err?.message) ||
-    "Failed to save party.";
-
-  const looksDup = /duplicate|unique|already exists|constraint/i.test(msg);
-  if (looksDup) {
-    return "Party already exists (duplicate name or abbreviation). Please choose a different one.";
-  }
-  return msg;
-}
-
-function fmtDate(v: any): string {
-  if (!v) return "";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return safeStr(v);
-  return d.toLocaleString();
-}
-
-/** Compact table (reduced row padding) */
-function CompactTable(props: { columns: string[]; rows: React.ReactNode[][] }) {
-  const { columns, rows } = props;
+function friendlyError(error: any) {
   return (
-    <div className="w-full overflow-auto rounded-xl border border-slate-200 bg-white">
-      <table className="w-full border-collapse text-base">
-        <thead>
-          <tr className="bg-slate-50">
-            {columns.map((c) => (
-              <th
-                key={c}
-                className="text-left px-3 py-1.5 text-base font-extrabold text-slate-600 border-b border-slate-200"
-              >
-                {c}
-              </th>
-            ))}
-          </tr>
-        </thead>
-
-        <tbody>
-          {rows.map((r, idx) => (
-            <tr key={idx} className="border-b border-slate-100 last:border-b-0">
-              {r.map((cell, j) => (
-                <td key={j} className="px-3 py-1.5 align-top text-slate-800">
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    error?.response?.data?.message ??
+    error?.response?.data?.error ??
+    error?.message ??
+    "Something went wrong."
   );
 }
 
-/** ============ MAIN COMPONENT ============ */
+function formatDate(value: string | null | undefined) {
+  if (!value) {
+    return "—";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString();
+}
+
+// ============================================================================
+// COMPONENT
+// ============================================================================
+
 export default function PartiesMasterTab() {
-  const qc = useQueryClient();
+  const { electionId } = useParams<{
+    electionId: string;
+  }>();
 
-  // ✅ consistent permission source
-  const dashboardMode = useAuthStore((s) => s.dashboardMode);
-  const canEdit = dashboardMode === "NEC" || dashboardMode === "SYSTEM";
+  const navigate = useNavigate();
 
-  const size = 20;
+  const queryClient = useQueryClient();
+
+  // ==========================================================================
+  // ACCESS
+  // ==========================================================================
+
+  const dashboardMode = useAuthStore((state) => state.dashboardMode);
+
+  const currentOrgId = useAuthStore((state) => state.currentOrgId);
+
+  const isSystemAdmin = useAuthStore((state) => state.isSystemAdmin());
+
+  const canEdit =
+    dashboardMode === "SYSTEM" || dashboardMode === "NEC" || isSystemAdmin;
+
+  // ==========================================================================
+  // STATE
+  // ==========================================================================
+
+  const [search, setSearch] = useState("");
+
   const [page, setPage] = useState(0);
 
-  // filters
-  const [q, setQ] = useState("");
+  const [selectedParty, setSelectedParty] = useState<PartyDto | null>(null);
 
-  // modal
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<PartyDto | null>(null);
-  const [touched, setTouched] = useState(false);
+  const [selectedLogoSrc, setSelectedLogoSrc] = useState<string | null>(null);
 
-  // form fields
-  const [partyName, setPartyName] = useState("");
-  const [abbreviation, setAbbreviation] = useState("");
-  const [logoUrl, setLogoUrl] = useState("");
+  const size = 20;
 
-  /** ============ QUERIES ============ */
-  const partiesQ = useQuery({
-    queryKey: ["party-master", page, q],
-    queryFn: () => searchParties({ page, size, q: q.trim() || undefined }),
+  // ==========================================================================
+  // PARTY QUERY
+  // ==========================================================================
+
+  const partiesQuery = useQuery({
+    queryKey: ["party-master", page, search],
+
+    queryFn: () =>
+      searchParties({
+        page,
+
+        size,
+
+        q: search.trim() || undefined,
+      }),
+
     staleTime: 10_000,
+
     retry: 1,
   });
 
-  const items = useMemo(() => partiesQ.data?.items ?? [], [partiesQ.data]);
-  const totalPages = Math.max(1, partiesQ.data?.totalPages ?? 1);
+  const parties = useMemo(
+    () => partiesQuery.data?.items ?? [],
 
-  /** ============ HANDLERS (BEFORE MUTATIONS) ============ */
+    [partiesQuery.data],
+  );
+
+  const totalPages = Math.max(
+    1,
+
+    partiesQuery.data?.totalPages ?? 1,
+  );
+
+  // ==========================================================================
+  // SELECTED PARTY FILES
+  // ==========================================================================
+
+  const selectedFilesQuery = useQuery({
+    enabled: Boolean(selectedParty && currentOrgId),
+
+    queryKey: ["file-uploads", "party", selectedParty?.partyId, currentOrgId],
+
+    queryFn: () =>
+      listEntityFiles({
+        orgId: currentOrgId!,
+
+        relatedTable: "party",
+
+        relatedId: selectedParty!.partyId,
+      }),
+
+    staleTime: 10_000,
+
+    retry: 1,
+  });
+
+  const selectedPhoto = useMemo(
+    () =>
+      findCurrentPhoto(
+        selectedFilesQuery.data,
+
+        selectedParty?.logoUrl ?? null,
+      ),
+
+    [selectedFilesQuery.data, selectedParty?.logoUrl],
+  );
+
+  // ==========================================================================
+  // AUTHENTICATED LOGO CONTENT
+  // ==========================================================================
+
+  const selectedLogoQuery = useQuery({
+    enabled: Boolean(selectedPhoto?.fileId),
+
+    queryKey: ["file-content", selectedPhoto?.fileId],
+
+    queryFn: () => fetchFileBlob(selectedPhoto!.fileId),
+
+    staleTime: 60_000,
+
+    retry: 1,
+  });
+
+  useEffect(() => {
+    setSelectedLogoSrc(null);
+
+    if (!selectedLogoQuery.data) {
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(selectedLogoQuery.data);
+
+    setSelectedLogoSrc(objectUrl);
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [selectedLogoQuery.data]);
+
+  // ==========================================================================
+  // REFRESH
+  // ==========================================================================
+
   const refreshNow = async () => {
-    await qc.invalidateQueries({ queryKey: ["party-master"] });
-    await partiesQ.refetch();
+    await queryClient.invalidateQueries({
+      queryKey: ["party-master"],
+    });
+
+    await queryClient.invalidateQueries({
+      queryKey: ["file-uploads", "party"],
+    });
+
+    await queryClient.invalidateQueries({
+      queryKey: ["file-content"],
+    });
+
+    await partiesQuery.refetch();
+
+    if (selectedParty && currentOrgId) {
+      await selectedFilesQuery.refetch();
+    }
   };
+
+  // ==========================================================================
+  // DELETE
+  // ==========================================================================
+
+  const deleteMutation = useMutation({
+    mutationFn: async (party: PartyDto) => deleteParty(party.partyId),
+
+    onSuccess: async (_, deleted) => {
+      if (selectedParty?.partyId === deleted.partyId) {
+        setSelectedParty(null);
+      }
+
+      await refreshNow();
+    },
+  });
+
+  // ==========================================================================
+  // NAVIGATION
+  // ==========================================================================
 
   const openCreate = () => {
-    setEditing(null);
-    setPartyName("");
-    setAbbreviation("");
-    setLogoUrl("");
-    setTouched(false);
-    setOpen(true);
+    if (!electionId) {
+      return;
+    }
+
+    navigate(`/elections/${electionId}/setup/master-parties/new`);
   };
 
-  const openEdit = (p: PartyDto) => {
-    setEditing(p);
-    setPartyName(safeStr(p.partyName));
-    setAbbreviation(safeStr(p.abbreviation));
-    setLogoUrl(safeStr(p.logoUrl));
-    setTouched(false);
-    setOpen(true);
+  const openEdit = (party: PartyDto) => {
+    if (!electionId) {
+      return;
+    }
+
+    navigate(
+      `/elections/${electionId}/setup/master-parties/${party.partyId}/edit`,
+
+      {
+        state: {
+          party,
+        },
+      },
+    );
   };
 
-  /** ============ MUTATIONS ============ */
-  const createM = useMutation({
-    mutationFn: async () => {
-      const name = normalizeName(partyName);
-      const abbr = normalizeAbbrev(abbreviation);
+  const removeParty = (party: PartyDto) => {
+    if (!canEdit) {
+      return;
+    }
 
-      if (!name) throw new Error("Party name is required.");
-      if (!abbr) throw new Error("Abbreviation is required.");
+    const confirmed = window.confirm(
+      `Delete party "${party.partyName}" (${party.abbreviation})?\n\nThis deletes the global Party Master record.`,
+    );
 
-      return createParty({
-        partyName: name,
-        abbreviation: abbr,
-        logoUrl: logoUrl.trim() || null,
-      });
-    },
-    onSuccess: async () => {
-      setOpen(false);
-      setEditing(null);
-      setPartyName("");
-      setAbbreviation("");
-      setLogoUrl("");
-      setTouched(false);
-      await refreshNow();
-    },
-  });
-
-  const updateM = useMutation({
-    mutationFn: async () => {
-      if (!editing) throw new Error("No party selected.");
-
-      const name = normalizeName(partyName);
-      const abbr = normalizeAbbrev(abbreviation);
-
-      if (!name) throw new Error("Party name is required.");
-      if (!abbr) throw new Error("Abbreviation is required.");
-
-      return updateParty(editing.partyId, {
-        partyName: name,
-        abbreviation: abbr,
-        logoUrl: logoUrl.trim() || null,
-      });
-    },
-    onSuccess: async () => {
-      setOpen(false);
-      setEditing(null);
-      setPartyName("");
-      setAbbreviation("");
-      setLogoUrl("");
-      setTouched(false);
-      await refreshNow();
-    },
-  });
-
-  const deleteM = useMutation({
-    mutationFn: async (partyId: string) => deleteParty(partyId),
-    onSuccess: refreshNow,
-  });
-
-  /** ============ STATE ============ */
-  const saving = createM.isPending || updateM.isPending;
-
-  const save = () => {
-    setTouched(true);
-    if (!canEdit) return;
-    if (editing) updateM.mutate();
-    else createM.mutate();
+    if (confirmed) {
+      deleteMutation.mutate(party);
+    }
   };
 
-  const partyNameValid = normalizeName(partyName);
-  const abbreviationValid = normalizeAbbrev(abbreviation);
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
 
-  /** ============ TABLE ROWS ============ */
-  const rows = useMemo(() => {
-    return items.map((p) => {
-      const actions = (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={!canEdit}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-600 hover:bg-green-50 transition ${
-              !canEdit ? "opacity-60" : ""
-            }`}
-            title={canEdit ? "Edit party (SYSTEM/NEC)" : "Read-only (Tenant)"}
-            onClick={() => openEdit(p)}
-          >
-            <Pencil size={20} />
-          </button>
-
-          <button
-            type="button"
-            disabled={!canEdit || deleteM.isPending}
-            className={`inline-flex items-center gap-2 px-2.5 ml-3 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 hover:bg-red-50 transition ${
-              !canEdit || deleteM.isPending ? "opacity-60" : ""
-            }`}
-            title={canEdit ? "Delete party (SYSTEM/NEC)" : "Read-only (Tenant)"}
-            onClick={() => {
-              const ok = window.confirm(
-                `Delete party "${p.partyName}" (${p.abbreviation})?\nThis is permanent.`
-              );
-              if (ok) deleteM.mutate(p.partyId);
-            }}
-          >
-            <Trash2 size={20} className="text-red-600" />
-          </button>
-        </div>
-      );
-
-      return [
-        <div key={p.partyId} className="grid gap-0.5">
-          <div>{p.partyName}</div>
-        </div>,
-        <span key="abbr" className="text-slate-700">
-          {p.abbreviation}
-        </span>,
-        p.logoUrl ? (
-          <a
-            key="logo"
-            href={p.logoUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-base font-bold text-slate-700 underline underline-offset-2"
-          >
-            View
-          </a>
-        ) : (
-          <span key="no" className="text-base text-slate-400">
-            —
-          </span>
-        ),
-        <span key="created" className="text-base text-slate-600">
-          {fmtDate(p.dateCreated)}
-        </span>,
-        actions,
-      ];
-    });
-  }, [items, canEdit, deleteM.isPending]);
-
-  /** ============ RENDER ============ */
   return (
-    <div className="flex flex-col gap-3">
-      {!canEdit ? (
-        <ReadOnlyBanner
-          reason="Global masters are managed by NEC/System Admin. Tenants can view read-only."
-          sources={["party"]}
-        />
-      ) : null}
+    <div className="w-full">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-3">
+        {!canEdit && (
+          <ReadOnlyBanner
+            reason="Global Party Master records are managed by NEC/System Admin."
+            sources={["party"]}
+          />
+        )}
 
-      {/* ============ HEADER ACTIONS ============ */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative">
-            <Search
-              size={16}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-            <input
-              value={q}
-              onChange={(e) => {
-                setQ(e.target.value);
-                setPage(0);
-              }}
-              placeholder="Search party name or abbreviation…"
-              className="pl-8 pr-3 py-2 rounded-lg border border-slate-200 bg-white min-w-260px outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+        {/* ================================================================
+            HEADER
+        ================================================================ */}
 
-          <button
-            type="button"
-            onClick={() => {
-              setQ("");
-              setPage(0);
-            }}
-            className="px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition"
-            title="Clear search"
-          >
-            Clear
-          </button>
-        </div>
+        <section className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
+          <div className="grid grid-cols-[minmax(0,1fr)_104px] gap-3 sm:flex sm:items-center sm:justify-between">
+            {/* LEFT */}
 
-        <div className="flex items-center gap-2">
-          {canEdit ? (
-            <button
-              type="button"
-              onClick={openCreate}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition shadow-sm"
-              title="Create party (SYSTEM/NEC)"
-            >
-              <Plus size={16} />
-              Add New
-            </button>
-          ) : (
-            <Badge text="Read-only (Tenant)" />
-          )}
-
-          <button
-            type="button"
-            onClick={refreshNow}
-            disabled={partiesQ.isFetching}
-            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
-              partiesQ.isFetching ? "opacity-60" : ""
-            }`}
-            title="Refresh parties"
-          >
-            <RefreshCw size={16} />
-            Refresh
-          </button>
-        </div>
-      </div>
-
-      {/* ============ STATUS ============ */}
-      {partiesQ.isLoading ? (
-        <div className="p-2 text-slate-600">Loading parties…</div>
-      ) : partiesQ.isError ? (
-        <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700">
-          {(partiesQ.error as any)?.message ?? "Failed to load parties."}
-        </div>
-      ) : null}
-
-      {/* ============ TABLE ============ */}
-      <CompactTable
-        columns={["Party", "Abbrev", "Logo", "Created", "Actions"]}
-        rows={
-          rows.length
-            ? rows
-            : [
-                [
-                  <span key="empty" className="text-slate-500">
-                    No parties found.
-                  </span>,
-                  "",
-                  "",
-                  "",
-                  "",
-                ],
-              ]
-        }
-      />
-
-      {/* ============ PAGINATION ============ */}
-      <div className="flex justify-between items-center gap-2">
-        <div className="text-sm text-slate-500">
-          Page <b>{page + 1}</b> of <b>{totalPages}</b>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            disabled={page <= 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            className={`px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
-              page <= 0 ? "opacity-50 cursor-not-allowed" : ""
-            }`}
-            title="Previous page"
-          >
-            Prev
-          </button>
-          <button
-            type="button"
-            disabled={page >= totalPages - 1}
-            onClick={() => setPage((p) => p + 1)}
-            className={`px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
-              page >= totalPages - 1 ? "opacity-50 cursor-not-allowed" : ""
-            }`}
-            title="Next page"
-          >
-            Next
-          </button>
-        </div>
-      </div>
-
-      {/* ============ NOTES ============ */}
-      <div className="mt-1">
-        <PlaceholderNote
-          title="Notes"
-          bullets={[
-            "SYSTEM/NEC can create/edit/delete party master (global).",
-            "Search is server-side via ?q= and paged.",
-          ]}
-        />
-      </div>
-
-      {/* ============ CREATE/EDIT MODAL (ENHANCED UX) ============ */}
-      {open ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm"
-          onClick={() => {
-            if (saving) return;
-            setOpen(false);
-          }}
-        >
-          <div
-            className="w-full max-w-2xl bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* ============ HEADER WITH BLUE GRADIENT ============ */}
-            <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400 px-4 sm:px-8 py-6 sm:py-8 border-b border-blue-600 flex items-start justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <h2 className="text-2xl sm:text-3xl font-bold text-white">
-                  {editing ? "✏️ Edit Party" : "➕ Create Party"}
-                </h2>
-                <p className="text-sm sm:text-base font-semibold text-blue-100 mt-2">
-                  {editing
-                    ? `Update "${safeStr(editing.partyName)}" master data.`
-                    : "Create a new global party for election assignments."}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (saving) return;
-                  setOpen(false);
-                }}
-                disabled={saving}
-                className="flex-shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border-2 border-blue-300 hover:bg-blue-700 bg-blue-600 transition text-white disabled:opacity-50"
-                title="Close modal"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* ============ CONTENT ============ */}
-            <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 sm:py-7 space-y-5 sm:space-y-6">
-              {/* Party Name Field */}
-              <div>
-                <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
-                  Party Name <span className="text-red-600">*</span>
-                </label>
-                <input
-                  value={partyName}
-                  onChange={(e) => {
-                    setPartyName(e.target.value);
-                    setTouched(true);
-                  }}
-                  placeholder="e.g., Unity Party"
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                />
-                {touched && !partyNameValid && (
-                  <div className="flex items-center gap-2 mt-2 text-sm text-red-600 font-semibold">
-                    <AlertCircle size={16} />
-                    Party name is required
-                  </div>
-                )}
-                {touched && partyNameValid && (
-                  <div className="flex items-center gap-2 mt-2 text-sm text-green-600 font-semibold">
-                    <CheckCircle size={16} />
-                    Valid party name
-                  </div>
-                )}
-              </div>
-
-              {/* Two-column layout: Abbreviation + Logo */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                {/* Abbreviation Field */}
-                <div>
-                  <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
-                    Abbreviation <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    value={abbreviation}
-                    onChange={(e) => {
-                      setAbbreviation(e.target.value);
-                      setTouched(true);
-                    }}
-                    placeholder="e.g., UP"
-                    maxLength={10}
-                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                  />
-                  {touched && !abbreviationValid && (
-                    <div className="flex items-center gap-2 mt-2 text-sm text-red-600 font-semibold">
-                      <AlertCircle size={16} />
-                      Abbreviation is required
-                    </div>
-                  )}
-                  {touched && abbreviationValid && (
-                    <div className="flex items-center gap-2 mt-2 text-sm text-green-600 font-semibold">
-                      <CheckCircle size={16} />
-                      {abbreviationValid.length}/10 chars
-                    </div>
-                  )}
+            <div className="min-w-0">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
+                  <Users size={17} />
                 </div>
 
-                {/* Logo URL Field */}
-                <div>
-                  <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
-                    Logo URL <span className="text-slate-400">(optional)</span>
-                  </label>
-                  <input
-                    value={logoUrl}
-                    onChange={(e) => setLogoUrl(e.target.value)}
-                    placeholder="https://example.com/logo.png"
-                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                  />
-                  <p className="text-xs sm:text-sm text-slate-500 mt-2">
-                    PNG, JPG, or SVG format recommended (max 2MB)
+                <div className="min-w-0">
+                  <h2 className="text-base font-bold text-slate-900 sm:text-lg">
+                    Party Master
+                  </h2>
+
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Manage master parties and their logos.
                   </p>
                 </div>
               </div>
 
-              {/* Error Message */}
-              {(createM.isError || updateM.isError) && (
-                <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-3 sm:p-4">
-                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
-                  <div className="text-sm text-red-700 font-semibold">
-                    {createM.isError
-                      ? friendlySaveError(createM.error)
-                      : friendlySaveError(updateM.error)}
-                  </div>
-                </div>
-              )}
+              {/* MOBILE ACTIONS */}
 
-              {/* Help Text */}
-              <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 sm:p-4">
-                <p className="text-sm text-blue-800">
-                  <strong className="font-bold">💡 Tip:</strong> Party names and abbreviations must be unique across the system.
-                  {editing && (
-                    <>
-                      {" "}
-                      Changing these fields may affect existing election assignments.
-                    </>
-                  )}
-                </p>
+              <div className="mt-3 flex flex-wrap gap-2 sm:hidden">
+                {canEdit ? (
+                  <button
+                    type="button"
+                    onClick={openCreate}
+                    className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white hover:bg-blue-700"
+                  >
+                    <Plus size={15} />
+                    Add Party
+                  </button>
+                ) : (
+                  <Badge text="Read-only" />
+                )}
+
+                <button
+                  type="button"
+                  onClick={refreshNow}
+                  disabled={partiesQuery.isFetching}
+                  className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  <RefreshCw
+                    size={15}
+                    className={partiesQuery.isFetching ? "animate-spin" : ""}
+                  />
+                  Refresh
+                </button>
               </div>
             </div>
 
-            {/* ============ FOOTER ============ */}
-            <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-8 py-4 sm:py-5 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  if (saving) return;
-                  setOpen(false);
-                }}
-                disabled={saving}
-                className="px-4 sm:px-6 h-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-base font-semibold hover:bg-slate-50 transition disabled:opacity-50 sm:min-w-fit"
+            {/* ============================================================
+                MOBILE LOGO PREVIEW
+            ============================================================ */}
+
+            <div className="sm:hidden">
+              <div
+                className={`flex h-[92px] w-[104px] items-center justify-center overflow-hidden rounded-xl border ${
+                  selectedParty
+                    ? "border-violet-200 bg-violet-50/30"
+                    : "border-slate-200 bg-slate-50"
+                }`}
               >
-                Cancel
-              </button>
+                {!selectedParty ? (
+                  <div className="text-center text-slate-400">
+                    <ImageIcon size={22} className="mx-auto" />
+
+                    <div className="mt-1 text-[9px] font-semibold">
+                      Select party
+                    </div>
+                  </div>
+                ) : selectedFilesQuery.isLoading ||
+                  selectedLogoQuery.isLoading ? (
+                  <RefreshCw
+                    size={18}
+                    className="animate-spin text-slate-400"
+                  />
+                ) : selectedLogoQuery.isError ? (
+                  <div className="text-center text-red-400">
+                    <AlertCircle size={20} className="mx-auto" />
+
+                    <div className="mt-1 text-[9px] font-semibold">Error</div>
+                  </div>
+                ) : selectedLogoSrc ? (
+                  <img
+                    src={selectedLogoSrc}
+                    alt={`${selectedParty.partyName ?? "Party"} logo`}
+                    className="h-full w-full object-contain p-2"
+                  />
+                ) : (
+                  <div className="text-center text-slate-400">
+                    <ImageIcon size={22} className="mx-auto" />
+
+                    <div className="mt-1 text-[9px] font-semibold">No logo</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ============================================================
+                DESKTOP ACTIONS
+            ============================================================ */}
+
+            <div className="hidden flex-wrap gap-2 sm:flex">
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={openCreate}
+                  className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white hover:bg-blue-700 sm:text-sm"
+                >
+                  <Plus size={15} />
+                  Add Party
+                </button>
+              ) : (
+                <Badge text="Read-only" />
+              )}
 
               <button
                 type="button"
-                onClick={save}
-                disabled={!canEdit || saving || !partyNameValid || !abbreviationValid}
-                className={`px-4 sm:px-6 h-10 rounded-lg text-base font-semibold text-white transition flex items-center justify-center gap-2 sm:min-w-fit ${
-                  !canEdit || saving || !partyNameValid || !abbreviationValid
-                    ? "bg-slate-300 cursor-not-allowed opacity-60"
-                    : "bg-blue-600 hover:bg-blue-700 shadow-sm"
-                }`}
-                title={canEdit ? "Save party" : "Read-only (Tenant)"}
+                onClick={refreshNow}
+                disabled={partiesQuery.isFetching}
+                className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
               >
-                {saving ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span className="hidden sm:inline">Saving…</span>
-                  </>
-                ) : (
-                  <>
-                    <Plus size={18} />
-                    <span className="hidden sm:inline">{editing ? "Update Party" : "Create Party"}</span>
-                    <span className="sm:hidden">{editing ? "Update" : "Create"}</span>
-                  </>
-                )}
+                <RefreshCw
+                  size={15}
+                  className={partiesQuery.isFetching ? "animate-spin" : ""}
+                />
+                Refresh
               </button>
             </div>
           </div>
+        </section>
+
+        {/* ================================================================
+            SEARCH
+        ================================================================ */}
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-2.5">
+          <div className="flex gap-2">
+            <div className="relative min-w-0 flex-1">
+              <Search
+                size={15}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+
+              <input
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+
+                  setPage(0);
+                }}
+                placeholder="Search party name or abbreviation..."
+                className="min-h-9 w-full rounded-lg border border-slate-300 py-1.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+
+                setPage(0);
+              }}
+              className="min-h-9 shrink-0 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Clear
+            </button>
+          </div>
+        </section>
+
+        {/* ================================================================
+            ERROR
+        ================================================================ */}
+
+        {partiesQuery.isError && (
+          <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
+            <AlertCircle size={17} className="mt-0.5 shrink-0" />
+
+            {friendlyError(partiesQuery.error)}
+          </div>
+        )}
+
+        {/* ================================================================
+            WORKSPACE
+        ================================================================ */}
+
+        <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_270px]">
+          {/* ==============================================================
+              PARTY LIST
+          ============================================================== */}
+
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            {/* DESKTOP HEADER */}
+
+            <div className="hidden grid-cols-[minmax(220px,1fr)_80px_145px_145px_125px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500 md:grid">
+              <div>Party</div>
+
+              <div>Abbrev</div>
+
+              <div>Date Created</div>
+
+              <div>Date Updated</div>
+
+              <div className="text-right">Actions</div>
+            </div>
+
+            {/* LOADING */}
+
+            {partiesQuery.isLoading ? (
+              <div className="px-4 py-10 text-center text-sm text-slate-500">
+                <RefreshCw
+                  size={20}
+                  className="mx-auto animate-spin text-blue-600"
+                />
+
+                <div className="mt-2">Loading parties…</div>
+              </div>
+            ) : parties.length === 0 ? (
+              <div className="px-4 py-10 text-center text-sm text-slate-500">
+                <Users size={28} className="mx-auto text-slate-300" />
+
+                <div className="mt-2 font-semibold">No parties found.</div>
+              </div>
+            ) : (
+              parties.map((party) => {
+                const selected = selectedParty?.partyId === party.partyId;
+
+                const deleting =
+                  deleteMutation.isPending &&
+                  deleteMutation.variables?.partyId === party.partyId;
+
+                return (
+                  <div
+                    key={party.partyId}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedParty(party)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        setSelectedParty(party);
+                      }
+                    }}
+                    className={`cursor-pointer border-b border-slate-100 px-3 py-2.5 transition last:border-b-0 sm:px-4 ${
+                      selected
+                        ? "bg-violet-50/70 ring-1 ring-inset ring-violet-200"
+                        : "hover:bg-slate-50"
+                    }`}
+                  >
+                    {/* ====================================================
+                          MOBILE
+                      ==================================================== */}
+
+                    <div className="flex items-center gap-2.5 md:hidden">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <div className="truncate text-sm font-bold text-slate-900">
+                            {party.partyName ?? "Unnamed Party"}
+                          </div>
+
+                          {party.logoUrl && (
+                            <ImageIcon
+                              size={11}
+                              className="shrink-0 text-violet-600"
+                            />
+                          )}
+                        </div>
+
+                        <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[10px] text-slate-500">
+                          <span className="shrink-0 font-bold text-slate-600">
+                            {party.abbreviation ?? "—"}
+                          </span>
+
+                          <span className="truncate">
+                            Created {formatDate(party.dateCreated)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {canEdit && (
+                        <div
+                          className="flex shrink-0 gap-1"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => openEdit(party)}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700"
+                            aria-label="Edit party"
+                          >
+                            <Pencil size={14} />
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={deleting}
+                            onClick={() => removeParty(party)}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 disabled:opacity-50"
+                            aria-label="Delete party"
+                          >
+                            {deleting ? (
+                              <RefreshCw size={13} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={14} />
+                            )}
+                          </button>
+                        </div>
+                      )}
+
+                      <ChevronRight
+                        size={16}
+                        className="shrink-0 text-slate-400"
+                      />
+                    </div>
+
+                    {/* ====================================================
+                          DESKTOP
+                      ==================================================== */}
+
+                    <div className="hidden grid-cols-[minmax(220px,1fr)_80px_145px_145px_125px] items-center gap-3 md:grid">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className="truncate text-sm font-bold text-slate-900">
+                          {party.partyName ?? "Unnamed Party"}
+                        </div>
+
+                        {party.logoUrl && (
+                          <ImageIcon
+                            size={13}
+                            className="shrink-0 text-violet-600"
+                          />
+                        )}
+                      </div>
+
+                      <div className="text-xs font-semibold text-slate-700">
+                        {party.abbreviation ?? "—"}
+                      </div>
+
+                      <div className="text-[11px] font-medium text-slate-600">
+                        {formatDate(party.dateCreated)}
+                      </div>
+
+                      <div className="text-[11px] font-medium text-slate-600">
+                        {formatDate(party.dateUpdated)}
+                      </div>
+
+                      <div
+                        className="flex justify-end gap-1.5"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {canEdit && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openEdit(party)}
+                              className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
+                            >
+                              <Pencil size={12} />
+                              Edit
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => removeParty(party)}
+                              disabled={deleting}
+                              className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 text-[11px] font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                            >
+                              {deleting ? (
+                                <RefreshCw size={12} className="animate-spin" />
+                              ) : (
+                                <Trash2 size={12} />
+                              )}
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+
+            {/* ================================================================
+                PAGINATION
+            ================================================================ */}
+
+            <div className="flex items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-3 py-2.5 sm:px-4">
+              <div className="text-xs font-semibold text-slate-500">
+                Page <strong className="text-slate-800">{page + 1}</strong> of{" "}
+                <strong className="text-slate-800">{totalPages}</strong>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={page <= 0}
+                  onClick={() => setPage((current) => Math.max(0, current - 1))}
+                  className="min-h-8 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 disabled:opacity-40"
+                >
+                  Previous
+                </button>
+
+                <button
+                  type="button"
+                  disabled={page >= totalPages - 1}
+                  onClick={() => setPage((current) => current + 1)}
+                  className="min-h-8 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </section>
+
+          {/* ==============================================================
+              DESKTOP LOGO PREVIEW
+          ============================================================== */}
+
+          <aside className="hidden xl:block">
+            <section className="sticky top-3 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2.5">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  Party Logo
+                </div>
+              </div>
+
+              <div className="p-3">
+                <div className="flex h-48 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                  {!selectedParty ? (
+                    <div className="text-center text-slate-400">
+                      <ImageIcon size={30} className="mx-auto" />
+
+                      <div className="mt-2 text-xs font-semibold">
+                        Select a party
+                      </div>
+                    </div>
+                  ) : selectedFilesQuery.isLoading ||
+                    selectedLogoQuery.isLoading ? (
+                    <RefreshCw
+                      size={22}
+                      className="animate-spin text-slate-400"
+                    />
+                  ) : selectedLogoQuery.isError ? (
+                    <div className="px-3 text-center text-red-500">
+                      <AlertCircle size={26} className="mx-auto" />
+
+                      <div className="mt-2 text-xs font-semibold">
+                        Unable to load logo
+                      </div>
+                    </div>
+                  ) : selectedLogoSrc ? (
+                    <img
+                      src={selectedLogoSrc}
+                      alt={`${selectedParty.partyName ?? "Party"} logo`}
+                      className="h-full w-full object-contain p-3"
+                    />
+                  ) : (
+                    <div className="text-center text-slate-400">
+                      <ImageIcon size={30} className="mx-auto" />
+
+                      <div className="mt-2 text-xs font-semibold">No logo</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          </aside>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
-
-

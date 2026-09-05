@@ -1,945 +1,1295 @@
+// src/pages/elections/workspace/tabs/allocation/PollingCenterAllocationPage.tsx
 
-// src/pages/elections/workspace/tabs/allocation/pollingCenterAllocation.tsx
+import { useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-
-import { useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Pencil,
-  Trash2,
-  RefreshCw,
+  Check,
+  ChevronRight,
   FilterX,
   Plus,
-  X,
-  AlertCircle,
+  RefreshCw,
+  Search,
 } from "lucide-react";
 
 import { useAuthStore } from "../../../../../shared/store/authStore";
-import {
-  SimpleTable,
-  PlaceholderNote,
-  Badge,
-} from "../../../shared/elections-ui";
 
 import {
   fetchAllocations,
-  createAllocation,
-  updateAllocation,
-  deleteAllocation,
   type PollingCenterAllocationDto,
-  type PollingCenterAllocationCreateRequest,
-  type PollingCenterAllocationUpdateRequest,
 } from "../../../../../shared/services/pollingCenterAllocationService";
 
 import {
   fetchCounties,
   type CountyDto,
 } from "../../../../../shared/services/countyService";
+
 import {
   fetchDistricts,
   type DistrictDto,
 } from "../../../../../shared/services/districtService";
+
 import {
   fetchPollingCenters,
   type PollingCenterDto,
 } from "../../../../../shared/services/pollingCenterService";
 
-/** ============ HELPERS ============ */
-function safeStr(v: any) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
+function safeText(value: unknown, fallback = "—") {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+
+  return String(value);
 }
 
-function friendlySaveError(err: any): string {
-  return (
-    safeStr(err?.response?.data?.message) ||
-    safeStr(err?.response?.data?.error) ||
-    safeStr(err?.message) ||
-    "Failed to save."
-  );
+function formatNumber(value: number | null | undefined) {
+  if (value === null || value === undefined) {
+    return "—";
+  }
+
+  return new Intl.NumberFormat().format(value);
 }
 
-/** ============ MAIN COMPONENT ============ */
-export default function PollingCenterAllocationsPage() {
+export default function PollingCenterAllocationPage() {
   const { electionId } = useParams<{ electionId: string }>();
 
-  const dashboardMode = useAuthStore((s) => s.dashboardMode);
-  const isSystemAdmin = useAuthStore((s) => s.isSystemAdmin());
+  const navigate = useNavigate();
+
+  const queryClient = useQueryClient();
+
+  // ================================================================
+  // AUTHORIZATION
+  // ================================================================
+
+  const dashboardMode = useAuthStore((state) => state.dashboardMode);
+
+  const isSystemAdmin = useAuthStore((state) => state.isSystemAdmin());
 
   const canEdit =
     dashboardMode === "SYSTEM" || dashboardMode === "NEC" || isSystemAdmin;
 
-  const qc = useQueryClient();
+  // ================================================================
+  // FILTER STATE
+  // ================================================================
+
+  const [countyId, setCountyId] = useState("");
+
+  const [districtId, setDistrictId] = useState("");
+
+  const [centerId, setCenterId] = useState("");
+
+  const [search, setSearch] = useState("");
 
   const [page, setPage] = useState(0);
+
   const size = 20;
 
-  /** ============ FILTERS (TABLE) ============ */
-  const [fCountyId, setFCountyId] = useState("");
-  const [fDistrictId, setFDistrictId] = useState("");
-  const [fCenterId, setFCenterId] = useState("");
+  // ================================================================
+  // COUNTIES
+  // ================================================================
 
-  const changeCountyFilter = (next: string) => {
-    setFCountyId(next);
-    setFDistrictId("");
-    setFCenterId("");
-    setPage(0);
-  };
-
-  const changeDistrictFilter = (next: string) => {
-    setFDistrictId(next);
-    setFCenterId("");
-    setPage(0);
-  };
-
-  const changeCenterFilter = (next: string) => {
-    setFCenterId(next);
-    setPage(0);
-  };
-
-  /** ============ LOOKUP QUERIES ============ */
   const countiesQ = useQuery({
-    queryKey: ["counties", "master"],
+    queryKey: ["counties", "allocation-page"],
+
     queryFn: async () => {
-      const page = await fetchCounties({ page: 0, size: 500 });
-      return page.items as CountyDto[];
+      const response = await fetchCounties({
+        page: 0,
+        size: 500,
+      });
+
+      return response.items as CountyDto[];
     },
+
     staleTime: 60_000,
     retry: 1,
   });
 
-  const districtsFilterQ = useQuery({
-    enabled: Boolean(fCountyId),
-    queryKey: ["districts", "master", "filter", fCountyId],
+  // ================================================================
+  // DISTRICTS
+  // ================================================================
+
+  const districtsQ = useQuery({
+    enabled: Boolean(countyId),
+
+    queryKey: ["districts", "allocation-page", countyId],
+
     queryFn: async () => {
-      const page = await fetchDistricts({
+      const response = await fetchDistricts({
         page: 0,
         size: 2000,
-        countyId: fCountyId,
+        countyId,
       });
-      return page.items as DistrictDto[];
+
+      return response.items as DistrictDto[];
     },
+
     staleTime: 60_000,
     retry: 1,
   });
 
-  const centersFilterQ = useQuery({
-    enabled: Boolean(fCountyId) && Boolean(fDistrictId),
-    queryKey: ["polling-centers", "master", "filter", fCountyId, fDistrictId],
+  // ================================================================
+  // CENTERS
+  // ================================================================
+
+  const centersQ = useQuery({
+    enabled: Boolean(countyId) && Boolean(districtId),
+
+    queryKey: ["polling-centers", "allocation-page", countyId, districtId],
+
     queryFn: async () => {
-      const page = await fetchPollingCenters({
+      const response = await fetchPollingCenters({
         page: 0,
         size: 5000,
-        countyId: fCountyId,
-        districtId: fDistrictId,
+        countyId,
+        districtId,
       });
-      return page.items as PollingCenterDto[];
+
+      return response.items as PollingCenterDto[];
     },
+
     staleTime: 60_000,
     retry: 1,
   });
 
-  /** ============ ALLOCATIONS QUERY ============ */
+  // ================================================================
+  // ALLOCATIONS
+  // ================================================================
+
   const allocationsQ = useQuery({
     enabled: Boolean(electionId),
+
     queryKey: [
       "polling-center-allocations",
       electionId,
       page,
       size,
-      fCountyId,
-      fDistrictId,
-      fCenterId,
+      countyId,
+      districtId,
+      centerId,
     ],
+
     queryFn: () =>
       fetchAllocations({
         electionId: electionId!,
-        countyId: fCountyId || undefined,
-        districtId: fDistrictId || undefined,
-        centerId: fCenterId || undefined,
+        countyId: countyId || undefined,
+        districtId: districtId || undefined,
+        centerId: centerId || undefined,
         page,
         size,
       }),
+
     staleTime: 10_000,
     retry: 1,
   });
 
-  const refreshNow = async () => {
-    if (!electionId) return;
-    await qc.invalidateQueries({
-      queryKey: ["polling-center-allocations", electionId],
-    });
-    await allocationsQ.refetch();
+  // ================================================================
+  // DISPLAY
+  // ================================================================
+
+  const allocations = allocationsQ.data?.items ?? [];
+
+  const normalizedSearch = search.trim().toLowerCase();
+
+  const visibleAllocations =
+    normalizedSearch.length === 0
+      ? allocations
+      : allocations.filter((allocation) => {
+          const text = [
+            allocation.centerName,
+            allocation.centerCode,
+            allocation.countyName,
+            allocation.districtName,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+
+          return text.includes(normalizedSearch);
+        });
+
+  // ================================================================
+  // ACTIONS
+  // ================================================================
+
+  const handleCountyChange = (nextCountyId: string) => {
+    setCountyId(nextCountyId);
+
+    setDistrictId("");
+    setCenterId("");
+    setPage(0);
   };
 
-  /** ============ MUTATIONS ============ */
-  const createM = useMutation({
-    mutationFn: async (req: PollingCenterAllocationCreateRequest) =>
-      createAllocation(req),
-    onSuccess: async () => {
-      setOpenCreate(false);
-      setPage(0);
-      await refreshNow();
-    },
-  });
+  const handleDistrictChange = (nextDistrictId: string) => {
+    setDistrictId(nextDistrictId);
 
-  const updateM = useMutation({
-    mutationFn: async (payload: {
-      id: string;
-      req: PollingCenterAllocationUpdateRequest;
-    }) => updateAllocation(payload.id, payload.req),
-    onSuccess: async () => {
-      setOpenEdit(false);
-      setEditing(null);
-      await refreshNow();
-    },
-  });
+    setCenterId("");
+    setPage(0);
+  };
 
-  const deleteM = useMutation({
-    mutationFn: async (id: string) => deleteAllocation(id),
-    onSuccess: refreshNow,
-  });
+  const clearFilters = () => {
+    setCountyId("");
+    setDistrictId("");
+    setCenterId("");
+    setSearch("");
+    setPage(0);
+  };
 
-  /** ============ CREATE/EDIT MODALS ============ */
-  const [openCreate, setOpenCreate] = useState(false);
-  const [openEdit, setOpenEdit] = useState(false);
-  const [editing, setEditing] = useState<PollingCenterAllocationDto | null>(
-    null
-  );
+  const refresh = async () => {
+    if (!electionId) {
+      return;
+    }
 
-  // Create fields
-  const [cCountyId, setCCountyId] = useState("");
-  const [cDistrictId, setCDistrictId] = useState("");
-  const [cCenterId, setCCenterId] = useState("");
-  const [registeredVoters, setRegisteredVoters] = useState<number | "">("");
-  const [ballotsIssued, setBallotsIssued] = useState<number | "">("");
+    await queryClient.invalidateQueries({
+      queryKey: ["polling-center-allocations", electionId],
+    });
+  };
 
-  const districtsCreateQ = useQuery({
-    enabled: openCreate && Boolean(cCountyId),
-    queryKey: ["districts", "master", "create", cCountyId],
-    queryFn: async () => {
-      const page = await fetchDistricts({
-        page: 0,
-        size: 2000,
-        countyId: cCountyId,
-      });
-      return page.items as DistrictDto[];
-    },
-    staleTime: 60_000,
-    retry: 1,
-  });
+  const goCreate = () => {
+    if (!electionId) {
+      return;
+    }
 
-  const centersCreateQ = useQuery({
-    enabled: openCreate && Boolean(cCountyId) && Boolean(cDistrictId),
-    queryKey: ["polling-centers", "master", "create", cCountyId, cDistrictId],
-    queryFn: async () => {
-      const page = await fetchPollingCenters({
-        page: 0,
-        size: 5000,
-        countyId: cCountyId,
-        districtId: cDistrictId,
-      });
-      return page.items as PollingCenterDto[];
-    },
-    staleTime: 60_000,
-    retry: 1,
-  });
+    navigate(`/elections/${electionId}/allocation/centers/new`);
+  };
 
-  /** ============ STATE ============ */
-  const pageData = allocationsQ.data;
-  const savingCreate = createM.isPending;
-  const savingUpdate = updateM.isPending;
+  const goDetail = (allocationId: string) => {
+    if (!electionId) {
+      return;
+    }
 
-  /** ============ TABLE ROWS ============ */
-  const rows = useMemo(() => {
-    const items = pageData?.items ?? [];
-    if (!items.length) return [["No allocations found.", "", "", "", "", ""]];
+    navigate(`/elections/${electionId}/allocation/centers/${allocationId}`);
+  };
 
-    return items.map((a) => [
-      a.countyName ?? "—",
-      a.districtName ?? "—",
-      `${a.centerCode ?? ""} ${a.centerName ?? ""}`.trim() || "—",
-      String(a.registeredVoters ?? 0),
-      a.ballotsIssued != null ? String(a.ballotsIssued) : "—",
-
-      // Actions
-      <div key={a.allocationId} className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          title={canEdit ? "Edit (SYSTEM/NEC)" : "Read-only"}
-          onClick={() => {
-            setEditing(a);
-            setRegisteredVoters(a.registeredVoters);
-            setBallotsIssued(a.ballotsIssued ?? "");
-            setOpenEdit(true);
-          }}
-          disabled={!canEdit}
-          className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-600 hover:bg-green-50 transition ${
-            !canEdit ? "opacity-60" : ""
-          }`}
-        >
-          <Pencil size={18} />
-        </button>
-
-        <button
-          type="button"
-          title={canEdit ? "Delete (SYSTEM/NEC)" : "Read-only"}
-          onClick={() => {
-            if (!canEdit) return;
-            const ok = window.confirm(
-              `Delete allocation for ${a.centerName}? This is permanent.`
-            );
-            if (ok) deleteM.mutate(a.allocationId);
-          }}
-          disabled={!canEdit || deleteM.isPending}
-          className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 hover:bg-red-50 transition ${
-            !canEdit || deleteM.isPending ? "opacity-60" : ""
-          }`}
-        >
-          <Trash2 size={18} />
-        </button>
-      </div>,
-    ]);
-  }, [pageData, canEdit, deleteM.isPending]);
+  // ================================================================
+  // GUARD
+  // ================================================================
 
   if (!electionId) {
     return (
-      <div className="p-3 rounded-xl border border-slate-200 bg-white">
-        <div className="font-extrabold text-slate-800">
-          Polling Center Allocations
-        </div>
-        <div className="text-sm text-slate-600 mt-1">
-          Missing <b>electionId</b> in route params.
-        </div>
+      <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+        Election ID is missing from the route.
       </div>
     );
   }
 
-  /** ============ RENDER ============ */
   return (
-    <div className="flex flex-col gap-3">
-      {/* ============ HEADER ACTIONS ============ */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div />
-        <div className="flex items-center gap-2">
-          {canEdit ? (
-            <button
-              type="button"
-              onClick={() => {
-                setCCountyId("");
-                setCDistrictId("");
-                setCCenterId("");
-                setRegisteredVoters("");
-                setBallotsIssued("");
-                setOpenCreate(true);
-              }}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition shadow-sm"
+    <div className="w-full">
+      <div
+        className="
+          mx-auto
+          w-full
+          max-w-none
+          px-2
+          sm:px-3
+          lg:px-4
+          xl:px-5
+          2xl:px-6
+        "
+      >
+        <div className="flex flex-col gap-4 pb-6">
+          {/* ========================================================
+              HEADER
+          ======================================================== */}
+
+          <section
+            className="
+              flex flex-col
+              gap-3
+
+              sm:flex-row
+              sm:items-center
+              sm:justify-between
+            "
+          >
+            <div className="min-w-0">
+              <h2
+                className="
+                  text-lg
+                  font-bold
+                  text-slate-900
+
+                  sm:text-xl
+
+                  lg:text-2xl
+                "
+              >
+                Polling Center Allocations
+              </h2>
+
+              <p
+                className="
+                  mt-1
+                  text-sm
+                  text-slate-500
+
+                  lg:text-base
+                "
+              >
+                Manage election allocations by polling center.
+              </p>
+            </div>
+
+            <div
+              className="
+                flex
+                flex-wrap
+                items-center
+                gap-2
+              "
             >
-              <Plus size={16} className="text-red-500" />
-              Center Allocation
-            </button>
-          ) : (
-            <Badge text="Read-only (Tenant)" />
+              <button
+                type="button"
+                onClick={refresh}
+                disabled={allocationsQ.isFetching}
+                className="
+                  inline-flex
+                  min-h-11
+                  items-center
+                  justify-center
+                  gap-2
+                  rounded-lg
+                  border
+                  border-slate-300
+                  bg-white
+                  px-4
+                  text-sm
+                  font-semibold
+                  text-slate-700
+                  transition
+
+                  hover:bg-slate-50
+
+                  disabled:opacity-50
+
+                  lg:text-base
+                "
+              >
+                <RefreshCw
+                  size={18}
+                  className={allocationsQ.isFetching ? "animate-spin" : ""}
+                />
+                Refresh
+              </button>
+
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={goCreate}
+                  className="
+                    inline-flex
+                    min-h-11
+                    items-center
+                    justify-center
+                    gap-2
+                    rounded-lg
+                    bg-blue-700
+                    px-4
+                    text-sm
+                    font-semibold
+                    text-white
+                    transition
+
+                    hover:bg-blue-800
+
+                    lg:text-base
+                  "
+                >
+                  <Plus size={18} />
+                  Allocate
+                </button>
+              )}
+            </div>
+          </section>
+
+          {/* ========================================================
+              FILTERS
+          ======================================================== */}
+
+          <section
+            className="
+              rounded-xl
+              border
+              border-slate-200
+              bg-white
+              p-3
+
+              sm:p-4
+
+              lg:p-5
+            "
+          >
+            <div
+              className="
+                grid
+                grid-cols-1
+                gap-3
+
+                sm:grid-cols-2
+
+                lg:grid-cols-4
+                lg:gap-4
+              "
+            >
+              {/* COUNTY */}
+
+              <div>
+                <label
+                  className="
+                    mb-1.5
+                    block
+                    text-xs
+                    font-semibold
+                    text-slate-600
+
+                    lg:text-sm
+                  "
+                >
+                  County
+                </label>
+
+                <select
+                  value={countyId}
+                  onChange={(event) => handleCountyChange(event.target.value)}
+                  className="
+                    min-h-11
+                    w-full
+                    rounded-lg
+                    border
+                    border-slate-300
+                    bg-white
+                    px-3
+                    text-base
+                    text-slate-900
+                    outline-none
+
+                    focus:border-blue-500
+                    focus:ring-2
+                    focus:ring-blue-100
+                  "
+                >
+                  <option value="">All counties</option>
+
+                  {(countiesQ.data ?? []).map((county) => (
+                    <option key={county.countyId} value={county.countyId}>
+                      {county.countyName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* DISTRICT */}
+
+              <div>
+                <label
+                  className="
+                    mb-1.5
+                    block
+                    text-xs
+                    font-semibold
+                    text-slate-600
+
+                    lg:text-sm
+                  "
+                >
+                  District
+                </label>
+
+                <select
+                  value={districtId}
+                  onChange={(event) => handleDistrictChange(event.target.value)}
+                  disabled={!countyId}
+                  className="
+                    min-h-11
+                    w-full
+                    rounded-lg
+                    border
+                    border-slate-300
+                    bg-white
+                    px-3
+                    text-base
+                    text-slate-900
+                    outline-none
+
+                    focus:border-blue-500
+                    focus:ring-2
+                    focus:ring-blue-100
+
+                    disabled:cursor-not-allowed
+                    disabled:bg-slate-100
+                    disabled:text-slate-400
+                  "
+                >
+                  <option value="">
+                    {countyId ? "All districts" : "Select county first"}
+                  </option>
+
+                  {(districtsQ.data ?? []).map((district) => (
+                    <option
+                      key={district.districtId}
+                      value={district.districtId}
+                    >
+                      {district.districtName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* CENTER */}
+
+              <div>
+                <label
+                  className="
+                    mb-1.5
+                    block
+                    text-xs
+                    font-semibold
+                    text-slate-600
+
+                    lg:text-sm
+                  "
+                >
+                  Center
+                </label>
+
+                <select
+                  value={centerId}
+                  onChange={(event) => {
+                    setCenterId(event.target.value);
+
+                    setPage(0);
+                  }}
+                  disabled={!countyId || !districtId}
+                  className="
+                    min-h-11
+                    w-full
+                    rounded-lg
+                    border
+                    border-slate-300
+                    bg-white
+                    px-3
+                    text-base
+                    text-slate-900
+                    outline-none
+
+                    focus:border-blue-500
+                    focus:ring-2
+                    focus:ring-blue-100
+
+                    disabled:cursor-not-allowed
+                    disabled:bg-slate-100
+                    disabled:text-slate-400
+                  "
+                >
+                  <option value="">
+                    {countyId && districtId
+                      ? "All centers"
+                      : "Select district first"}
+                  </option>
+
+                  {(centersQ.data ?? []).map((center) => (
+                    <option key={center.centerId} value={center.centerId}>
+                      {center.centerName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* CLEAR */}
+
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="
+                    inline-flex
+                    min-h-11
+                    w-full
+                    items-center
+                    justify-center
+                    gap-2
+                    rounded-lg
+                    border
+                    border-slate-300
+                    bg-white
+                    px-4
+                    text-sm
+                    font-semibold
+                    text-slate-700
+                    transition
+
+                    hover:bg-slate-50
+
+                    lg:text-base
+                  "
+                >
+                  <FilterX size={18} />
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            {/* SEARCH */}
+
+            <div className="relative mt-3">
+              <Search
+                size={18}
+                className="
+                  pointer-events-none
+                  absolute
+                  left-3
+                  top-1/2
+                  -translate-y-1/2
+                  text-slate-400
+                "
+              />
+
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search center name, code, district or county..."
+                className="
+                  min-h-11
+                  w-full
+                  rounded-lg
+                  border
+                  border-slate-300
+                  bg-white
+                  py-2
+                  pl-10
+                  pr-3
+                  text-base
+                  text-slate-900
+                  outline-none
+
+                  focus:border-blue-500
+                  focus:ring-2
+                  focus:ring-blue-100
+                "
+              />
+            </div>
+          </section>
+
+          {/* ========================================================
+              COUNT
+          ======================================================== */}
+
+          {!allocationsQ.isLoading && !allocationsQ.isError && (
+            <div className="px-1">
+              <span
+                className="
+                    text-xs
+                    font-medium
+                    text-slate-500
+
+                    lg:text-sm
+                  "
+              >
+                {visibleAllocations.length} allocation
+                {visibleAllocations.length === 1 ? "" : "s"} on this page
+              </span>
+            </div>
           )}
 
-          <button
-            type="button"
-            onClick={refreshNow}
-            disabled={allocationsQ.isFetching}
-            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
-              allocationsQ.isFetching ? "opacity-60" : ""
-            }`}
-          >
-            <RefreshCw size={16} />
-            Refresh
-          </button>
-        </div>
-      </div>
+          {/* ========================================================
+              LOADING
+          ======================================================== */}
 
-      {/* ============ FILTERS CARD ============ */}
-      <div className="w-full rounded-xl border border-slate-200 bg-white px-4 sm:px-6 py-4 sm:py-5">
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 sm:gap-4">
-          {/* County */}
-          <div>
-            <label className="block text-sm font-bold text-slate-900 mb-2">
-              County
-            </label>
-            {countiesQ.isLoading ? (
-              <div className="px-3 py-2.5 rounded-lg border border-slate-300 bg-slate-50 text-slate-600 text-base">
-                Loading…
-              </div>
-            ) : countiesQ.isError ? (
-              <div className="px-3 py-2.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm">
-                {(countiesQ.error as any)?.message ?? "Failed to load"}
-              </div>
-            ) : (
-              <select
-                value={fCountyId}
-                onChange={(e) => changeCountyFilter(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-              >
-                <option value="">All counties</option>
-                {(countiesQ.data ?? []).map((c) => (
-                  <option key={c.countyId} value={c.countyId}>
-                    {c.countyName}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
+          {allocationsQ.isLoading && (
+            <div
+              className="
+                rounded-xl
+                border
+                border-slate-200
+                bg-white
+                p-6
+                text-center
+                text-sm
+                text-slate-500
 
-          {/* District */}
-          <div>
-            <label className="block text-sm font-bold text-slate-900 mb-2">
-              District
-            </label>
-            <select
-              value={fDistrictId}
-              onChange={(e) => changeDistrictFilter(e.target.value)}
-              disabled={!fCountyId}
-              className={`w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition ${
-                !fCountyId ? "opacity-60 cursor-not-allowed" : ""
-              }`}
+                lg:text-base
+              "
             >
-              <option value="">
-                {fCountyId ? "All districts" : "Select county first"}
-              </option>
-              {(districtsFilterQ.data ?? []).map((d) => (
-                <option key={d.districtId} value={d.districtId}>
-                  {d.districtName}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Center */}
-          <div>
-            <label className="block text-sm font-bold text-slate-900 mb-2">
-              Center
-            </label>
-            <select
-              value={fCenterId}
-              onChange={(e) => changeCenterFilter(e.target.value)}
-              disabled={!fCountyId || !fDistrictId}
-              className={`w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition ${
-                !fCountyId || !fDistrictId ? "opacity-60 cursor-not-allowed" : ""
-              }`}
-            >
-              <option value="">
-                {fCountyId && fDistrictId
-                  ? "All centers"
-                  : "Select county + district first"}
-              </option>
-              {(centersFilterQ.data ?? []).map((c) => (
-                <option key={c.centerId} value={c.centerId}>
-                  {c.centerName}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Clear Button */}
-          <div className="flex items-end">
-            <button
-              type="button"
-              onClick={() => {
-                setFCountyId("");
-                setFDistrictId("");
-                setFCenterId("");
-                setPage(0);
-              }}
-              className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-900 text-base font-semibold hover:bg-slate-50 transition"
-            >
-              <FilterX size={16} />
-              Clear
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ============ STATUS ============ */}
-      {allocationsQ.isLoading ? (
-        <div className="p-3 text-slate-600">Loading allocations…</div>
-      ) : allocationsQ.isError ? (
-        <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-red-700">
-          {(allocationsQ.error as any)?.message ??
-            "Failed to load allocations."}
-        </div>
-      ) : null}
-
-      {/* ============ TABLE ============ */}
-      <SimpleTable
-        columns={[
-          "County",
-          "District",
-          "Center",
-          "Registered Voters",
-          "Ballots Issued",
-          "Actions",
-        ]}
-        rows={
-          rows.length ? rows : [["No allocations found.", "", "", "", "", ""]]
-        }
-      />
-
-      {/* ============ PAGINATION ============ */}
-      <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
-        <div className="flex gap-2 items-center">
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            disabled={!pageData || page <= 0 || allocationsQ.isFetching}
-            className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 font-semibold hover:bg-slate-50 transition disabled:opacity-60"
-          >
-            Prev
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              setPage((p) =>
-                pageData && p + 1 < pageData.totalPages ? p + 1 : p
-              )
-            }
-            disabled={
-              !pageData ||
-              pageData.page + 1 >= (pageData?.totalPages ?? 0) ||
-              allocationsQ.isFetching
-            }
-            className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 font-semibold hover:bg-slate-50 transition disabled:opacity-60"
-          >
-            Next
-          </button>
-        </div>
-
-        <div className="text-sm text-slate-600 sm:text-right font-semibold">
-          Page {pageData ? pageData.page + 1 : page + 1} /{" "}
-          {pageData ? pageData.totalPages : "?"}
-        </div>
-      </div>
-
-      {/* ============ NOTES ============ */}
-      <div className="mt-1">
-        <PlaceholderNote
-          title="Notes"
-          bullets={[
-            "SYSTEM + NEC can create/edit/delete center allocations; tenants are read-only.",
-            "Filters: County → District → Center (dependent dropdowns).",
-          ]}
-        />
-      </div>
-
-      {/* ============ CREATE MODAL ============ */}
-      {openCreate ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm"
-          onClick={() => {
-            if (savingCreate) return;
-            setOpenCreate(false);
-          }}
-        >
-          <div
-            className="w-full max-w-4xl bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* HEADER */}
-            <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400 px-4 sm:px-8 py-6 sm:py-8 border-b border-blue-600 flex items-start justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <h2 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-2">
-                  <Plus size={28} className="text-red-500" />
-                  Create Allocation
-                </h2>
-                <p className="text-sm sm:text-base font-semibold text-blue-100 mt-2">
-                  Select County → District → Center, then provide voter data.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (savingCreate) return;
-                  setOpenCreate(false);
-                }}
-                disabled={savingCreate}
-                className="flex-shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border-2 border-blue-300 hover:bg-blue-700 bg-blue-600 transition text-white disabled:opacity-50"
-              >
-                <X size={20} />
-              </button>
+              Loading allocations...
             </div>
+          )}
 
-            {/* CONTENT */}
-            <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 sm:py-7 space-y-5 sm:space-y-6">
-              {/* County, District, Center */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-                <div>
-                  <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
-                    County <span className="text-red-600">*</span>
-                  </label>
-                  <select
-                    value={cCountyId}
-                    onChange={(e) => {
-                      setCCountyId(e.target.value);
-                      setCDistrictId("");
-                      setCCenterId("");
-                    }}
-                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                  >
-                    <option value="">-- Select county --</option>
-                    {(countiesQ.data ?? []).map((c) => (
-                      <option key={c.countyId} value={c.countyId}>
-                        {c.countyName}
-                      </option>
-                    ))}
-                  </select>
+          {/* ========================================================
+              ERROR
+          ======================================================== */}
+
+          {allocationsQ.isError && (
+            <div
+              className="
+                rounded-xl
+                border
+                border-red-200
+                bg-red-50
+                p-4
+                text-sm
+                font-medium
+                text-red-700
+
+                lg:text-base
+              "
+            >
+              {(allocationsQ.error as any)?.message ??
+                "Failed to load polling center allocations."}
+            </div>
+          )}
+
+          {/* ========================================================
+              ALLOCATION LIST
+          ======================================================== */}
+
+          {!allocationsQ.isLoading && !allocationsQ.isError && (
+            <section
+              className="
+                  overflow-hidden
+                  rounded-xl
+                  border
+                  border-slate-200
+                  bg-white
+                "
+            >
+              {visibleAllocations.length === 0 ? (
+                <div
+                  className="
+                      p-8
+                      text-center
+                      text-sm
+                      text-slate-500
+
+                      lg:text-base
+                    "
+                >
+                  No allocations found.
                 </div>
+              ) : (
+                <div
+                  className="
+                      divide-y
+                      divide-slate-200
+                    "
+                >
+                  {visibleAllocations.map(
+                    (allocation: PollingCenterAllocationDto) => (
+                      <button
+                        key={allocation.allocationId}
+                        type="button"
+                        onClick={() => goDetail(allocation.allocationId)}
+                        className="
+                            group
+                            block
+                            w-full
+                            bg-white
+                            px-3
+                            py-3
+                            text-left
+                            transition
 
-                <div>
-                  <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
-                    District <span className="text-red-600">*</span>
-                  </label>
-                  <select
-                    value={cDistrictId}
-                    onChange={(e) => {
-                      setCDistrictId(e.target.value);
-                      setCCenterId("");
-                    }}
-                    disabled={!cCountyId}
-                    className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition ${
-                      !cCountyId ? "opacity-60 cursor-not-allowed" : ""
-                    }`}
-                  >
-                    <option value="">
-                      {cCountyId
-                        ? "-- Select district --"
-                        : "Select county first"}
-                    </option>
-                    {(districtsCreateQ.data ?? []).map((d) => (
-                      <option key={d.districtId} value={d.districtId}>
-                        {d.districtName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                            hover:bg-slate-50
+                            active:bg-slate-100
 
-                <div>
-                  <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
-                    Center <span className="text-red-600">*</span>
-                  </label>
-                  <select
-                    value={cCenterId}
-                    onChange={(e) => setCCenterId(e.target.value)}
-                    disabled={!cCountyId || !cDistrictId}
-                    className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition ${
-                      !cCountyId || !cDistrictId
-                        ? "opacity-60 cursor-not-allowed"
-                        : ""
-                    }`}
-                  >
-                    <option value="">
-                      {cCountyId && cDistrictId
-                        ? "-- Select center --"
-                        : "Select county + district first"}
-                    </option>
-                    {(centersCreateQ.data ?? []).map((c) => (
-                      <option key={c.centerId} value={c.centerId}>
-                        {c.centerName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+                            sm:px-4
+                            sm:py-4
 
-              {/* Registered Voters & Ballots Issued */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                <div>
-                  <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
-                    Registered Voters <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    value={registeredVoters}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === "") setRegisteredVoters("");
-                      else {
-                        const n = Number(v);
-                        if (Number.isNaN(n)) return;
-                        setRegisteredVoters(n);
-                      }
-                    }}
-                    type="number"
-                    min={0}
-                    placeholder="e.g., 5000"
-                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                  />
-                </div>
+                            lg:px-6
+                            lg:py-5
 
-                <div>
-                  <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
-                    Ballots Issued <span className="text-slate-400">(optional)</span>
-                  </label>
-                  <input
-                    value={ballotsIssued}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === "") setBallotsIssued("");
-                      else {
-                        const n = Number(v);
-                        if (Number.isNaN(n)) return;
-                        setBallotsIssued(n);
-                      }
-                    }}
-                    type="number"
-                    min={0}
-                    placeholder="e.g., 4800"
-                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base lg-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                  />
-                </div>
-              </div>
+                            xl:px-7
+                          "
+                      >
+                        {/* ==================================================
+                              MOBILE / SMALL TABLET
 
-              {/* Error */}
-              {createM.isError && (
-                <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-3 sm:p-4">
-                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
-                  <div className="text-sm text-red-700 font-semibold">
-                    {friendlySaveError(createM.error)}
-                  </div>
+                              Row 1:
+                              Center name + status + arrow
+
+                              Row 2:
+                              PC code + Registered label + Ballots label
+
+                              Row 3:
+                              County/District + values
+                          ================================================== */}
+
+                        <div className="md:hidden">
+                          {/* ROW 1 */}
+
+                          <div
+                            className="
+                                flex
+                                min-w-0
+                                items-center
+                                gap-2
+                              "
+                          >
+                            <h3
+                              className="
+                                  min-w-0
+                                  flex-1
+                                  truncate
+                                  text-sm
+                                  font-bold
+                                  text-slate-900
+
+                                  min-[400px]:text-base
+                                "
+                            >
+                              {safeText(
+                                allocation.centerName,
+                                "Unnamed center",
+                              )}
+                            </h3>
+
+                            <span
+                              className="
+                                  inline-flex
+                                  h-7
+                                  w-7
+                                  shrink-0
+                                  items-center
+                                  justify-center
+                                  rounded-full
+                                  bg-green-50
+                                  text-green-700
+                                "
+                              title="Allocated"
+                            >
+                              <Check size={15} strokeWidth={3} />
+                            </span>
+
+                            <ChevronRight
+                              size={18}
+                              className="
+                                  shrink-0
+                                  text-slate-400
+                                  transition
+
+                                  group-hover:text-blue-600
+                                "
+                            />
+                          </div>
+
+                          {/* ROW 2 */}
+
+                          <div
+                            className="
+                                mt-1
+                                grid
+                                min-w-0
+                                grid-cols-[minmax(0,1fr)_64px_64px]
+                                items-end
+                                gap-2
+                              "
+                          >
+                            <p
+                              className="
+                                  min-w-0
+                                  truncate
+                                  text-[10px]
+                                  font-medium
+                                  text-slate-500
+
+                                  min-[400px]:text-xs
+                                "
+                            >
+                              {safeText(
+                                allocation.centerCode,
+                                "No center code",
+                              )}
+                            </p>
+
+                            <p
+                              className="
+                                  text-[9px]
+                                  font-semibold
+                                  uppercase
+                                  tracking-wide
+                                  text-slate-500
+
+                                  min-[400px]:text-[10px]
+                                "
+                            >
+                              Reg.
+                            </p>
+
+                            <p
+                              className="
+                                  text-[9px]
+                                  font-semibold
+                                  uppercase
+                                  tracking-wide
+                                  text-slate-500
+
+                                  min-[400px]:text-[10px]
+                                "
+                            >
+                              Ballots
+                            </p>
+                          </div>
+
+                          {/* ROW 3 */}
+
+                          <div
+                            className="
+                                mt-0.5
+                                grid
+                                min-w-0
+                                grid-cols-[minmax(0,1fr)_64px_64px]
+                                items-start
+                                gap-2
+                              "
+                          >
+                            <div
+                              className="
+                                  flex
+                                  min-w-0
+                                  items-center
+                                  gap-1
+                                  overflow-hidden
+                                  whitespace-nowrap
+                                  text-[10px]
+                                  text-slate-500
+
+                                  min-[400px]:text-xs
+                                "
+                            >
+                              <span className="truncate">
+                                {safeText(allocation.countyName, "County")}
+                              </span>
+
+                              <span
+                                className="
+                                    shrink-0
+                                    text-slate-300
+                                  "
+                              >
+                                •
+                              </span>
+
+                              <span className="truncate">
+                                {safeText(allocation.districtName, "District")}
+                              </span>
+                            </div>
+
+                            <p
+                              className="
+                                  text-sm
+                                  font-bold
+                                  leading-none
+                                  text-slate-900
+
+                                  min-[400px]:text-base
+                                "
+                            >
+                              {formatNumber(allocation.registeredVoters)}
+                            </p>
+
+                            <p
+                              className="
+                                  text-sm
+                                  font-bold
+                                  leading-none
+                                  text-slate-900
+
+                                  min-[400px]:text-base
+                                "
+                            >
+                              {formatNumber(allocation.ballotsIssued)}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* ==================================================
+                              TABLET / DESKTOP
+                          ================================================== */}
+
+                        <div
+                          className="
+                              hidden
+                              min-w-0
+                              items-center
+
+                              md:grid
+                              md:grid-cols-[minmax(0,1fr)_110px_110px_90px_20px]
+                              md:gap-4
+
+                              lg:grid-cols-[minmax(0,1fr)_150px_150px_130px_24px]
+                              lg:gap-6
+
+                              xl:grid-cols-[minmax(0,1fr)_170px_170px_140px_24px]
+                              xl:gap-8
+                            "
+                        >
+                          {/* CENTER */}
+
+                          <div className="min-w-0">
+                            <h3
+                              className="
+                                  truncate
+                                  text-base
+                                  font-bold
+                                  text-slate-900
+
+                                  lg:text-[17px]
+
+                                  xl:text-lg
+                                "
+                            >
+                              {safeText(
+                                allocation.centerName,
+                                "Unnamed center",
+                              )}
+                            </h3>
+
+                            <p
+                              className="
+                                  mt-1
+                                  truncate
+                                  text-xs
+                                  font-medium
+                                  text-slate-500
+
+                                  lg:text-sm
+                                "
+                            >
+                              {safeText(
+                                allocation.centerCode,
+                                "No center code",
+                              )}
+                            </p>
+
+                            <div
+                              className="
+                                  mt-1.5
+                                  flex
+                                  min-w-0
+                                  items-center
+                                  gap-2
+                                  overflow-hidden
+                                  whitespace-nowrap
+                                  text-xs
+                                  text-slate-500
+
+                                  lg:mt-2
+                                  lg:text-sm
+                                "
+                            >
+                              <span className="truncate">
+                                {safeText(allocation.countyName, "County")}
+                              </span>
+
+                              <span className="text-slate-300">•</span>
+
+                              <span className="truncate">
+                                {safeText(allocation.districtName, "District")}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* REGISTERED */}
+
+                          <div>
+                            <p
+                              className="
+                                  text-xs
+                                  font-semibold
+                                  uppercase
+                                  tracking-wide
+                                  text-slate-500
+
+                                  xl:text-[13px]
+                                "
+                            >
+                              Registered
+                            </p>
+
+                            <p
+                              className="
+                                  mt-1
+                                  text-base
+                                  font-bold
+                                  text-slate-900
+
+                                  lg:text-lg
+
+                                  xl:text-xl
+                                "
+                            >
+                              {formatNumber(allocation.registeredVoters)}
+                            </p>
+                          </div>
+
+                          {/* BALLOTS */}
+
+                          <div>
+                            <p
+                              className="
+                                  text-xs
+                                  font-semibold
+                                  uppercase
+                                  tracking-wide
+                                  text-slate-500
+
+                                  xl:text-[13px]
+                                "
+                            >
+                              Ballots
+                            </p>
+
+                            <p
+                              className="
+                                  mt-1
+                                  text-base
+                                  font-bold
+                                  text-slate-900
+
+                                  lg:text-lg
+
+                                  xl:text-xl
+                                "
+                            >
+                              {formatNumber(allocation.ballotsIssued)}
+                            </p>
+                          </div>
+
+                          {/* STATUS */}
+
+                          <div className="flex justify-end">
+                            <span
+                              className="
+                                  inline-flex
+                                  items-center
+                                  rounded-full
+                                  bg-green-50
+                                  px-2.5
+                                  py-1
+                                  text-xs
+                                  font-semibold
+                                  text-green-700
+
+                                  lg:px-3
+                                  lg:py-1.5
+                                  lg:text-sm
+                                "
+                            >
+                              Allocated
+                            </span>
+                          </div>
+
+                          {/* CHEVRON */}
+
+                          <ChevronRight
+                            size={21}
+                            className="
+                                shrink-0
+                                text-slate-400
+                                transition
+
+                                group-hover:text-blue-600
+                              "
+                          />
+                        </div>
+                      </button>
+                    ),
+                  )}
                 </div>
               )}
-            </div>
+            </section>
+          )}
 
-            {/* FOOTER */}
-            <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-8 py-4 sm:py-5 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  if (savingCreate) return;
-                  setOpenCreate(false);
-                }}
-                disabled={savingCreate}
-                className="px-4 sm:px-6 h-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-base font-semibold hover:bg-slate-50 transition disabled:opacity-50 sm:min-w-fit"
+          {/* ========================================================
+              PAGINATION
+          ======================================================== */}
+
+          {!allocationsQ.isLoading &&
+            allocationsQ.data &&
+            allocationsQ.data.totalPages > 0 && (
+              <section
+                className="
+                  flex
+                  items-center
+                  justify-between
+                  gap-3
+                  pt-1
+                "
               >
-                Cancel
-              </button>
+                <button
+                  type="button"
+                  onClick={() => setPage((current) => Math.max(0, current - 1))}
+                  disabled={page <= 0 || allocationsQ.isFetching}
+                  className="
+                    min-h-11
+                    rounded-lg
+                    border
+                    border-slate-300
+                    bg-white
+                    px-4
+                    text-sm
+                    font-semibold
+                    text-slate-700
+                    transition
 
-              <button
-                type="button"
-                disabled={!canEdit || savingCreate || !cCountyId || !cDistrictId || !cCenterId || registeredVoters === ""}
-                onClick={() => {
-                  if (!canEdit) return;
-                  if (!cCountyId) return alert("County is required.");
-                  if (!cDistrictId) return alert("District is required.");
-                  if (!cCenterId) return alert("Center is required.");
-                  if (registeredVoters === "" || registeredVoters == null) {
-                    return alert("Registered voters is required.");
+                    hover:bg-slate-50
+
+                    disabled:opacity-40
+
+                    lg:text-base
+                  "
+                >
+                  Previous
+                </button>
+
+                <span
+                  className="
+                    text-xs
+                    font-semibold
+                    text-slate-500
+
+                    sm:text-sm
+
+                    lg:text-base
+                  "
+                >
+                  Page {allocationsQ.data.page + 1}
+                  {" of "}
+                  {Math.max(allocationsQ.data.totalPages, 1)}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setPage((current) => current + 1)}
+                  disabled={
+                    allocationsQ.data.page + 1 >=
+                      allocationsQ.data.totalPages || allocationsQ.isFetching
                   }
+                  className="
+                    min-h-11
+                    rounded-lg
+                    border
+                    border-slate-300
+                    bg-white
+                    px-4
+                    text-sm
+                    font-semibold
+                    text-slate-700
+                    transition
 
-                  const req: PollingCenterAllocationCreateRequest = {
-                    electionId: electionId!,
-                    centerId: cCenterId,
-                    registeredVoters: Number(registeredVoters),
-                    ballotsIssued:
-                      ballotsIssued === ""
-                        ? undefined
-                        : Number(ballotsIssued),
-                  };
+                    hover:bg-slate-50
 
-                  createM.mutate(req);
-                }}
-                className={`px-4 sm:px-6 h-10 rounded-lg text-base font-semibold text-white transition flex items-center justify-center gap-2 sm:min-w-fit ${
-                  !canEdit ||
-                  savingCreate ||
-                  !cCountyId ||
-                  !cDistrictId ||
-                  !cCenterId ||
-                  registeredVoters === ""
-                    ? "bg-slate-300 cursor-not-allowed opacity-60"
-                    : "bg-blue-600 hover:bg-blue-800 shadow-sm"
-                }`}
-              >
-                {savingCreate ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span className="hidden sm:inline">Saving…</span>
-                  </>
-                ) : (
-                  <>
-                    <Plus size={18} className="text-white-500" />
-                    <span className="hidden sm:inline">Create</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+                    disabled:opacity-40
+
+                    lg:text-base
+                  "
+                >
+                  Next
+                </button>
+              </section>
+            )}
         </div>
-      ) : null}
-
-      {/* ============ EDIT MODAL ============ */}
-      {openEdit && editing ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm"
-          onClick={() => {
-            if (savingUpdate) return;
-            setOpenEdit(false);
-            setEditing(null);
-          }}
-        >
-          <div
-            className="w-full max-w-xl bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* HEADER */}
-            <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400 px-4 sm:px-8 py-6 sm:py-8 border-b border-blue-600 flex items-start justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <h2 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-2">
-                  <Pencil size={28} className="text-white" />
-                  Edit Allocation
-                </h2>
-                <p className="text-sm sm:text-base font-semibold text-green-100 mt-2">
-                  Update registered voters and ballots issued.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (savingUpdate) return;
-                  setOpenEdit(false);
-                  setEditing(null);
-                }}
-                disabled={savingUpdate}
-                className="flex-shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border-2 border-blue-300 hover:bg-blue-700 bg-blue-600 transition text-white disabled:opacity-50"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* CONTENT */}
-            <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 sm:py-7 space-y-5 sm:space-y-6">
-              {/* Display Info */}
-              <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 sm:p-4">
-                <p className="text-base text-slate-600">
-                  <strong className="font-bold">Center:</strong> {editing.centerName}
-                </p>
-                <p className="text-sm text-slate-600 mt-1">
-                  <strong className="font-bold">District:</strong> {editing.districtName}
-                </p>
-              </div>
-
-              {/* Registered Voters */}
-              <div>
-                <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
-                  Registered Voters <span className="text-red-600">*</span>
-                </label>
-                <input
-                  value={registeredVoters}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === "") setRegisteredVoters("");
-                    else {
-                      const n = Number(v);
-                      if (Number.isNaN(n)) return;
-                      setRegisteredVoters(n);
-                    }
-                  }}
-                  type="number"
-                  min={0}
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500 transition"
-                />
-              </div>
-
-              {/* Ballots Issued */}
-              <div>
-                <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
-                  Ballots Issued <span className="text-slate-400">(optional)</span>
-                </label>
-                <input
-                  value={ballotsIssued}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === "") setBallotsIssued("");
-                    else {
-                      const n = Number(v);
-                      if (Number.isNaN(n)) return;
-                      setBallotsIssued(n);
-                    }
-                  }}
-                  type="number"
-                  min={0}
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500 transition"
-                />
-              </div>
-
-              {/* Error */}
-              {updateM.isError && (
-                <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-3 sm:p-4">
-                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
-                  <div className="text-sm text-red-700 font-semibold">
-                    {friendlySaveError(updateM.error)}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* FOOTER */}
-            <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-8 py-4 sm:py-5 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setOpenEdit(false);
-                  setEditing(null);
-                }}
-                disabled={savingUpdate}
-                className="px-4 sm:px-6 h-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-base font-semibold hover:bg-slate-50 transition disabled:opacity-50 sm:min-w-fit"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                disabled={!canEdit || savingUpdate}
-                onClick={() => {
-                  if (!canEdit || !editing) return;
-
-                  const req: PollingCenterAllocationUpdateRequest = {
-                    registeredVoters:
-                      registeredVoters === ""
-                        ? undefined
-                        : Number(registeredVoters),
-                    ballotsIssued:
-                      ballotsIssued === ""
-                        ? undefined
-                        : Number(ballotsIssued),
-                  };
-
-                  updateM.mutate({ id: editing.allocationId, req });
-                }}
-                className={`px-4 sm:px-6 h-10 rounded-lg text-base font-semibold text-white transition flex items-center justify-center gap-2 sm:min-w-fit ${
-                  !canEdit || savingUpdate
-                    ? "bg-slate-300 cursor-not-allowed opacity-60"
-                    : "bg-blue-600 hover:bg-blue-800 shadow-sm"
-                }`}
-              >
-                {savingUpdate ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span className="hidden sm:inline">Saving…</span>
-                  </>
-                ) : (
-                  <>
-                    <Pencil size={18} />
-                    <span className="hidden sm:inline">Update</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      </div>
     </div>
   );
 }
-

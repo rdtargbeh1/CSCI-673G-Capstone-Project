@@ -4,7 +4,7 @@ import type { AxiosResponse } from "axios";
 export type RoleName =
   | "SYSTEM_ADMIN"
   | "NEC_ADMIN"
-  | "PARTY_ADMIN"
+  | "TENANT_ADMIN"
   | "ADMIN"
   | "AGENT"
   | "OBSERVER"
@@ -44,7 +44,7 @@ export async function fetchRoles(params: {
 
 export async function updateRole(
   roleId: string,
-  body: { roleName: RoleName; description?: string | null }
+  body: { roleName: RoleName; description?: string | null },
 ): Promise<UserRoleDto> {
   const { data } = await apiClient.put(`/roles/${roleId}`, body);
   return data as UserRoleDto;

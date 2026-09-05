@@ -1,5 +1,3 @@
-
-
 // src/shared/store/authStore.ts
 import { create } from "zustand";
 
@@ -7,7 +5,7 @@ export type RoleName =
   | "SYSTEM_ADMIN"
   | "NEC_ADMIN"
   | "ADMIN"
-  | "PARTY_ADMIN"
+  | "TENANT_ADMIN"
   | "AGENT"
   | "OBSERVER"
   | "SUPERVISOR"

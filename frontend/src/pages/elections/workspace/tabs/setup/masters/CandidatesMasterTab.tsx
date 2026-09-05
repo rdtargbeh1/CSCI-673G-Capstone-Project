@@ -1,32 +1,33 @@
 // src/pages/elections/workspace/tabs/setup/masters/CandidatesMasterTab.tsx
 
-import React, { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+import { useNavigate, useParams } from "react-router-dom";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
 import {
+  AlertCircle,
+  ChevronDown,
+  ChevronRight,
+  Filter,
+  Image as ImageIcon,
   Pencil,
   Plus,
   RefreshCw,
   Search,
   Trash2,
-  Image as ImageIcon,
+  UserRound,
   X,
-  AlertCircle,
-  CheckCircle,
 } from "lucide-react";
 
 import { useAuthStore } from "../../../../../../shared/store/authStore";
 
-import {
-  ReadOnlyBanner,
-  PlaceholderNote,
-  Badge,
-} from "../../../../shared/elections-ui";
+import { ReadOnlyBanner, Badge } from "../../../../shared/elections-ui";
 
 import {
-  createCandidate,
   deleteCandidate,
   searchCandidates,
-  updateCandidate,
   type CandidateDto,
 } from "../../../../../../shared/services/candidateService";
 
@@ -35,139 +36,135 @@ import {
   type PartyDto,
 } from "../../../../../../shared/services/partyService";
 
-/** ============ HELPERS ============ */
-function safeStr(v: any) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
+import {
+  fetchFileBlob,
+  findCurrentPhoto,
+  listEntityFiles,
+} from "../../../../../../shared/services/fileUploadService";
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+function safeStr(value: unknown) {
+  return typeof value === "string" ? value : value == null ? "" : String(value);
 }
 
-function fmtDate(v: any): string {
-  if (!v) return "";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return safeStr(v);
-  return d.toLocaleString();
+function formatDate(value: unknown) {
+  if (!value) {
+    return "—";
+  }
+
+  const date = new Date(String(value));
+
+  if (Number.isNaN(date.getTime())) {
+    return safeStr(value);
+  }
+
+  return date.toLocaleString();
 }
 
-function normalizeName(v: string) {
-  return v.trim().replace(/\s+/g, " ");
+function getActiveValue(candidate: CandidateDto) {
+  const raw = candidate as any;
+
+  return Boolean(raw?.isActive ?? raw?.active ?? false);
 }
 
-function friendlySaveError(err: any): string {
-  const msg =
-    safeStr(err?.response?.data?.message) ||
-    safeStr(err?.response?.data?.error) ||
-    safeStr(err?.message) ||
-    "Failed to save candidate.";
-  const looksDup = /duplicate|unique|already exists|constraint/i.test(msg);
-  if (looksDup) return "Candidate already exists (possible duplicate).";
-  return msg;
+function getIndependentValue(candidate: CandidateDto) {
+  const raw = candidate as any;
+
+  return Boolean(raw?.independent ?? raw?.isIndependent ?? false);
 }
 
-// ✅ fixes "isActive not fetched" issue (Spring may return active instead of isActive)
-function getActiveValue(c: CandidateDto): boolean {
-  const anyC: any = c as any;
-  return Boolean(anyC?.isActive ?? anyC?.active ?? false);
-}
-
-// ✅ fixes "independent not fetched" issue (Spring/Jackson may return isIndependent)
-function getIndependentValue(c: CandidateDto): boolean {
-  const anyC: any = c as any;
-  return Boolean(anyC?.independent ?? anyC?.isIndependent ?? false);
+function friendlyError(error: any) {
+  return (
+    error?.response?.data?.message ??
+    error?.response?.data?.error ??
+    error?.message ??
+    "Something went wrong."
+  );
 }
 
 const PARTY_FILTER_INDEPENDENT = "__INDEPENDENT__";
 
-/** Compact table (reduced row padding) */
-function CompactTable(props: {
-  columns: string[];
-  rows: React.ReactNode[][];
-  onRowClick?: (index: number) => void;
-  selectedRowIndex?: number;
-}) {
-  const { columns, rows, onRowClick, selectedRowIndex } = props;
-  return (
-    <div className="w-full overflow-auto rounded-xl border border-slate-200 bg-white">
-      <table className="w-full border-collapse text-base">
-        <thead>
-          <tr className="bg-slate-50">
-            {columns.map((c) => (
-              <th
-                key={c}
-                className="text-left px-3 py-1.5 text-base font-extrabold text-slate-600 border-b border-slate-200"
-              >
-                {c}
-              </th>
-            ))}
-          </tr>
-        </thead>
+// ============================================================================
+// COMPONENT
+// ============================================================================
 
-        <tbody>
-          {rows.map((r, idx) => (
-            <tr
-              key={idx}
-              onClick={onRowClick ? () => onRowClick(idx) : undefined}
-              className={`border-b border-slate-100 last:border-b-0 ${
-                onRowClick ? "cursor-pointer hover:bg-slate-50" : ""
-              } ${selectedRowIndex === idx ? "bg-slate-50" : ""}`}
-            >
-              {r.map((cell, j) => (
-                <td key={j} className="px-3 py-1.5 align-top text-slate-800">
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/** ============ MAIN COMPONENT ============ */
 export default function CandidatesMasterTab() {
-  const qc = useQueryClient();
+  const { electionId } = useParams<{
+    electionId: string;
+  }>();
 
-  const dashboardMode = useAuthStore((s) => s.dashboardMode);
-  const canEdit = dashboardMode === "NEC" || dashboardMode === "SYSTEM";
+  const navigate = useNavigate();
 
-  const size = 20;
+  const queryClient = useQueryClient();
+
+  // ==========================================================================
+  // ACCESS
+  // ==========================================================================
+
+  const dashboardMode = useAuthStore((state) => state.dashboardMode);
+
+  const currentOrgId = useAuthStore((state) => state.currentOrgId);
+
+  const isSystemAdmin = useAuthStore((state) => state.isSystemAdmin());
+
+  const canEdit =
+    dashboardMode === "NEC" || dashboardMode === "SYSTEM" || isSystemAdmin;
+
+  // ==========================================================================
+  // STATE
+  // ==========================================================================
+
   const [page, setPage] = useState(0);
 
-  // filters
-  const [q, setQ] = useState("");
+  const [search, setSearch] = useState("");
+
   const [position, setPosition] = useState("");
-  const [partyFilter, setPartyFilter] = useState(""); // partyId OR "__INDEPENDENT__"
+
+  const [partyFilter, setPartyFilter] = useState("");
+
   const [active, setActive] = useState<"" | "true" | "false">("");
 
-  // photo viewer selection
-  const [selected, setSelected] = useState<CandidateDto | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // modal
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<CandidateDto | null>(null);
-  const [touched, setTouched] = useState(false);
+  const [selectedCandidate, setSelectedCandidate] =
+    useState<CandidateDto | null>(null);
 
-  // form fields
-  const [fullName, setFullName] = useState("");
-  const [formPosition, setFormPosition] = useState("");
-  const [formPartyId, setFormPartyId] = useState<string>("");
-  const [photoUrl, setPhotoUrl] = useState("");
-  const [isActive, setIsActive] = useState(true);
-  const [independent, setIndependent] = useState(false);
+  const [selectedPhotoSrc, setSelectedPhotoSrc] = useState<string | null>(null);
 
-  /** ============ PARTIES DROPDOWN ============ */
-  const partiesQ = useQuery({
+  const size = 20;
+
+  // ==========================================================================
+  // PARTY LOOKUP
+  // ==========================================================================
+
+  const partiesQuery = useQuery({
     queryKey: ["party-master-dropdown"],
-    queryFn: () => searchParties({ page: 0, size: 500, q: undefined }),
+
+    queryFn: () =>
+      searchParties({
+        page: 0,
+        size: 500,
+        q: undefined,
+      }),
+
     staleTime: 60_000,
+
     retry: 1,
   });
 
   const parties: PartyDto[] = useMemo(
-    () => partiesQ.data?.items ?? [],
-    [partiesQ.data]
+    () => partiesQuery.data?.items ?? [],
+
+    [partiesQuery.data],
   );
 
-  /** ============ CANDIDATES QUERY ============ */
+  // ==========================================================================
+  // CANDIDATE QUERY
+  // ==========================================================================
+
   const independentForApi =
     partyFilter === PARTY_FILTER_INDEPENDENT ? true : undefined;
 
@@ -176,728 +173,810 @@ export default function CandidatesMasterTab() {
       ? undefined
       : partyFilter;
 
-  const candidatesQ = useQuery({
-    queryKey: [
-      "candidate-master",
-      page,
-      q,
-      position,
-      partyFilter,
-      active,
-    ],
+  const candidatesQuery = useQuery({
+    queryKey: ["candidate-master", page, search, position, partyFilter, active],
+
     queryFn: () =>
       searchCandidates({
         page,
         size,
-        q: q.trim() || undefined,
+
+        q: search.trim() || undefined,
+
         position: position.trim() || undefined,
+
         partyId: partyIdForApi,
+
         active: active === "" ? undefined : active === "true",
+
         independent: independentForApi,
       }),
+
     staleTime: 10_000,
+
     retry: 1,
   });
 
-  const items = useMemo(
-    () => candidatesQ.data?.items ?? [],
-    [candidatesQ.data]
-  );
-  const totalPages = Math.max(1, candidatesQ.data?.totalPages ?? 1);
+  const candidates = useMemo(
+    () => candidatesQuery.data?.items ?? [],
 
-  /** ============ HANDLERS (BEFORE MUTATIONS) ============ */
+    [candidatesQuery.data],
+  );
+
+  const totalPages = Math.max(
+    1,
+
+    candidatesQuery.data?.totalPages ?? 1,
+  );
+
+  // ==========================================================================
+  // SELECTED CANDIDATE FILES
+  // ==========================================================================
+
+  const selectedFilesQuery = useQuery({
+    enabled: Boolean(selectedCandidate && currentOrgId),
+
+    queryKey: [
+      "file-uploads",
+      "candidate",
+      selectedCandidate?.candidateId,
+      currentOrgId,
+    ],
+
+    queryFn: () =>
+      listEntityFiles({
+        orgId: currentOrgId!,
+
+        relatedTable: "candidate",
+
+        relatedId: selectedCandidate!.candidateId,
+      }),
+
+    staleTime: 10_000,
+
+    retry: 1,
+  });
+
+  const selectedPhoto = useMemo(
+    () =>
+      findCurrentPhoto(
+        selectedFilesQuery.data,
+
+        selectedCandidate?.photoUrl ?? null,
+      ),
+
+    [selectedFilesQuery.data, selectedCandidate?.photoUrl],
+  );
+
+  // ==========================================================================
+  // AUTHENTICATED PHOTO
+  // ==========================================================================
+
+  const selectedPhotoQuery = useQuery({
+    enabled: Boolean(selectedPhoto?.fileId),
+
+    queryKey: ["file-content", selectedPhoto?.fileId],
+
+    queryFn: () => fetchFileBlob(selectedPhoto!.fileId),
+
+    staleTime: 60_000,
+
+    retry: 1,
+  });
+
+  useEffect(() => {
+    setSelectedPhotoSrc(null);
+
+    if (!selectedPhotoQuery.data) {
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(selectedPhotoQuery.data);
+
+    setSelectedPhotoSrc(objectUrl);
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [selectedPhotoQuery.data]);
+
+  // ==========================================================================
+  // REFRESH
+  // ==========================================================================
+
   const refreshNow = async () => {
-    await qc.invalidateQueries({ queryKey: ["candidate-master"] });
-    await candidatesQ.refetch();
+    await queryClient.invalidateQueries({
+      queryKey: ["candidate-master"],
+    });
+
+    await queryClient.invalidateQueries({
+      queryKey: ["file-uploads", "candidate"],
+    });
+
+    await queryClient.invalidateQueries({
+      queryKey: ["file-content"],
+    });
+
+    await candidatesQuery.refetch();
+
+    if (selectedCandidate && currentOrgId) {
+      await selectedFilesQuery.refetch();
+    }
   };
+
+  // ==========================================================================
+  // DELETE
+  // ==========================================================================
+
+  const deleteMutation = useMutation({
+    mutationFn: (candidate: CandidateDto) =>
+      deleteCandidate(candidate.candidateId),
+
+    onSuccess: async (_, deleted) => {
+      if (selectedCandidate?.candidateId === deleted.candidateId) {
+        setSelectedCandidate(null);
+      }
+
+      await refreshNow();
+    },
+  });
+
+  // ==========================================================================
+  // NAVIGATION
+  // ==========================================================================
 
   const openCreate = () => {
-    setEditing(null);
-    setFullName("");
-    setFormPosition("");
-    setFormPartyId("");
-    setPhotoUrl("");
-    setIsActive(true);
-    setIndependent(false);
-    setTouched(false);
-    setOpen(true);
+    if (!electionId) {
+      return;
+    }
+
+    navigate(`/elections/${electionId}/setup/master-candidates/new`);
   };
 
-  const openEdit = (c: CandidateDto) => {
-    setEditing(c);
-    setFullName(safeStr(c.fullName));
-    setFormPosition(safeStr(c.position));
-    setFormPartyId(safeStr((c as any)?.partyId));
-    setPhotoUrl(safeStr(c.photoUrl));
-    setIsActive(getActiveValue(c));
-    setIndependent(getIndependentValue(c));
-    setTouched(false);
-    setOpen(true);
+  const openEdit = (candidate: CandidateDto) => {
+    if (!electionId) {
+      return;
+    }
+
+    navigate(
+      `/elections/${electionId}/setup/master-candidates/${candidate.candidateId}/edit`,
+
+      {
+        state: {
+          candidate,
+        },
+      },
+    );
   };
 
-  /** ============ MUTATIONS ============ */
-  const createM = useMutation({
-    mutationFn: async () => {
-      const name = normalizeName(fullName);
-      if (!name) throw new Error("Full name is required.");
+  const removeCandidate = (candidate: CandidateDto) => {
+    if (!canEdit) {
+      return;
+    }
 
-      return createCandidate({
-        fullName: name,
-        position: formPosition.trim() || null,
-        partyId: independent ? null : formPartyId || null,
-        photoUrl: photoUrl.trim() || null,
-        isActive,
-        independent,
-      });
-    },
-    onSuccess: async () => {
-      setOpen(false);
-      setEditing(null);
-      setTouched(false);
-      await refreshNow();
-    },
-  });
+    const confirmed = window.confirm(
+      `Delete candidate "${candidate.fullName}"?\n\nThis deletes the global Candidate Master record.`,
+    );
 
-  const updateM = useMutation({
-    mutationFn: async () => {
-      if (!editing) throw new Error("No candidate selected.");
-      const name = normalizeName(fullName);
-      if (!name) throw new Error("Full name is required.");
-
-      return updateCandidate(editing.candidateId, {
-        fullName: name,
-        position: formPosition.trim() || null,
-        partyId: independent ? null : formPartyId || null,
-        photoUrl: photoUrl.trim() || null,
-        isActive,
-        independent,
-      });
-    },
-    onSuccess: async () => {
-      setOpen(false);
-      setEditing(null);
-      setTouched(false);
-      await refreshNow();
-    },
-  });
-
-  const deleteM = useMutation({
-    mutationFn: async (candidateId: string) => deleteCandidate(candidateId),
-    onSuccess: refreshNow,
-  });
-
-  /** ============ STATE ============ */
-  const saving = createM.isPending || updateM.isPending;
-
-  const save = () => {
-    setTouched(true);
-    if (!canEdit) return;
-    if (editing) updateM.mutate();
-    else createM.mutate();
+    if (confirmed) {
+      deleteMutation.mutate(candidate);
+    }
   };
 
-  const fullNameValid = normalizeName(fullName);
+  // ==========================================================================
+  // FILTERS
+  // ==========================================================================
 
-  const selectedRowIndex = useMemo(() => {
-    if (!selected) return -1;
-    return items.findIndex((x) => x.candidateId === selected.candidateId);
-  }, [items, selected]);
+  const clearFilters = () => {
+    setSearch("");
+    setPosition("");
+    setPartyFilter("");
+    setActive("");
+    setPage(0);
+  };
 
-  /** ============ TABLE ROWS ============ */
-  const rows = useMemo(() => {
-    return items.map((c) => {
-      const activeVal = getActiveValue(c);
-      const independentVal = getIndependentValue(c);
+  const advancedFilterCount = [position, partyFilter, active].filter(
+    Boolean,
+  ).length;
 
-      const partyLabel =
-        independentVal || !c.partyName
-          ? "—"
-          : `${safeStr(c.partyName)}${
-              c.abbreviation ? ` (${c.abbreviation})` : ""
-            }`;
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
 
-      const independentCheck = (
-        <input
-          type="checkbox"
-          checked={independentVal}
-          readOnly
-          onClick={(e) => e.preventDefault()}
-          className="h-4 w-4 accent-emerald-600"
-          title={independentVal ? "Independent" : "Not independent"}
-        />
-      );
-
-      const activeCheck = (
-        <input
-          type="checkbox"
-          checked={activeVal}
-          readOnly
-          onClick={(e) => e.preventDefault()}
-          className="h-4 w-4 accent-emerald-600"
-          title={activeVal ? "Active" : "Inactive"}
-        />
-      );
-
-      const actions = (
-        <div
-          className="flex flex-wrap gap-2"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-blue-500 hover:bg-blue-50 transition"
-            title="Show photo"
-            onClick={() => setSelected(c)}
-          >
-            <ImageIcon size={20} />
-          </button>
-
-          <button
-            type="button"
-            disabled={!canEdit}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-600 hover:bg-green-50 transition ${
-              !canEdit ? "opacity-60" : ""
-            }`}
-            title={
-              canEdit ? "Edit candidate (SYSTEM/NEC)" : "Read-only (Tenant)"
-            }
-            onClick={() => openEdit(c)}
-          >
-            <Pencil size={20} />
-          </button>
-
-          <button
-            type="button"
-            disabled={!canEdit || deleteM.isPending}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 hover:bg-red-50 transition ${
-              !canEdit || deleteM.isPending ? "opacity-60" : ""
-            }`}
-            title={
-              canEdit ? "Delete candidate (SYSTEM/NEC)" : "Read-only (Tenant)"
-            }
-            onClick={() => {
-              const ok = window.confirm(
-                `Delete candidate "${c.fullName}"?\nThis is permanent.`
-              );
-              if (ok) deleteM.mutate(c.candidateId);
-            }}
-          >
-            <Trash2 size={20} className="text-red-600" />
-          </button>
-        </div>
-      );
-
-      return [
-        <div key={c.candidateId}>{c.fullName}</div>,
-
-        <span key="pos" className="text-slate-700">
-          {c.position ? c.position : <span className="text-slate-400">—</span>}
-        </span>,
-
-        <span key="party" className="text-slate-700">
-          {independentVal ? "Independent" : partyLabel}
-        </span>,
-
-        <div key="ind" className="flex justify-center">
-          {independentCheck}
-        </div>,
-
-        <div key="act" className="flex justify-center">
-          {activeCheck}
-        </div>,
-
-        <span key="created" className="text-base text-slate-600">
-          {fmtDate(c.dateCreated)}
-        </span>,
-
-        actions,
-      ];
-    });
-  }, [items, canEdit, deleteM.isPending]);
-
-  /** ============ RENDER ============ */
   return (
-    <div className="flex flex-col gap-3">
-      {!canEdit ? (
-        <ReadOnlyBanner
-          reason="Global masters are managed by NEC/System Admin. Tenants can view read-only."
-          sources={["candidate"]}
-        />
-      ) : null}
-
-      {/* ============ HEADER ACTIONS ============ */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative">
-            <Search
-              size={16}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-            <input
-              value={q}
-              onChange={(e) => {
-                setQ(e.target.value);
-                setPage(0);
-              }}
-              placeholder="Search candidate name…"
-              className="pl-8 pr-3 py-2 rounded-lg border border-slate-200 bg-white min-w-[240px] outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <input
-            value={position}
-            onChange={(e) => {
-              setPosition(e.target.value);
-              setPage(0);
-            }}
-            placeholder="Filter by position…"
-            className="px-3 py-2 rounded-lg border border-slate-200 bg-white min-w-[200px] outline-none focus:ring-2 focus:ring-blue-500"
+    <div className="w-full">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-3">
+        {!canEdit && (
+          <ReadOnlyBanner
+            reason="Global Candidate Master records are managed by NEC/System Admin."
+            sources={["candidate"]}
           />
+        )}
 
-          <select
-            value={partyFilter}
-            onChange={(e) => {
-              setPartyFilter(e.target.value);
-              setPage(0);
-            }}
-            className="px-3 py-2 rounded-lg border border-slate-200 bg-white outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">All parties</option>
-            <option value={PARTY_FILTER_INDEPENDENT}>Independent</option>
-            {parties.map((p) => (
-              <option key={p.partyId} value={p.partyId}>
-                {p.partyName} ({p.abbreviation})
-              </option>
-            ))}
-          </select>
+        {/* ================================================================
+            HEADER
+        ================================================================ */}
 
-          <select
-            value={active}
-            onChange={(e) => {
-              setActive(e.target.value as any);
-              setPage(0);
-            }}
-            className="px-3 py-2 rounded-lg border border-slate-200 bg-white outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">All status</option>
-            <option value="true">Active</option>
-            <option value="false">Inactive</option>
-          </select>
-
-          <button
-            type="button"
-            onClick={() => {
-              setQ("");
-              setPosition("");
-              setPartyFilter("");
-              setActive("");
-              setPage(0);
-              setSelected(null);
-            }}
-            className="px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition"
-            title="Clear filters"
-          >
-            Clear
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {canEdit ? (
-            <button
-              type="button"
-              onClick={openCreate}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition shadow-sm"
-              title="Create candidate (SYSTEM/NEC)"
-            >
-              <Plus size={16} />
-              Add New
-            </button>
-          ) : (
-            <Badge text="Read-only (Tenant)" />
-          )}
-
-          <button
-            type="button"
-            onClick={refreshNow}
-            disabled={candidatesQ.isFetching}
-            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
-              candidatesQ.isFetching ? "opacity-60" : ""
-            }`}
-            title="Refresh candidates"
-          >
-            <RefreshCw size={16} />
-            Refresh
-          </button>
-        </div>
-      </div>
-
-      {/* ============ STATUS ============ */}
-      {candidatesQ.isLoading ? (
-        <div className="p-2 text-slate-600">Loading candidates…</div>
-      ) : candidatesQ.isError ? (
-        <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700">
-          {(candidatesQ.error as any)?.message ?? "Failed to load candidates."}
-        </div>
-      ) : null}
-
-      {/* ============ TABLE + PHOTO VIEWER ============ */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-3">
-        <div>
-          <CompactTable
-            columns={[
-              "Candidate",
-              "Position",
-              "Party",
-              "Independent",
-              "Active",
-              "Created",
-              "Actions",
-            ]}
-            rows={
-              rows.length
-                ? rows
-                : [
-                    [
-                      <span key="empty" className="text-slate-500">
-                        No candidates found.
-                      </span>,
-                      "",
-                      "",
-                      "",
-                      "",
-                      "",
-                      "",
-                    ],
-                  ]
-            }
-            onRowClick={(idx) => setSelected(items[idx] ?? null)}
-            selectedRowIndex={selectedRowIndex}
-          />
-        </div>
-
-        <div className="rounded-xl border border-slate-200 bg-white p-3">
-          <div className="text-sm font-extrabold text-slate-600 mb-2">
-            Candidate Photo
-          </div>
-
-          {selected?.photoUrl ? (
-            <img
-              src={selected.photoUrl}
-              alt={selected.fullName}
-              className="w-full h-[280px] object-cover rounded-lg border border-slate-200"
-            />
-          ) : (
-            <div className="w-full h-[280px] rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center text-slate-500 text-sm text-center px-3">
-              {selected
-                ? "No photo available for this candidate."
-                : "Select a candidate (or click the photo button) to view photo."}
-            </div>
-          )}
-
-          {selected ? (
-            <div className="mt-2 text-sm text-slate-700">
-              <div className="font-extrabold">{selected.fullName}</div>
-              <div className="text-xs text-slate-500">
-                {selected.position || "—"}
-              </div>
-              <div className="text-xs text-slate-500 mt-1">
-                {getIndependentValue(selected)
-                  ? "Independent"
-                  : selected.partyName
-                  ? `${selected.partyName}${
-                      selected.abbreviation ? ` (${selected.abbreviation})` : ""
-                    }`
-                  : "—"}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </div>
-
-      {/* ============ PAGINATION ============ */}
-      <div className="flex justify-between items-center gap-2">
-        <div className="text-sm text-slate-500">
-          Page <b>{page + 1}</b> of <b>{totalPages}</b>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            disabled={page <= 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            className={`px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
-              page <= 0 ? "opacity-50 cursor-not-allowed" : ""
-            }`}
-            title="Previous page"
-          >
-            Prev
-          </button>
-          <button
-            type="button"
-            disabled={page >= totalPages - 1}
-            onClick={() => setPage((p) => p + 1)}
-            className={`px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
-              page >= totalPages - 1 ? "opacity-50 cursor-not-allowed" : ""
-            }`}
-            title="Next page"
-          >
-            Next
-          </button>
-        </div>
-      </div>
-
-      {/* ============ NOTES ============ */}
-      <div className="mt-1">
-        <PlaceholderNote
-          title="Notes"
-          bullets={[
-            "SYSTEM/NEC can create/edit/delete candidate master (global).",
-            "Independent filter is server-side via independent=true (perfect paging).",
-            "Search is server-side via q/position/partyId/active/independent and paged.",
-          ]}
-        />
-      </div>
-
-      {/* ============ CREATE/EDIT MODAL (ENHANCED UX) ============ */}
-      {open ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm"
-          onClick={() => {
-            if (saving) return;
-            setOpen(false);
-          }}
-        >
-          <div
-            className="w-full max-w-210 bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* ============ HEADER WITH BLUE GRADIENT ============ */}
-            <div className="bg-gradient-to-r from-blue-700 via-blue-500 to-blue-400 px-4 sm:px-8 py-6 sm:py-8 border-b border-blue-600 flex items-start justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <h2 className="text-2xl sm:text-3xl font-bold text-white">
-                  {editing ? "✏️ Edit Candidate" : "➕ Create Candidate"}
-                </h2>
-                <p className="text-sm sm:text-base font-semibold text-blue-100 mt-2">
-                  {editing
-                    ? `Update "${safeStr(editing.fullName)}" master data.`
-                    : "Create a new global candidate for elections."}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (saving) return;
-                  setOpen(false);
-                }}
-                disabled={saving}
-                className="flex-shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border-2 border-blue-300 hover:bg-blue-700 bg-blue-600 transition text-white disabled:opacity-50"
-                title="Close modal"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* ============ CONTENT ============ */}
-            <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 sm:py-7 space-y-5 sm:space-y-6">
-              {/* Full Name Field */}
-              <div>
-                <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
-                  Full Name <span className="text-red-600">*</span>
-                </label>
-                <input
-                  value={fullName}
-                  onChange={(e) => {
-                    setFullName(e.target.value);
-                    setTouched(true);
-                  }}
-                  placeholder="e.g., Jane Doe"
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                />
-                {touched && !fullNameValid && (
-                  <div className="flex items-center gap-2 mt-2 text-sm text-red-600 font-semibold">
-                    <AlertCircle size={16} />
-                    Full name is required
-                  </div>
-                )}
-                {touched && fullNameValid && (
-                  <div className="flex items-center gap-2 mt-2 text-sm text-green-600 font-semibold">
-                    <CheckCircle size={16} />
-                    Valid candidate name
-                  </div>
-                )}
-              </div>
-
-              {/* Position + Active Checkbox */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                {/* Position Field */}
-                <div>
-                  <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
-                    Position <span className="text-slate-400">(optional)</span>
-                  </label>
-                  <input
-                    value={formPosition}
-                    onChange={(e) => setFormPosition(e.target.value)}
-                    placeholder="e.g., President"
-                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                  />
+        <section className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
+          <div className="grid grid-cols-[minmax(0,1fr)_104px] gap-3 sm:flex sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
+                  <UserRound size={17} />
                 </div>
 
-                {/* Active Checkbox */}
-                <div>
-                  <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
-                    Status
-                  </label>
-                  <label className="inline-flex items-center gap-3 text-base font-semibold text-slate-700 p-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer transition">
-                    <input
-                      type="checkbox"
-                      checked={isActive}
-                      onChange={(e) => setIsActive(e.target.checked)}
-                      className="h-5 w-5 accent-blue-600 cursor-pointer"
-                    />
-                    <span>Active</span>
-                  </label>
-                </div>
-              </div>
+                <div className="min-w-0">
+                  <h2 className="text-base font-bold text-slate-900 sm:text-lg">
+                    Candidate Master
+                  </h2>
 
-              {/* Independent Checkbox + Party Dropdown */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                {/* Independent Checkbox */}
-                <div>
-                  <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
-                    Party Affiliation
-                  </label>
-                  <label className="inline-flex items-center gap-3 text-base font-semibold text-slate-700 p-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer transition">
-                    <input
-                      type="checkbox"
-                      checked={independent}
-                      onChange={(e) => {
-                        const v = e.target.checked;
-                        setIndependent(v);
-                        if (v) setFormPartyId("");
-                      }}
-                      className="h-5 w-5 accent-blue-600 cursor-pointer"
-                    />
-                    <span>Independent</span>
-                  </label>
-                  <p className="text-xs sm:text-sm text-slate-500 mt-2">
-                    Check if candidate is running independently
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Manage candidate master records and photos.
                   </p>
                 </div>
+              </div>
 
-                {/* Party Dropdown */}
-                <div>
-                  <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
-                    Party <span className="text-slate-400">(optional)</span>
-                  </label>
-                  <select
-                    value={formPartyId}
-                    onChange={(e) => setFormPartyId(e.target.value)}
-                    disabled={independent}
-                    className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition ${
-                      independent ? "opacity-60 cursor-not-allowed" : ""
-                    }`}
+              {/* MOBILE ACTIONS */}
+
+              <div className="mt-3 flex flex-wrap gap-2 sm:hidden">
+                {canEdit ? (
+                  <button
+                    type="button"
+                    onClick={openCreate}
+                    className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white hover:bg-blue-700"
                   >
-                    <option value="">-- Select Party --</option>
-                    {parties.map((p) => (
-                      <option key={p.partyId} value={p.partyId}>
-                        {p.partyName} ({p.abbreviation})
-                      </option>
-                    ))}
-                  </select>
-                  {independent && (
-                    <p className="text-xs sm:text-sm text-amber-600 font-semibold mt-2">
-                      📌 Party field is disabled for independent candidates
-                    </p>
-                  )}
-                </div>
-              </div>
+                    <Plus size={15} />
+                    Add Candidate
+                  </button>
+                ) : (
+                  <Badge text="Read-only" />
+                )}
 
-              {/* Photo URL Field */}
-              <div>
-                <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
-                  Photo URL <span className="text-slate-400">(optional)</span>
-                </label>
-                <input
-                  value={photoUrl}
-                  onChange={(e) => setPhotoUrl(e.target.value)}
-                  placeholder="https://example.com/photo.jpg"
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                />
-                <p className="text-xs sm:text-sm text-slate-500 mt-2">
-                  PNG, JPG, or SVG format recommended (max 2MB)
-                </p>
-              </div>
-
-              {/* Error Message */}
-              {(createM.isError || updateM.isError) && (
-                <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-3 sm:p-4">
-                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
-                  <div className="text-sm text-red-700 font-semibold">
-                    {createM.isError
-                      ? friendlySaveError(createM.error)
-                      : friendlySaveError(updateM.error)}
-                  </div>
-                </div>
-              )}
-
-              {/* Help Text */}
-              <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 sm:p-4">
-                <p className="text-sm text-blue-800">
-                  <strong className="font-bold">💡 Tip:</strong> Candidate full names must be unique across the system. 
-                  {editing && (
-                    <>
-                      {" "}
-                      Changing these fields may affect existing election assignments.
-                    </>
-                  )}
-                </p>
+                <button
+                  type="button"
+                  onClick={refreshNow}
+                  disabled={candidatesQuery.isFetching}
+                  className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                >
+                  <RefreshCw
+                    size={15}
+                    className={candidatesQuery.isFetching ? "animate-spin" : ""}
+                  />
+                  Refresh
+                </button>
               </div>
             </div>
 
-            {/* ============ FOOTER ============ */}
-            <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-8 py-4 sm:py-5 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  if (saving) return;
-                  setOpen(false);
-                }}
-                disabled={saving}
-                className="px-4 sm:px-6 h-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-base font-semibold hover:bg-slate-50 transition disabled:opacity-50 sm:min-w-fit"
-              >
-                Cancel
-              </button>
+            {/* MOBILE PHOTO PREVIEW */}
+
+            <div className="sm:hidden">
+              <div className="flex h-[92px] w-[104px] items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                {!selectedCandidate ? (
+                  <div className="text-center text-slate-400">
+                    <ImageIcon size={22} className="mx-auto" />
+
+                    <div className="mt-1 text-[9px] font-semibold">
+                      Select candidate
+                    </div>
+                  </div>
+                ) : selectedFilesQuery.isLoading ||
+                  selectedPhotoQuery.isLoading ? (
+                  <RefreshCw
+                    size={18}
+                    className="animate-spin text-slate-400"
+                  />
+                ) : selectedPhotoQuery.isError ? (
+                  <AlertCircle size={20} className="text-red-400" />
+                ) : selectedPhotoSrc ? (
+                  <img
+                    src={selectedPhotoSrc}
+                    alt={`${selectedCandidate.fullName} photo`}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="text-center text-slate-400">
+                    <ImageIcon size={22} className="mx-auto" />
+
+                    <div className="mt-1 text-[9px] font-semibold">
+                      No photo
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* DESKTOP ACTIONS */}
+
+            <div className="hidden flex-wrap gap-2 sm:flex">
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={openCreate}
+                  className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-sm font-bold text-white hover:bg-blue-700"
+                >
+                  <Plus size={15} />
+                  Add Candidate
+                </button>
+              ) : (
+                <Badge text="Read-only" />
+              )}
 
               <button
                 type="button"
-                onClick={save}
-                disabled={!canEdit || saving || !fullNameValid}
-                className={`px-4 sm:px-6 h-10 rounded-lg text-base font-semibold text-white transition flex items-center justify-center gap-2 sm:min-w-fit ${
-                  !canEdit || saving || !fullNameValid
-                    ? "bg-slate-300 cursor-not-allowed opacity-60"
-                    : "bg-blue-600 hover:bg-blue-700 shadow-sm"
-                }`}
-                title={canEdit ? "Save candidate" : "Read-only (Tenant)"}
+                onClick={refreshNow}
+                disabled={candidatesQuery.isFetching}
+                className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 disabled:opacity-50"
               >
-                {saving ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span className="hidden sm:inline">Saving…</span>
-                  </>
-                ) : (
-                  <>
-                    <Plus size={18} />
-                    <span className="hidden sm:inline">{editing ? "Update Candidate" : "Create Candidate"}</span>
-                    <span className="sm:hidden">{editing ? "Update" : "Create"}</span>
-                  </>
-                )}
+                <RefreshCw
+                  size={15}
+                  className={candidatesQuery.isFetching ? "animate-spin" : ""}
+                />
+                Refresh
               </button>
             </div>
           </div>
+        </section>
+
+        {/* ================================================================
+            SEARCH / FILTERS
+        ================================================================ */}
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-2.5">
+          <div className="flex items-center gap-2">
+            <div className="relative min-w-0 flex-1">
+              <Search
+                size={15}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+
+              <input
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+
+                  setPage(0);
+                }}
+                placeholder="Search candidate name..."
+                className="min-h-9 w-full rounded-lg border border-slate-300 py-1.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((current) => !current)}
+              className={[
+                `
+                  inline-flex
+                  min-h-9
+                  shrink-0
+                  items-center
+                  gap-1.5
+                  rounded-lg
+                  border
+                  px-3
+                  text-xs
+                  font-semibold
+                `,
+
+                advancedFilterCount
+                  ? `
+                      border-blue-300
+                      bg-blue-50
+                      text-blue-700
+                    `
+                  : `
+                      border-slate-300
+                      bg-white
+                      text-slate-700
+                    `,
+              ].join(" ")}
+            >
+              <Filter size={14} />
+
+              <span className="hidden sm:inline">Filters</span>
+
+              {advancedFilterCount > 0 && (
+                <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                  {advancedFilterCount}
+                </span>
+              )}
+
+              <ChevronDown size={13} />
+            </button>
+
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="hidden min-h-9 shrink-0 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 sm:block"
+            >
+              Clear
+            </button>
+          </div>
+
+          {/* ADVANCED FILTERS */}
+
+          {filtersOpen && (
+            <div className="mt-2 grid grid-cols-1 gap-2 border-t border-slate-100 pt-2 sm:grid-cols-3">
+              <input
+                value={position}
+                onChange={(event) => {
+                  setPosition(event.target.value);
+
+                  setPage(0);
+                }}
+                placeholder="Position..."
+                className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500"
+              />
+
+              <select
+                value={partyFilter}
+                onChange={(event) => {
+                  setPartyFilter(event.target.value);
+
+                  setPage(0);
+                }}
+                className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm"
+              >
+                <option value="">All parties</option>
+
+                <option value={PARTY_FILTER_INDEPENDENT}>Independent</option>
+
+                {parties.map((party) => (
+                  <option key={party.partyId} value={party.partyId}>
+                    {party.partyName} ({party.abbreviation})
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={active}
+                onChange={(event) => {
+                  setActive(event.target.value as "" | "true" | "false");
+
+                  setPage(0);
+                }}
+                className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm"
+              >
+                <option value="">All status</option>
+
+                <option value="true">Active</option>
+
+                <option value="false">Inactive</option>
+              </select>
+
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 sm:hidden"
+              >
+                Clear Filters
+              </button>
+            </div>
+          )}
+        </section>
+
+        {/* ================================================================
+            ERROR
+        ================================================================ */}
+
+        {candidatesQuery.isError && (
+          <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
+            <AlertCircle size={17} />
+
+            {friendlyError(candidatesQuery.error)}
+          </div>
+        )}
+
+        {/* ================================================================
+            WORKSPACE
+        ================================================================ */}
+
+        <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_270px]">
+          {/* CANDIDATE LIST */}
+
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            {/* DESKTOP HEADER */}
+
+            <div className="hidden grid-cols-[minmax(180px,1fr)_130px_minmax(150px,1fr)_80px_80px_140px_125px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500 md:grid">
+              <div>Candidate</div>
+
+              <div>Position</div>
+
+              <div>Party</div>
+
+              <div className="text-center">Indep.</div>
+
+              <div className="text-center">Active</div>
+
+              <div>Created</div>
+
+              <div className="text-right">Actions</div>
+            </div>
+
+            {candidatesQuery.isLoading ? (
+              <div className="px-4 py-10 text-center text-sm text-slate-500">
+                <RefreshCw
+                  size={20}
+                  className="mx-auto animate-spin text-blue-600"
+                />
+
+                <div className="mt-2">Loading candidates...</div>
+              </div>
+            ) : candidates.length === 0 ? (
+              <div className="px-4 py-10 text-center text-sm text-slate-500">
+                <UserRound size={28} className="mx-auto text-slate-300" />
+
+                <div className="mt-2 font-semibold">No candidates found.</div>
+              </div>
+            ) : (
+              candidates.map((candidate) => {
+                const selected =
+                  selectedCandidate?.candidateId === candidate.candidateId;
+
+                const deleting =
+                  deleteMutation.isPending &&
+                  deleteMutation.variables?.candidateId ===
+                    candidate.candidateId;
+
+                const independent = getIndependentValue(candidate);
+
+                const activeValue = getActiveValue(candidate);
+
+                const partyLabel = independent
+                  ? "Independent"
+                  : candidate.partyName
+                    ? `${candidate.partyName}${
+                        candidate.abbreviation
+                          ? ` (${candidate.abbreviation})`
+                          : ""
+                      }`
+                    : "—";
+
+                return (
+                  <div
+                    key={candidate.candidateId}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedCandidate(candidate)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        setSelectedCandidate(candidate);
+                      }
+                    }}
+                    className={`cursor-pointer border-b border-slate-100 px-3 py-2.5 last:border-b-0 sm:px-4 ${
+                      selected
+                        ? "bg-violet-50/70 ring-1 ring-inset ring-violet-200"
+                        : "hover:bg-slate-50"
+                    }`}
+                  >
+                    {/* MOBILE */}
+
+                    <div className="flex items-center gap-2.5 md:hidden">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <div className="truncate text-sm font-bold text-slate-900">
+                            {candidate.fullName}
+                          </div>
+
+                          {candidate.photoUrl && (
+                            <ImageIcon
+                              size={11}
+                              className="shrink-0 text-violet-600"
+                            />
+                          )}
+                        </div>
+
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-500">
+                          <span className="font-semibold text-slate-600">
+                            {candidate.position || "No position"}
+                          </span>
+
+                          <span>•</span>
+
+                          <span className="truncate">{partyLabel}</span>
+
+                          {!activeValue && (
+                            <span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-500">
+                              Inactive
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {canEdit && (
+                        <div
+                          className="flex shrink-0 gap-1"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => openEdit(candidate)}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700"
+                            aria-label="Edit candidate"
+                          >
+                            <Pencil size={14} />
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={deleting}
+                            onClick={() => removeCandidate(candidate)}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 disabled:opacity-50"
+                            aria-label="Delete candidate"
+                          >
+                            {deleting ? (
+                              <RefreshCw size={13} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={14} />
+                            )}
+                          </button>
+                        </div>
+                      )}
+
+                      <ChevronRight
+                        size={16}
+                        className="shrink-0 text-slate-400"
+                      />
+                    </div>
+
+                    {/* DESKTOP */}
+
+                    <div className="hidden grid-cols-[minmax(180px,1fr)_130px_minmax(150px,1fr)_80px_80px_140px_125px] items-center gap-3 md:grid">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-sm font-bold text-slate-900">
+                          {candidate.fullName}
+                        </span>
+
+                        {candidate.photoUrl && (
+                          <ImageIcon
+                            size={13}
+                            className="shrink-0 text-violet-600"
+                          />
+                        )}
+                      </div>
+
+                      <div className="truncate text-xs font-semibold text-slate-700">
+                        {candidate.position || "—"}
+                      </div>
+
+                      <div className="truncate text-xs text-slate-700">
+                        {partyLabel}
+                      </div>
+
+                      <div className="text-center">
+                        {independent ? "✓" : "—"}
+                      </div>
+
+                      <div className="text-center">
+                        <span
+                          className={`inline-flex h-2.5 w-2.5 rounded-full ${
+                            activeValue ? "bg-emerald-500" : "bg-slate-300"
+                          }`}
+                        />
+                      </div>
+
+                      <div className="text-[11px] text-slate-600">
+                        {formatDate(candidate.dateCreated)}
+                      </div>
+
+                      <div
+                        className="flex justify-end gap-1.5"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {canEdit && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openEdit(candidate)}
+                              className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 text-[11px] font-semibold text-blue-700"
+                            >
+                              <Pencil size={12} />
+                              Edit
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={deleting}
+                              onClick={() => removeCandidate(candidate)}
+                              className="inline-flex min-h-8 items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 text-[11px] font-semibold text-red-700 disabled:opacity-50"
+                            >
+                              <Trash2 size={12} />
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+
+            {/* PAGINATION */}
+
+            <div className="flex items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-3 py-2.5 sm:px-4">
+              <div className="text-xs font-semibold text-slate-500">
+                Page <strong className="text-slate-800">{page + 1}</strong> of{" "}
+                <strong className="text-slate-800">{totalPages}</strong>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={page <= 0}
+                  onClick={() => setPage((current) => Math.max(0, current - 1))}
+                  className="min-h-8 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 disabled:opacity-40"
+                >
+                  Previous
+                </button>
+
+                <button
+                  type="button"
+                  disabled={page >= totalPages - 1}
+                  onClick={() => setPage((current) => current + 1)}
+                  className="min-h-8 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </section>
+
+          {/* ==============================================================
+              DESKTOP PHOTO PREVIEW
+          ============================================================== */}
+
+          <aside className="hidden xl:block">
+            <section className="sticky top-3 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div className="border-b border-slate-200 bg-slate-50 px-3 py-2.5">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  Candidate Photo
+                </div>
+              </div>
+
+              <div className="p-3">
+                <div className="flex h-64 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                  {!selectedCandidate ? (
+                    <div className="text-center text-slate-400">
+                      <ImageIcon size={30} className="mx-auto" />
+
+                      <div className="mt-2 text-xs font-semibold">
+                        Select a candidate
+                      </div>
+                    </div>
+                  ) : selectedFilesQuery.isLoading ||
+                    selectedPhotoQuery.isLoading ? (
+                    <RefreshCw
+                      size={22}
+                      className="animate-spin text-slate-400"
+                    />
+                  ) : selectedPhotoQuery.isError ? (
+                    <div className="text-center text-red-500">
+                      <AlertCircle size={25} className="mx-auto" />
+
+                      <div className="mt-2 text-xs font-semibold">
+                        Unable to load photo
+                      </div>
+                    </div>
+                  ) : selectedPhotoSrc ? (
+                    <img
+                      src={selectedPhotoSrc}
+                      alt={`${selectedCandidate.fullName} photo`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="text-center text-slate-400">
+                      <ImageIcon size={30} className="mx-auto" />
+
+                      <div className="mt-2 text-xs font-semibold">No photo</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          </aside>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }

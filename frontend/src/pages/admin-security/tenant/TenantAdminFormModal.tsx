@@ -242,7 +242,6 @@ function TenantAdminFormModal(props: {
   const tenantAdminRoleOptions = [
     { value: "TENANT_ADMIN", label: "TENANT_ADMIN" },
     { value: "ADMIN", label: "ADMIN" },
-    { value: "PARTY_ADMIN", label: "PARTY_ADMIN" },
   ];
 
   return (
@@ -258,7 +257,10 @@ function TenantAdminFormModal(props: {
       {/* Error Message */}
       {createM.isError && (
         <div className="mb-4 flex gap-3 rounded-lg border border-red-200 bg-red-50 p-3">
-          <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+          <AlertCircle
+            className="text-red-600 flex-shrink-0 mt-0.5"
+            size={20}
+          />
           <div className="text-sm text-red-700 font-semibold">
             {(createM.error as any)?.message ?? "Create failed."}
           </div>
@@ -431,9 +433,7 @@ function TenantAdminFormModal(props: {
               <span className="hidden sm:inline">Creating…</span>
             </>
           ) : (
-            <>
-              👤 Create Tenant Admin
-            </>
+            <>👤 Create Tenant Admin</>
           )}
         </button>
       </div>
@@ -443,4 +443,3 @@ function TenantAdminFormModal(props: {
 
 export { TenantAdminFormModal };
 export default TenantAdminFormModal;
-

@@ -1,7 +1,4 @@
-
-
 // src/pages/admin-security/security/UsersFormModal.tsx
-
 
 import React from "react";
 import type { UseMutationResult } from "@tanstack/react-query";
@@ -284,7 +281,10 @@ export default function UsersFormModal(props: {
       {/* Error Message */}
       {saveM.isError && (
         <div className="mb-4 flex gap-3 rounded-lg border border-red-200 bg-red-50 p-3">
-          <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+          <AlertCircle
+            className="text-red-600 flex-shrink-0 mt-0.5"
+            size={20}
+          />
           <div className="text-sm text-red-700 font-semibold">
             {(saveM.error as any)?.message ?? "Save failed."}
           </div>
@@ -376,13 +376,15 @@ export default function UsersFormModal(props: {
             value={form.assignedCountyId}
             onChange={(v) => setForm((p) => ({ ...p, assignedCountyId: v }))}
             options={countyOptions}
-            disabled={isPlatformView || countiesQ.isLoading || countiesQ.isError}
+            disabled={
+              isPlatformView || countiesQ.isLoading || countiesQ.isError
+            }
             error={
               isPlatformView
                 ? ""
                 : countiesQ.isError
-                ? "Failed to load counties"
-                : ""
+                  ? "Failed to load counties"
+                  : ""
             }
             emptyLabel={isPlatformView ? "—" : "None"}
           />
@@ -414,7 +416,8 @@ export default function UsersFormModal(props: {
               🔐 Password Management
             </div>
             <div className="mt-2 text-xs text-slate-600">
-              To reset password, go to user details page and click the key icon under Actions.
+              To reset password, go to user details page and click the key icon
+              under Actions.
             </div>
           </div>
         )}
@@ -460,9 +463,7 @@ export default function UsersFormModal(props: {
               <span className="hidden sm:inline">Saving…</span>
             </>
           ) : (
-            <>
-              {editing ? "✏️ Update" : "💾 Save"}
-            </>
+            <>{editing ? "✏️ Update" : "💾 Save"}</>
           )}
         </button>
       </div>

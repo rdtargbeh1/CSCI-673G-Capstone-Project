@@ -1,619 +1,748 @@
-
 // src/pages/elections/workspace/tabs/setup/election/ElectionPartiesTab.tsx
 
-import React, { useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+
+import { useNavigate, useParams } from "react-router-dom";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
 import {
-  Plus,
-  Pencil,
-  Trash2,
-  RefreshCw,
-  CheckCircle2,
-  XCircle,
-  X,
   AlertCircle,
+  CheckCircle2,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Users,
+  XCircle,
 } from "lucide-react";
 
 import { useAuthStore } from "../../../../../../shared/store/authStore";
-import {
-  ReadOnlyBanner,
-  PlaceholderNote,
-  Badge,
-} from "../../../../shared/elections-ui";
 
 import {
-  fetchElectionParties,
-  addPartyToElection,
-  updateElectionParty,
   deleteElectionParty,
+  fetchElectionParties,
+  updateElectionParty,
   type ElectionPartyDto,
 } from "../../../../../../shared/services/electionPartyService";
 
-import {
-  searchParties,
-  type PartyDto,
-} from "../../../../../../shared/services/partyService";
+import { Badge, ReadOnlyBanner } from "../../../../shared/elections-ui";
 
-/** ============ HELPERS ============ */
-function safeStr(v: any) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
+// ============================================================================
+// HELPERS
+// ============================================================================
 
-function friendlySaveError(err: any): string {
+function friendlyError(error: any) {
   return (
-    safeStr(err?.response?.data?.message) ||
-    safeStr(err?.response?.data?.error) ||
-    safeStr(err?.message) ||
-    "Failed to save."
+    error?.response?.data?.message ??
+    error?.response?.data?.error ??
+    error?.message ??
+    "Something went wrong."
   );
 }
 
-/** Compact table */
-function CompactTable(props: { columns: string[]; rows: React.ReactNode[][] }) {
-  const { columns, rows } = props;
-  return (
-    <div className="w-full overflow-auto rounded-xl border border-slate-200 bg-white">
-      <table className="w-full border-collapse text-lg">
-        <thead>
-          <tr className="bg-slate-50">
-            {columns.map((c) => (
-              <th
-                key={c}
-                className="text-left px-3 py-1.5 text-base font-extrabold text-slate-600 border-b border-slate-200"
-              >
-                {c}
-              </th>
-            ))}
-          </tr>
-        </thead>
+// ============================================================================
+// COMPONENT
+// ============================================================================
 
-        <tbody>
-          {rows.map((r, idx) => (
-            <tr key={idx} className="border-b border-slate-100 last:border-b-0 text-sm">
-              {r.map((cell, j) => (
-                <td key={j} className="px-3 py-1.5 align-top text-slate-800 text-base">
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/** ============ MAIN COMPONENT ============ */
 export default function ElectionPartiesTab() {
-  const qc = useQueryClient();
-  const { electionId } = useParams<{ electionId: string }>();
+  const { electionId } = useParams<{
+    electionId: string;
+  }>();
 
-  const dashboardMode = useAuthStore((s) => s.dashboardMode);
-  const isSystemAdmin = useAuthStore((s) => s.isSystemAdmin());
+  const navigate = useNavigate();
 
-  // ✅ SYSTEM + NEC can CRUD (no role-string comparisons)
+  const queryClient = useQueryClient();
+
+  // ==========================================================================
+  // ACCESS
+  // ==========================================================================
+
+  const dashboardMode = useAuthStore((state) => state.dashboardMode);
+
+  const isSystemAdmin = useAuthStore((state) => state.isSystemAdmin());
+
   const canEdit =
     dashboardMode === "SYSTEM" || dashboardMode === "NEC" || isSystemAdmin;
 
-  // modal
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<ElectionPartyDto | null>(null);
+  // ==========================================================================
+  // LOCAL BALLOT ORDER STATE
+  // ==========================================================================
 
-  // fields
-  const [selectedPartyId, setSelectedPartyId] = useState("");
-  const [ballotOrder, setBallotOrder] = useState<number | "">("");
-  const [isQualified, setIsQualified] = useState<boolean>(true);
+  const [ballotDrafts, setBallotDrafts] = useState<Record<string, string>>({});
 
-  /** ============ QUERIES ============ */
-  const partiesQ = useQuery({
+  // ==========================================================================
+  // QUERY
+  // ==========================================================================
+
+  const partiesQuery = useQuery({
     enabled: Boolean(electionId),
+
     queryKey: ["election-parties", electionId],
+
     queryFn: () => fetchElectionParties(electionId!),
+
     staleTime: 10_000,
+
     retry: 1,
   });
 
-  const partyMasterQ = useQuery({
-    enabled: open && !editing,
-    queryKey: ["parties", "master"],
-    queryFn: async () => {
-      const page = await searchParties({ page: 0, size: 500 });
-      return page.items as PartyDto[];
-    },
-    staleTime: 60_000,
-    retry: 1,
-  });
+  const parties = useMemo(
+    () => partiesQuery.data ?? [],
 
-  /** ============ HANDLERS (BEFORE MUTATIONS) ============ */
+    [partiesQuery.data],
+  );
+
+  // ==========================================================================
+  // REFRESH
+  // ==========================================================================
+
   const refreshNow = async () => {
-    if (!electionId) return;
-    await qc.invalidateQueries({ queryKey: ["election-parties", electionId] });
-    await partiesQ.refetch();
-  };
-
-  const openCreate = () => {
-    if (!electionId) return;
-    setEditing(null);
-    setSelectedPartyId("");
-    setBallotOrder("");
-    setIsQualified(true);
-    setOpen(true);
-  };
-
-  const openEdit = (row: ElectionPartyDto) => {
-    setEditing(row);
-    setSelectedPartyId(row.partyId);
-    setBallotOrder(row.ballotOrder ?? "");
-    setIsQualified(Boolean(row.isQualified));
-    setOpen(true);
-  };
-
-  /** ============ MUTATIONS ============ */
-  const addM = useMutation({
-    mutationFn: async () => {
-      if (!electionId) throw new Error("Missing electionId.");
-      if (!selectedPartyId.trim()) throw new Error("Party is required.");
-
-      return addPartyToElection(electionId, {
-        electionId,
-        partyId: selectedPartyId,
-        ballotOrder: ballotOrder === "" ? undefined : Number(ballotOrder),
-        isQualified,
-      });
-    },
-    onSuccess: async () => {
-      setOpen(false);
-      await refreshNow();
-    },
-  });
-
-  const updateM = useMutation({
-    mutationFn: async () => {
-      if (!electionId || !editing) throw new Error("Missing context.");
-
-      return updateElectionParty(electionId, editing.partyId, {
-        ballotOrder: ballotOrder === "" ? null : Number(ballotOrder),
-        isQualified,
-      });
-    },
-    onSuccess: async () => {
-      setOpen(false);
-      setEditing(null);
-      await refreshNow();
-    },
-  });
-
-  const deleteM = useMutation({
-    mutationFn: async (partyId: string) => {
-      if (!electionId) throw new Error("Missing electionId.");
-      return deleteElectionParty(electionId, partyId);
-    },
-    onSuccess: refreshNow,
-  });
-
-  const toggleQualifiedM = useMutation({
-    mutationFn: async (payload: {
-      partyId: string;
-      nextQualified: boolean;
-    }) => {
-      if (!electionId) throw new Error("Missing electionId.");
-      return updateElectionParty(electionId, payload.partyId, {
-        isQualified: payload.nextQualified,
-      });
-    },
-    onSuccess: refreshNow,
-  });
-
-  /** ============ STATE ============ */
-  const saving = addM.isPending || updateM.isPending;
-
-  /** ============ TABLE ROWS ============ */
-  const rows = useMemo(() => {
-    const items = partiesQ.data ?? [];
-
-    if (!items.length) {
-      return [
-        [
-          <span key="empty" className="text-slate-500">
-            No parties assigned yet.
-          </span>,
-          "",
-          "",
-          "",
-        ],
-      ];
+    if (!electionId) {
+      return;
     }
 
-    return items.map((p) => {
-      const toggleBtn = (
-        <button
-          type="button"
-          onClick={() => {
-            if (!canEdit) return;
-            toggleQualifiedM.mutate({
-              partyId: p.partyId,
-              nextQualified: !p.isQualified,
-            });
-          }}
-          disabled={!canEdit || toggleQualifiedM.isPending}
-          title={canEdit ? "Toggle qualified" : "Read-only"}
-          className={`inline-flex items-center px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
-            !canEdit || toggleQualifiedM.isPending ? "opacity-60" : ""
-          }`}
-        >
-          {p.isQualified ? (
-            <CheckCircle2 size={22} className="text-emerald-600" />
-          ) : (
-            <XCircle size={18} className="text-slate-400" />
-          )}
-        </button>
-      );
-
-      const actions = (
-        <div className="flex flex-wrap gap-2">
-          {toggleBtn}
-
-          <button
-            type="button"
-            disabled={!canEdit}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-blue-600 hover:bg-blue-50 transition ${
-              !canEdit ? "opacity-60" : ""
-            }`}
-            title={canEdit ? "Edit (SYSTEM/NEC)" : "Read-only"}
-            onClick={() => openEdit(p)}
-          >
-            <Pencil size={22} />
-          </button>
-
-          <button
-            type="button"
-            disabled={!canEdit || deleteM.isPending}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 hover:bg-red-50 transition ${
-              !canEdit || deleteM.isPending ? "opacity-60" : ""
-            }`}
-            title={canEdit ? "Delete (SYSTEM/NEC)" : "Read-only"}
-            onClick={() => {
-              const ok = window.confirm(
-                `Remove party "${safeStr(
-                  p.partyName
-                )}" from this election?\nThis is permanent.`
-              );
-              if (ok) deleteM.mutate(p.partyId);
-            }}
-          >
-            <Trash2 size={22} className="text-red-600" />
-          </button>
-        </div>
-      );
-
-      return [
-        <span key="party" className="font-bold">
-          {p.partyName ?? "—"}
-        </span>,
-        <span
-          key="qual"
-          className={`text-base font-bold ${
-            p.isQualified ? "text-emerald-700" : "text-slate-500"
-          }`}
-        >
-          {p.isQualified ? "✅ QUALIFIED" : "⚪ NOT QUALIFIED"}
-        </span>,
-        <span key="order" className="font-semibold">
-          {p.ballotOrder ?? "—"}
-        </span>,
-        actions,
-      ];
+    await queryClient.invalidateQueries({
+      queryKey: ["election-parties", electionId],
     });
-  }, [partiesQ.data, canEdit, deleteM.isPending, toggleQualifiedM.isPending]);
+
+    await partiesQuery.refetch();
+  };
+
+  // ==========================================================================
+  // UPDATE QUALIFICATION
+  // ==========================================================================
+
+  const qualificationMutation = useMutation({
+    mutationFn: async ({
+      partyId,
+      qualified,
+    }: {
+      partyId: string;
+
+      qualified: boolean;
+    }) => {
+      if (!electionId) {
+        throw new Error("Missing election ID.");
+      }
+
+      return updateElectionParty(electionId, partyId, {
+        isQualified: qualified,
+      });
+    },
+
+    onSuccess: async () => {
+      await refreshNow();
+    },
+  });
+
+  // ==========================================================================
+  // UPDATE BALLOT ORDER
+  // ==========================================================================
+
+  const ballotOrderMutation = useMutation({
+    mutationFn: async ({
+      partyId,
+      ballotOrder,
+    }: {
+      partyId: string;
+
+      ballotOrder: number | null;
+    }) => {
+      if (!electionId) {
+        throw new Error("Missing election ID.");
+      }
+
+      return updateElectionParty(electionId, partyId, {
+        ballotOrder,
+      });
+    },
+
+    onSuccess: async (_, variables) => {
+      setBallotDrafts((current) => {
+        const next = {
+          ...current,
+        };
+
+        delete next[variables.partyId];
+
+        return next;
+      });
+
+      await refreshNow();
+    },
+  });
+
+  // ==========================================================================
+  // DELETE
+  // ==========================================================================
+
+  const deleteMutation = useMutation({
+    mutationFn: async (party: ElectionPartyDto) => {
+      if (!electionId) {
+        throw new Error("Missing election ID.");
+      }
+
+      return deleteElectionParty(electionId, party.partyId);
+    },
+
+    onSuccess: async () => {
+      await refreshNow();
+    },
+  });
+
+  // ==========================================================================
+  // BALLOT ORDER HELPERS
+  // ==========================================================================
+
+  const getBallotValue = (party: ElectionPartyDto) => {
+    const draft = ballotDrafts[party.partyId];
+
+    if (draft !== undefined) {
+      return draft;
+    }
+
+    return party.ballotOrder == null ? "" : String(party.ballotOrder);
+  };
+
+  const commitBallotOrder = (party: ElectionPartyDto) => {
+    if (!canEdit) {
+      return;
+    }
+
+    const value = getBallotValue(party).trim();
+
+    const nextValue = value === "" ? null : Number(value);
+
+    if (nextValue !== null && (Number.isNaN(nextValue) || nextValue < 1)) {
+      return;
+    }
+
+    const currentValue = party.ballotOrder ?? null;
+
+    if (currentValue === nextValue) {
+      setBallotDrafts((current) => {
+        const next = {
+          ...current,
+        };
+
+        delete next[party.partyId];
+
+        return next;
+      });
+
+      return;
+    }
+
+    ballotOrderMutation.mutate({
+      partyId: party.partyId,
+
+      ballotOrder: nextValue,
+    });
+  };
+
+  // ==========================================================================
+  // REMOVE
+  // ==========================================================================
+
+  const removeParty = (party: ElectionPartyDto) => {
+    if (!canEdit) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Remove "${party.partyName ?? "this party"}" from this election?\n\nThe Party Master record will not be deleted.`,
+    );
+
+    if (confirmed) {
+      deleteMutation.mutate(party);
+    }
+  };
+
+  // ==========================================================================
+  // GUARD
+  // ==========================================================================
 
   if (!electionId) {
     return (
-      <div className="p-3 rounded-xl border border-slate-200 bg-white">
-        <div className="font-extrabold text-slate-800">Election Parties</div>
-        <div className="text-base text-slate-600 mt-1">
-          Missing <b>electionId</b> in route params.
-        </div>
+      <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
+        Missing election ID.
       </div>
     );
   }
 
-  /** ============ RENDER ============ */
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
+
   return (
-    <div className="flex flex-col gap-3">
-      {!canEdit ? (
-        <ReadOnlyBanner
-          reason="Election setup is managed by NEC/System Admin. You can view parties read-only."
-          sources={["election_party", "party"]}
-        />
-      ) : null}
+    <div className="w-full">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-3">
+        {/* ================================================================
+            READ ONLY
+        ================================================================ */}
 
-      {/* ============ HEADER ACTIONS ============ */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div />
+        {!canEdit && (
+          <ReadOnlyBanner
+            reason="Election party assignments are managed by NEC/System Admin."
+            sources={["election_party", "party"]}
+          />
+        )}
 
-        <div className="flex items-center gap-2">
-          {canEdit ? (
-            <button
-              type="button"
-              onClick={openCreate}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition shadow-sm"
-            >
-              <Plus size={18} />
-              Assign Party
-            </button>
-          ) : (
-            <Badge text="Read-only (Tenant)" />
-          )}
+        {/* ================================================================
+            HEADER
+        ================================================================ */}
 
-          <button
-            type="button"
-            onClick={refreshNow}
-            disabled={partiesQ.isFetching}
-            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
-              partiesQ.isFetching ? "opacity-60" : ""
-            }`}
-          >
-            <RefreshCw size={16} />
-            Refresh
-          </button>
-        </div>
-      </div>
+        <section className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 sm:px-4">
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                <Users size={16} />
+              </div>
 
-      {/* ============ STATUS ============ */}
-      {partiesQ.isLoading ? (
-        <div className="p-2 text-slate-600">Loading election parties…</div>
-      ) : partiesQ.isError ? (
-        <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700">
-          {(partiesQ.error as any)?.message ?? "Failed to load parties."}
-        </div>
-      ) : null}
-
-      {/* ============ TABLE ============ */}
-      <CompactTable
-        columns={["Party", "Qualification", "Ballot Order", "Actions"]}
-        rows={rows}
-      />
-
-      {/* ============ NOTES ============ */}
-      <div className="mt-1">
-        <PlaceholderNote
-          title="Notes"
-          bullets={[
-            "SYSTEM + NEC can create/edit/delete election parties.",
-            "Qualification comes from DB and can be toggled via the icon button.",
-            "Modal uses radio buttons and reflects DB value during Edit.",
-          ]}
-        />
-      </div>
-
-      {/* ============ CREATE/EDIT MODAL (ENHANCED UX) ============ */}
-      {open ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm"
-          onClick={() => {
-            if (saving) return;
-            setOpen(false);
-          }}
-        >
-          <div
-            className="w-full max-w-2xl bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* ============ HEADER WITH BLUE GRADIENT ============ */}
-            <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400 px-4 sm:px-8 py-6 sm:py-8 border-b border-blue-600 flex items-start justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <h2 className="text-2xl sm:text-3xl font-bold text-white">
-                  {editing ? "✏️ Edit Party" : "➕ Assign Party"}
+              <div className="min-w-0">
+                <h2 className="text-base font-bold text-slate-900 sm:text-lg">
+                  Election Parties
                 </h2>
-                <p className="text-sm sm:text-base font-semibold text-blue-100 mt-2">
-                  {editing
-                    ? `Update party settings for this election.`
-                    : "Add a party from Party Master to this election."}
+
+                <p className="text-xs text-slate-500">
+                  Parties assigned to this election.
                 </p>
               </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (saving) return;
-                  setOpen(false);
-                }}
-                disabled={saving}
-                className="flex-shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border-2 border-blue-300 hover:bg-blue-700 bg-blue-600 transition text-white disabled:opacity-50"
-                title="Close modal"
-              >
-                <X size={20} />
-              </button>
             </div>
 
-            {/* ============ CONTENT ============ */}
-            <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 sm:py-7 space-y-5 sm:space-y-6">
-              {/* Party Selection (Create only) */}
-              {!editing ? (
-                <div>
-                  <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
-                    Party <span className="text-red-600">*</span>
-                  </label>
-
-                  {partyMasterQ.isLoading ? (
-                    <div className="px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-slate-50 text-slate-600 text-base">
-                      Loading parties…
-                    </div>
-                  ) : partyMasterQ.isError ? (
-                    <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-3 sm:p-4">
-                      <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
-                      <div className="text-sm text-red-700 font-semibold">
-                        {(partyMasterQ.error as any)?.message ??
-                          "Failed to load parties."}
-                      </div>
-                    </div>
-                  ) : (
-                    <select
-                      value={selectedPartyId}
-                      onChange={(e) => setSelectedPartyId(e.target.value)}
-                      className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    >
-                      <option value="">-- Select party --</option>
-                      {(partyMasterQ.data ?? []).map((p: PartyDto) => (
-                        <option key={p.partyId} value={p.partyId}>
-                          {p.partyName}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(`/elections/${electionId}/setup/parties/assign`)
+                  }
+                  className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white hover:bg-blue-700 sm:text-sm"
+                >
+                  <Plus size={15} />
+                  Assign Parties
+                </button>
               ) : (
-                <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 sm:p-4">
-                  <p className="text-sm text-blue-800">
-                    <strong className="font-bold">📌 Editing Party:</strong> {editing.partyName}
-                  </p>
-                </div>
+                <Badge text="Read-only" />
               )}
 
-              {/* Ballot Order Field */}
-              <div>
-                <label className="block text-base sm:text-lg font-bold text-slate-900 mb-2 sm:mb-3">
-                  Ballot Order <span className="text-slate-400">(optional)</span>
-                </label>
-                <input
-                  value={ballotOrder}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    if (v === "") setBallotOrder("");
-                    else {
-                      const n = Number(v);
-                      if (Number.isNaN(n)) return;
-                      setBallotOrder(n);
-                    }
-                  }}
-                  type="number"
-                  placeholder="e.g., 1, 2, 3..."
-                  className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+              <button
+                type="button"
+                onClick={refreshNow}
+                disabled={partiesQuery.isFetching}
+                className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 sm:text-sm"
+              >
+                <RefreshCw
+                  size={15}
+                  className={partiesQuery.isFetching ? "animate-spin" : ""}
                 />
-                <p className="text-xs sm:text-sm text-slate-500 mt-2">
-                  Numeric order for ballot display (optional)
-                </p>
-              </div>
-
-              {/* Qualification Radio Buttons */}
-              <div>
-                <label className="block text-base sm:text-lg font-bold text-slate-900 mb-3 sm:mb-4">
-                  Qualification <span className="text-red-600">*</span>
-                </label>
-
-                <div className="space-y-2.5">
-                  <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer transition">
-                    <input
-                      type="radio"
-                      name="qualified"
-                      checked={isQualified === true}
-                      onChange={() => setIsQualified(true)}
-                      className="h-5 w-5 accent-blue-600 cursor-pointer"
-                    />
-                    <span className="text-base font-semibold text-slate-900">
-                      ✅ Qualified
-                    </span>
-                    <span className="text-sm text-slate-500 ml-auto">
-                      Party is eligible
-                    </span>
-                  </label>
-
-                  <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer transition">
-                    <input
-                      type="radio"
-                      name="qualified"
-                      checked={isQualified === false}
-                      onChange={() => setIsQualified(false)}
-                      className="h-5 w-5 accent-blue-600 cursor-pointer"
-                    />
-                    <span className="text-base font-semibold text-slate-900">
-                      ⚪ Not Qualified
-                    </span>
-                    <span className="text-sm text-slate-500 ml-auto">
-                      Party is ineligible
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Error Message */}
-              {(addM.isError || updateM.isError) && (
-                <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-3 sm:p-4">
-                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
-                  <div className="text-sm text-red-700 font-semibold">
-                    {addM.isError
-                      ? friendlySaveError(addM.error)
-                      : friendlySaveError(updateM.error)}
-                  </div>
-                </div>
-              )}
-
-              {/* Help Text */}
-              <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 sm:p-4">
-                <p className="text-sm text-blue-800">
-                  <strong className="font-bold">💡 Tip:</strong> Use ballot order to arrange parties on the election ballot. Qualified status determines eligibility.
-                </p>
-              </div>
-            </div>
-
-            {/* ============ FOOTER ============ */}
-            <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-8 py-4 sm:py-5 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  if (saving) return;
-                  setOpen(false);
-                }}
-                disabled={saving}
-                className="px-4 sm:px-6 h-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-base font-semibold hover:bg-slate-50 transition disabled:opacity-50 sm:min-w-fit"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                disabled={!canEdit || saving || !selectedPartyId}
-                onClick={() => {
-                  if (!canEdit) return;
-                  if (editing) updateM.mutate();
-                  else addM.mutate();
-                }}
-                className={`px-4 sm:px-6 h-10 rounded-lg text-base font-semibold text-white transition flex items-center justify-center gap-2 sm:min-w-fit ${
-                  !canEdit || saving || (!editing && !selectedPartyId)
-                    ? "bg-slate-300 cursor-not-allowed opacity-60"
-                    : "bg-blue-600 hover:bg-blue-700 shadow-sm"
-                }`}
-                title={
-                  !canEdit
-                    ? "Read-only (Tenant)"
-                    : !selectedPartyId && !editing
-                    ? "Select a party"
-                    : "Save party"
-                }
-              >
-                {saving ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span className="hidden sm:inline">Saving…</span>
-                  </>
-                ) : (
-                  <>
-                    <Plus size={18} />
-                    <span className="hidden sm:inline">
-                      {editing ? "Update Party" : "Assign Party"}
-                    </span>
-                    <span className="sm:hidden">{editing ? "Update" : "Assign"}</span>
-                  </>
-                )}
+                Refresh
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+        </section>
+
+        {/* ================================================================
+            LOADING
+        ================================================================ */}
+
+        {partiesQuery.isLoading && (
+          <div className="rounded-xl border border-slate-200 bg-white p-5 text-center text-sm text-slate-500">
+            Loading election parties…
+          </div>
+        )}
+
+        {/* ================================================================
+            ERROR
+        ================================================================ */}
+
+        {partiesQuery.isError && (
+          <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
+            <AlertCircle size={17} className="mt-0.5 shrink-0" />
+
+            <div>{friendlyError(partiesQuery.error)}</div>
+          </div>
+        )}
+
+        {/* ================================================================
+            EMPTY
+        ================================================================ */}
+
+        {!partiesQuery.isLoading &&
+          !partiesQuery.isError &&
+          parties.length === 0 && (
+            <section className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center">
+              <Users size={28} className="mx-auto text-slate-300" />
+
+              <div className="mt-2 text-sm font-bold text-slate-800">
+                No parties assigned
+              </div>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Assign parties from Party Master.
+              </p>
+
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(`/elections/${electionId}/setup/parties/assign`)
+                  }
+                  className="mt-3 inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-sm font-bold text-white hover:bg-blue-700"
+                >
+                  <Plus size={15} />
+                  Assign Parties
+                </button>
+              )}
+            </section>
+          )}
+
+        {/* ================================================================
+            LIST
+        ================================================================ */}
+
+        {!partiesQuery.isLoading &&
+          !partiesQuery.isError &&
+          parties.length > 0 && (
+            <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              {/* ==========================================================
+                  DESKTOP HEADER
+              ========================================================== */}
+
+              <div className="hidden grid-cols-[minmax(220px,1fr)_120px_260px_90px] items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500 md:grid">
+                <div>Party</div>
+
+                <div>Ballot Order</div>
+
+                <div>Qualification</div>
+
+                <div className="text-right">Action</div>
+              </div>
+
+              {/* ==========================================================
+                  ROWS
+              ========================================================== */}
+
+              {parties.map((party) => {
+                const qualificationSaving =
+                  qualificationMutation.isPending &&
+                  qualificationMutation.variables?.partyId === party.partyId;
+
+                const ballotSaving =
+                  ballotOrderMutation.isPending &&
+                  ballotOrderMutation.variables?.partyId === party.partyId;
+
+                const deleting =
+                  deleteMutation.isPending &&
+                  deleteMutation.variables?.partyId === party.partyId;
+
+                return (
+                  <div
+                    key={party.partyId}
+                    className="border-b border-slate-100 px-3 py-2.5 last:border-b-0 sm:px-4"
+                  >
+                    {/* ==================================================
+                          MOBILE
+                      ================================================== */}
+
+                    <div className="md:hidden">
+                      <div className="flex min-w-0 items-start justify-between gap-2">
+                        {/* PARTY */}
+
+                        <div className="min-w-0 flex-1">
+                          <div
+                            className="truncate text-sm font-bold text-slate-900"
+                            title={party.partyName ?? ""}
+                          >
+                            {party.partyName ?? "Unnamed Party"}
+                          </div>
+
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            {/* BALLOT ORDER */}
+
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                                Order
+                              </span>
+
+                              {canEdit ? (
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={getBallotValue(party)}
+                                  onChange={(event) =>
+                                    setBallotDrafts((current) => ({
+                                      ...current,
+
+                                      [party.partyId]: event.target.value,
+                                    }))
+                                  }
+                                  onBlur={() => commitBallotOrder(party)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") {
+                                      event.currentTarget.blur();
+                                    }
+                                  }}
+                                  disabled={ballotSaving}
+                                  className="h-8 w-14 rounded-md border border-slate-300 bg-white px-2 text-center text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                                />
+                              ) : (
+                                <span className="text-xs font-bold text-slate-700">
+                                  {party.ballotOrder ?? "—"}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* QUALIFICATION */}
+
+                            <QualificationChoice
+                              partyId={party.partyId}
+                              qualified={Boolean(party.isQualified)}
+                              canEdit={canEdit}
+                              saving={qualificationSaving}
+                              onChange={(value) =>
+                                qualificationMutation.mutate({
+                                  partyId: party.partyId,
+
+                                  qualified: value,
+                                })
+                              }
+                              compact
+                            />
+                          </div>
+                        </div>
+
+                        {/* REMOVE */}
+
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => removeParty(party)}
+                            disabled={deleting}
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50"
+                            aria-label="Remove party"
+                          >
+                            {deleting ? (
+                              <RefreshCw size={14} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={14} />
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ==================================================
+                          DESKTOP
+                      ================================================== */}
+
+                    <div className="hidden grid-cols-[minmax(220px,1fr)_120px_260px_90px] items-center gap-3 md:grid">
+                      {/* PARTY */}
+
+                      <div className="min-w-0">
+                        <div
+                          className="truncate text-sm font-bold text-slate-900 lg:text-base"
+                          title={party.partyName ?? ""}
+                        >
+                          {party.partyName ?? "Unnamed Party"}
+                        </div>
+                      </div>
+
+                      {/* BALLOT ORDER */}
+
+                      <div>
+                        {canEdit ? (
+                          <input
+                            type="number"
+                            min={1}
+                            value={getBallotValue(party)}
+                            onChange={(event) =>
+                              setBallotDrafts((current) => ({
+                                ...current,
+
+                                [party.partyId]: event.target.value,
+                              }))
+                            }
+                            onBlur={() => commitBallotOrder(party)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.currentTarget.blur();
+                              }
+                            }}
+                            disabled={ballotSaving}
+                            className="h-9 w-16 rounded-md border border-slate-300 bg-white px-2 text-center text-sm font-bold text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                          />
+                        ) : (
+                          <span className="text-sm font-bold text-slate-800">
+                            {party.ballotOrder ?? "—"}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* QUALIFICATION */}
+
+                      <QualificationChoice
+                        partyId={party.partyId}
+                        qualified={Boolean(party.isQualified)}
+                        canEdit={canEdit}
+                        saving={qualificationSaving}
+                        onChange={(value) =>
+                          qualificationMutation.mutate({
+                            partyId: party.partyId,
+
+                            qualified: value,
+                          })
+                        }
+                      />
+
+                      {/* REMOVE */}
+
+                      <div className="flex justify-end">
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => removeParty(party)}
+                            disabled={deleting}
+                            className="inline-flex min-h-8 items-center justify-center gap-1 rounded-md border border-red-200 bg-red-50 px-2.5 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                          >
+                            {deleting ? (
+                              <RefreshCw size={13} className="animate-spin" />
+                            ) : (
+                              <Trash2 size={13} />
+                            )}
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ==================================================
+                          ROW ERRORS
+                      ================================================== */}
+
+                    {qualificationMutation.isError &&
+                      qualificationMutation.variables?.partyId ===
+                        party.partyId && (
+                        <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700">
+                          {friendlyError(qualificationMutation.error)}
+                        </div>
+                      )}
+
+                    {ballotOrderMutation.isError &&
+                      ballotOrderMutation.variables?.partyId ===
+                        party.partyId && (
+                        <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700">
+                          {friendlyError(ballotOrderMutation.error)}
+                        </div>
+                      )}
+                  </div>
+                );
+              })}
+            </section>
+          )}
+
+        {/* ================================================================
+            SUMMARY
+        ================================================================ */}
+
+        {!partiesQuery.isLoading &&
+          !partiesQuery.isError &&
+          parties.length > 0 && (
+            <div className="px-1 text-xs font-medium text-slate-500">
+              {parties.length} {parties.length === 1 ? "party" : "parties"}{" "}
+              assigned to this election.
+            </div>
+          )}
+      </div>
     </div>
   );
 }
 
+// ============================================================================
+// QUALIFICATION CHOICE
+// ============================================================================
+
+function QualificationChoice({
+  partyId,
+  qualified,
+  canEdit,
+  saving,
+  onChange,
+  compact = false,
+}: {
+  partyId: string;
+
+  qualified: boolean;
+
+  canEdit: boolean;
+
+  saving: boolean;
+
+  onChange: (value: boolean) => void;
+
+  compact?: boolean;
+}) {
+  if (!canEdit) {
+    return (
+      <span
+        className={
+          qualified
+            ? "inline-flex w-fit items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700"
+            : "inline-flex w-fit items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600"
+        }
+      >
+        {qualified ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
+
+        {qualified ? "Qualified" : "Not Qualified"}
+      </span>
+    );
+  }
+
+  return (
+    <div
+      className={
+        compact ? "flex items-center gap-1" : "flex items-center gap-1.5"
+      }
+    >
+      <label
+        className={
+          qualified
+            ? "inline-flex cursor-pointer items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700"
+            : "inline-flex cursor-pointer items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
+        }
+      >
+        <input
+          type="radio"
+          name={`qualification-${partyId}`}
+          checked={qualified}
+          onChange={() => onChange(true)}
+          disabled={saving}
+          className="h-3 w-3 accent-emerald-600"
+        />
+        Qualified
+      </label>
+
+      <label
+        className={
+          !qualified
+            ? "inline-flex cursor-pointer items-center gap-1 rounded-md border border-slate-400 bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700"
+            : "inline-flex cursor-pointer items-center gap-1 rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
+        }
+      >
+        <input
+          type="radio"
+          name={`qualification-${partyId}`}
+          checked={!qualified}
+          onChange={() => onChange(false)}
+          disabled={saving}
+          className="h-3 w-3 accent-slate-600"
+        />
+        Not Qualified
+      </label>
+
+      {saving && (
+        <RefreshCw size={12} className="animate-spin text-slate-400" />
+      )}
+    </div>
+  );
+}

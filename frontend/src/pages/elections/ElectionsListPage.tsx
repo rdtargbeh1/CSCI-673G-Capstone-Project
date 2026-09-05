@@ -1,913 +1,735 @@
-
-
-// // src/pages/elections/ElectionsListPage.tsx
+// src/pages/elections/ElectionsListPage.tsx
 
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+
 import {
-  Pencil,
+  CalendarDays,
+  ChevronRight,
+  FilterX,
   Plus,
   RefreshCw,
   Search,
-  Trash2,
-  Power,
-  PowerOff,
+  Vote,
 } from "lucide-react";
 
 import { useAuthStore } from "../../shared/store/authStore";
 
 import {
-  createElection,
-  deleteElection,
   searchElections,
-  setElectionActive,
-  updateElection,
   type ElectionDto,
   type ElectionType,
 } from "../../shared/services/electionService";
 
-import {
-  Panel,
-  SimpleTable,
-  PlaceholderNote,
-  SectionTitle,
-  Badge,
-} from "./shared/elections-ui";
+import { Badge, SectionTitle } from "./shared/elections-ui";
 
-/** ============ HELPERS ============ */
-function safeStr(v: any) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
-function normalizeName(v: string) {
-  return v.trim().replace(/\s+/g, " ");
-}
-function toIntOrUndef(v: string): number | undefined {
-  const s = v.trim();
-  if (!s) return undefined;
-  const n = Number(s);
-  return Number.isFinite(n) ? n : undefined;
-}
-function friendlySaveError(err: any): string {
-  const msg =
-    safeStr(err?.response?.data?.message) ||
-    safeStr(err?.response?.data?.error) ||
-    safeStr(err?.message) ||
-    "Failed to save election.";
+// ============================================================================
+// HELPERS
+// ============================================================================
 
-  const looksDup = /duplicate|unique|already exists|constraint/i.test(msg);
-  if (looksDup) {
-    return "Election already exists (same Name + Year). Please choose a different name or year.";
+function safeStr(value: any) {
+  return typeof value === "string" ? value : value == null ? "" : String(value);
+}
+
+function toIntOrUndef(value: string): number | undefined {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return undefined;
   }
-  return msg;
-}
-function fmtDate(v: any): string {
-  if (!v) return "";
-  const d = v instanceof Date ? v : new Date(v);
-  if (Number.isNaN(d.getTime())) return safeStr(v);
-  return d.toLocaleString();
+
+  const numberValue = Number(trimmed);
+
+  return Number.isFinite(numberValue) ? numberValue : undefined;
 }
 
-const ELECTION_TYPE_OPTIONS: { value: ElectionType; label: string }[] = [
-  { value: "PRESIDENTIAL", label: "Presidential" },
-  { value: "LEGISLATIVE", label: "Legislative" },
-  { value: "SENATORIAL", label: "Senatorial" },
-  { value: "REPRESENTATIVE", label: "Representative" },
-  { value: "REFERENDUM", label: "Referendum" },
-  { value: "PRESIDENTIAL_GENERAL", label: "Presidential General" },
-  { value: "BY_ELECTION", label: "By-Election" },
-  { value: "LOCAL", label: "Local" },
+function fmtDate(value: any): string {
+  if (!value) {
+    return "—";
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return safeStr(value);
+  }
+
+  return date.toLocaleString();
+}
+
+// ============================================================================
+// ELECTION TYPES
+// ============================================================================
+
+const ELECTION_TYPE_OPTIONS: {
+  value: ElectionType;
+  label: string;
+}[] = [
+  {
+    value: "PRESIDENTIAL",
+    label: "Presidential",
+  },
+
+  {
+    value: "LEGISLATIVE",
+    label: "Legislative",
+  },
+
+  {
+    value: "SENATORIAL",
+    label: "Senatorial",
+  },
+
+  {
+    value: "REPRESENTATIVE",
+    label: "Representative",
+  },
+
+  {
+    value: "REFERENDUM",
+    label: "Referendum",
+  },
+
+  {
+    value: "PRESIDENTIAL_GENERAL",
+    label: "Presidential General",
+  },
+
+  {
+    value: "BY_ELECTION",
+    label: "By-Election",
+  },
+
+  {
+    value: "LOCAL",
+    label: "Local",
+  },
 ];
 
-export default function ElectionsListPage() {
-  const nav = useNavigate();
-  const qc = useQueryClient();
+function electionTypeLabel(type: ElectionType | null | undefined) {
+  return (
+    ELECTION_TYPE_OPTIONS.find((option) => option.value === type)?.label ??
+    safeStr(type) ??
+    "—"
+  );
+}
 
-  const dashboardMode = useAuthStore((s) => s.dashboardMode);
+// ============================================================================
+// PAGE
+// ============================================================================
+
+export default function ElectionsListPage() {
+  const navigate = useNavigate();
+
+  const queryClient = useQueryClient();
+
+  // ==========================================================================
+  // ACCESS
+  // ==========================================================================
+
+  const dashboardMode = useAuthStore((state) => state.dashboardMode);
+
   const canEdit = dashboardMode === "NEC" || dashboardMode === "SYSTEM";
 
+  // ==========================================================================
+  // PAGINATION
+  // ==========================================================================
+
   const size = 20;
+
   const [page, setPage] = useState(0);
 
-  // filters
+  // ==========================================================================
+  // FILTERS
+  // ==========================================================================
+
   const [q, setQ] = useState("");
+
   const [year, setYear] = useState("");
+
   const [type, setType] = useState<ElectionType | "">("");
 
   const [statusFilter, setStatusFilter] = useState<
     "active" | "inactive" | "all"
   >("active");
+
   const activeBool: boolean | undefined =
     statusFilter === "all" ? undefined : statusFilter === "active";
 
-  // modal
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<ElectionDto | null>(null);
-  const [touched, setTouched] = useState(false);
+  // ==========================================================================
+  // QUERY
+  // ==========================================================================
 
-  // form fields
-  const [electionName, setElectionName] = useState("");
-  const [formYear, setFormYear] = useState("");
-  const [formType, setFormType] = useState<ElectionType>(
-    "PRESIDENTIAL_GENERAL"
-  );
-  const [formActive, setFormActive] = useState(true);
-
-  const [ballotSparePercent, setBallotSparePercent] = useState<number | "">("");
-  const [enforceBallotsGteRegistered, setEnforceBallotsGteRegistered] =
-    useState<boolean>(true);
-
-  /** List query */
-  const electionsQ = useQuery({
+  const electionsQuery = useQuery({
     queryKey: ["elections", page, q, year, type, statusFilter],
+
     queryFn: () =>
       searchElections({
         page,
         size,
+
         q: q.trim() || undefined,
+
         year: toIntOrUndef(year),
+
         type: type || undefined,
+
         active: activeBool,
       }),
+
     staleTime: 10_000,
     retry: 1,
   });
 
   const elections = useMemo(
-    () => electionsQ.data?.items ?? [],
-    [electionsQ.data]
+    () => electionsQuery.data?.items ?? [],
+
+    [electionsQuery.data],
   );
-  const totalPages = Math.max(1, electionsQ.data?.totalPages ?? 1);
+
+  const totalPages = Math.max(1, electionsQuery.data?.totalPages ?? 1);
+
+  // ==========================================================================
+  // REFRESH
+  // ==========================================================================
 
   const refreshNow = async () => {
-    await qc.invalidateQueries({ queryKey: ["elections"] });
-    await electionsQ.refetch();
-  };
-
-  /** CRUD mutations */
-  const createM = useMutation({
-    mutationFn: async () => {
-      const name = normalizeName(electionName);
-      const y = toIntOrUndef(formYear);
-      if (!name) throw new Error("Election name is required.");
-      if (!y) throw new Error("Year is required.");
-
-      const spare =
-        ballotSparePercent === "" ? null : Number(ballotSparePercent);
-      if (spare != null) {
-        if (!Number.isFinite(spare)) throw new Error("Spare percent is invalid.");
-        if (spare < 0 || spare > 100)
-          throw new Error("Spare percent must be between 0 and 100.");
-      }
-
-      return createElection({
-        electionName: name,
-        year: y,
-        electionType: formType,
-        isActive: !!formActive,
-
-        ballotSparePercent: spare,
-        enforceBallotsGteRegistered,
-      } as any);
-    },
-    onSuccess: async () => {
-      setOpen(false);
-      setEditing(null);
-      setElectionName("");
-      setFormYear("");
-      setFormType("PRESIDENTIAL_GENERAL");
-      setFormActive(true);
-
-      setBallotSparePercent("");
-      setEnforceBallotsGteRegistered(true);
-
-      setTouched(false);
-      await refreshNow();
-    },
-  });
-
-  const updateM = useMutation({
-    mutationFn: async () => {
-      if (!editing) throw new Error("No election selected.");
-      const name = normalizeName(electionName);
-      const y = toIntOrUndef(formYear);
-      if (!name) throw new Error("Election name is required.");
-      if (!y) throw new Error("Year is required.");
-
-      const spare =
-        ballotSparePercent === "" ? null : Number(ballotSparePercent);
-      if (spare != null) {
-        if (!Number.isFinite(spare)) throw new Error("Spare percent is invalid.");
-        if (spare < 0 || spare > 100)
-          throw new Error("Spare percent must be between 0 and 100.");
-      }
-
-      return updateElection(editing.electionId, {
-        electionName: name,
-        year: y,
-        electionType: formType,
-        isActive: !!formActive,
-
-        ballotSparePercent: spare,
-        enforceBallotsGteRegistered,
-      } as any);
-    },
-    onSuccess: async () => {
-      setOpen(false);
-      setEditing(null);
-      setElectionName("");
-      setFormYear("");
-      setFormType("PRESIDENTIAL_GENERAL");
-      setFormActive(true);
-
-      setBallotSparePercent("");
-      setEnforceBallotsGteRegistered(true);
-
-      setTouched(false);
-      await refreshNow();
-    },
-  });
-
-  const setActiveM = useMutation({
-    mutationFn: async (e: ElectionDto) =>
-      setElectionActive(e.electionId, !e.isActive),
-    onSuccess: refreshNow,
-  });
-
-  const deleteM = useMutation({
-    mutationFn: async (id: string) => deleteElection(id),
-    onSuccess: refreshNow,
-  });
-
-  const saving = createM.isPending || updateM.isPending;
-
-  /** Modal helpers */
-  const openCreate = () => {
-    setEditing(null);
-    setElectionName("");
-    setFormYear("");
-    setFormType("PRESIDENTIAL_GENERAL");
-    setFormActive(true);
-
-    setBallotSparePercent("");
-    setEnforceBallotsGteRegistered(true);
-
-    setTouched(false);
-    setOpen(true);
-  };
-
-  const openEdit = (e: ElectionDto) => {
-    setEditing(e);
-    setElectionName(safeStr(e.electionName));
-    setFormYear(String(e.year ?? ""));
-    setFormType(e.electionType || "PRESIDENTIAL_GENERAL");
-    setFormActive(!!e.isActive);
-
-    setBallotSparePercent(
-      (e as any).ballotSparePercent == null
-        ? ""
-        : Number((e as any).ballotSparePercent)
-    );
-    setEnforceBallotsGteRegistered(
-      (e as any).enforceBallotsGteRegistered ?? true
-    );
-
-    setTouched(false);
-    setOpen(true);
-  };
-
-  const save = () => {
-    setTouched(true);
-    if (!canEdit) return;
-    if (editing) updateM.mutate();
-    else createM.mutate();
-  };
-
-  /** Table rows */
-  const rows = useMemo(() => {
-    return elections.map((e) => {
-      const typeLabel =
-        ELECTION_TYPE_OPTIONS.find((x) => x.value === e.electionType)?.label ||
-        safeStr(e.electionType);
-
-      const created =
-        (e as any).dateCreated ??
-        (e as any).createdAt ??
-        (e as any).createdOn ??
-        (e as any).date_created;
-
-      const spare = (e as any).ballotSparePercent;
-      const enforce = (e as any).enforceBallotsGteRegistered;
-
-      const spareNode =
-        spare == null || spare === ""
-          ? <span className="text-slate-400">—</span>
-          : <span className="font-bold">{Number(spare)}%</span>;
-
-      const ruleNode = (
-        <span
-          className={`text-base font-extrabold px-2 py-1 rounded-lg border ${
-            enforce === false
-              ? "border-slate-200 text-slate-500 bg-white"
-              : "border-emerald-200 text-emerald-700 bg-emerald-50"
-          }`}
-          title="Election-level rule: ballotsIssued must be >= registeredVoters"
-        >
-          {enforce === false ? "OFF" : "ENFORCED"}
-        </span>
-      );
-
-      const statusNode = (
-        <label className="inline-flex items-center gap-2 select-none">
-          <input
-            type="checkbox"
-            checked={!!e.isActive}
-            disabled={!canEdit || setActiveM.isPending}
-            onChange={() => {
-              if (!canEdit) return;
-              setActiveM.mutate(e);
-            }}
-            className="h-4 w-4 rounded border-slate-300"
-          />
-          <span className="text-sm font-bold">
-            {e.isActive ? "ACTIVE" : "INACTIVE"}
-          </span>
-        </label>
-      );
-
-      const actions = (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="px-5 py-1.5 rounded-lg border border-slate-200 bg-blue-800 text-lg text-white font-bold"
-            title="Open election workspace"
-            onClick={() => nav(`/elections/${e.electionId}/overview`)}
-          >
-            Open
-          </button>
-
-          <button
-            type="button"
-            disabled={!canEdit || setActiveM.isPending}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white ${
-              !canEdit || setActiveM.isPending ? "opacity-60" : ""
-            }`}
-            title={
-              canEdit
-                ? e.isActive
-                  ? "Deactivate election (SYSTEM/NEC)"
-                  : "Activate election (SYSTEM/NEC)"
-                : "Read-only (Tenant)"
-            }
-            onClick={() => setActiveM.mutate(e)}
-          >
-            {e.isActive ? (
-              <PowerOff size={24} className="text-amber-600" />
-            ) : (
-              <Power size={24} className="text-emerald-600" />
-            )}
-          </button>
-
-          <button
-            type="button"
-            disabled={!canEdit}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-700 ${
-              !canEdit ? "opacity-60" : ""
-            }`}
-            title={canEdit ? "Edit election (SYSTEM/NEC)" : "Read-only (Tenant)"}
-            onClick={() => openEdit(e)}
-          >
-            <Pencil size={24} />
-          </button>
-
-          <button
-            type="button"
-            disabled={!canEdit || deleteM.isPending}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 ${
-              !canEdit || deleteM.isPending ? "opacity-60" : ""
-            }`}
-            title={
-              canEdit
-                ? "Delete election permanently (SYSTEM/NEC)"
-                : "Read-only (Tenant)"
-            }
-            onClick={() => {
-              const ok = window.confirm(
-                `Delete election "${e.electionName}" (${e.year})?\nThis is permanent.`
-              );
-              if (ok) deleteM.mutate(e.electionId);
-            }}
-          >
-            <Trash2 size={24} className="text-red-600" />
-          </button>
-        </div>
-      );
-
-      return [
-        e.electionName,
-        e.year,
-        typeLabel,
-        spareNode,
-        ruleNode,
-        statusNode,
-        fmtDate(created),
-        actions,
-      ];
+    await queryClient.invalidateQueries({
+      queryKey: ["elections"],
     });
-  }, [elections, nav, canEdit, setActiveM.isPending, deleteM.isPending]);
+
+    await electionsQuery.refetch();
+  };
+
+  // ==========================================================================
+  // CLEAR FILTERS
+  // ==========================================================================
+
+  const clearFilters = () => {
+    setQ("");
+    setYear("");
+    setType("");
+
+    setStatusFilter("active");
+
+    setPage(0);
+  };
+
+  // ==========================================================================
+  // ROUTING
+  // ==========================================================================
+
+  const openElectionDetail = (election: ElectionDto) => {
+    navigate(`/elections/${election.electionId}`);
+  };
+
+  const openCreatePage = () => {
+    navigate("/elections/new");
+  };
+
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
 
   return (
-    <div className="flex flex-col gap-4 text-xl">
-      <SectionTitle
-        title="Elections"
-        subtitle="Official elections (global). Tenants can view read-only; NEC/SYSTEM can manage elections."
-      />
+    <div className="app-content">
+      <div className="flex min-w-0 flex-col gap-3">
+        {/* ================================================================
+            TITLE
+        ================================================================ */}
 
-      <Panel
-        title="Elections List"
-        right={
-          <div className="flex items-center gap-2">
-            {canEdit ? (
+        <SectionTitle
+          title="Elections"
+          subtitle="Official elections and election workspace management."
+        />
+
+        {/* ================================================================
+            MAIN CARD
+        ================================================================ */}
+
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          {/* ==============================================================
+              HEADER
+          ============================================================== */}
+
+          <div className="flex min-w-0 flex-col gap-3 border-b border-slate-200 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+            <div className="min-w-0">
+              <h2 className="text-base font-bold text-slate-900 sm:text-lg lg:text-xl">
+                Elections List
+              </h2>
+
+              <p className="mt-0.5 text-xs text-slate-500 sm:text-sm lg:text-base">
+                Select an election to view details or enter its election
+                workspace.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {canEdit ? (
+                <button
+                  type="button"
+                  onClick={openCreatePage}
+                  className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 lg:text-base"
+                >
+                  <Plus size={17} />
+                  New Election
+                </button>
+              ) : (
+                <Badge text="Read-only" />
+              )}
+
               <button
                 type="button"
-                onClick={openCreate}
-                className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-700 text-xl text-white font-bold"
-                title="Create new election (SYSTEM/NEC)"
+                onClick={refreshNow}
+                disabled={electionsQuery.isFetching}
+                className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 lg:text-base"
               >
-                <Plus size={16} />
-                New Election
+                <RefreshCw
+                  size={16}
+                  className={electionsQuery.isFetching ? "animate-spin" : ""}
+                />
+
+                <span className="hidden sm:inline">Refresh</span>
               </button>
-            ) : (
-              <Badge text="Read-only (Tenant)" />
+            </div>
+          </div>
+
+          {/* ==============================================================
+              FILTERS
+          ============================================================== */}
+
+          <div className="border-b border-slate-200 bg-slate-50/50 p-2.5 sm:p-3">
+            <div className="grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-[minmax(220px,1.35fr)_120px_minmax(160px,0.8fr)_minmax(250px,1fr)_auto] lg:items-center">
+              {/* SEARCH */}
+
+              <div className="relative col-span-2 min-w-0 lg:col-span-1">
+                <Search
+                  size={17}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+
+                <input
+                  value={q}
+                  onChange={(event) => {
+                    setQ(event.target.value);
+
+                    setPage(0);
+                  }}
+                  placeholder="Search election name..."
+                  className="min-h-10 w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 lg:text-base"
+                />
+              </div>
+
+              {/* YEAR */}
+
+              <input
+                value={year}
+                onChange={(event) => {
+                  setYear(event.target.value);
+
+                  setPage(0);
+                }}
+                placeholder="Year"
+                className="min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 lg:text-base"
+              />
+
+              {/* TYPE */}
+
+              <select
+                value={type}
+                onChange={(event) => {
+                  setType(event.target.value as ElectionType | "");
+
+                  setPage(0);
+                }}
+                className="min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 lg:text-base"
+              >
+                <option value="">All Types</option>
+
+                {ELECTION_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+
+              {/* STATUS */}
+
+              <div className="col-span-2 flex min-h-10 min-w-0 items-center gap-1 rounded-lg border border-slate-300 bg-white p-1 sm:col-span-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatusFilter("active");
+
+                    setPage(0);
+                  }}
+                  className={
+                    statusFilter === "active"
+                      ? "min-h-8 flex-1 rounded-md bg-emerald-50 px-2 text-xs font-bold text-emerald-700 lg:text-sm"
+                      : "min-h-8 flex-1 rounded-md px-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 lg:text-sm"
+                  }
+                >
+                  Active
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatusFilter("inactive");
+
+                    setPage(0);
+                  }}
+                  className={
+                    statusFilter === "inactive"
+                      ? "min-h-8 flex-1 rounded-md bg-slate-200 px-2 text-xs font-bold text-slate-800 lg:text-sm"
+                      : "min-h-8 flex-1 rounded-md px-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 lg:text-sm"
+                  }
+                >
+                  Inactive
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatusFilter("all");
+
+                    setPage(0);
+                  }}
+                  className={
+                    statusFilter === "all"
+                      ? "min-h-8 flex-1 rounded-md bg-blue-50 px-2 text-xs font-bold text-blue-700 lg:text-sm"
+                      : "min-h-8 flex-1 rounded-md px-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 lg:text-sm"
+                  }
+                >
+                  All
+                </button>
+              </div>
+
+              {/* CLEAR */}
+
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 lg:text-base"
+              >
+                <FilterX size={16} />
+                Clear
+              </button>
+            </div>
+          </div>
+
+          {/* ==============================================================
+              LOADING
+          ============================================================== */}
+
+          {electionsQuery.isLoading && (
+            <div className="p-5 text-center text-sm text-slate-500 lg:text-base">
+              Loading elections…
+            </div>
+          )}
+
+          {/* ==============================================================
+              ERROR
+          ============================================================== */}
+
+          {electionsQuery.isError && (
+            <div className="m-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700 lg:text-base">
+              {(electionsQuery.error as any)?.message ??
+                "Failed to load elections."}
+            </div>
+          )}
+
+          {/* ==============================================================
+              EMPTY
+          ============================================================== */}
+
+          {!electionsQuery.isLoading &&
+            !electionsQuery.isError &&
+            elections.length === 0 && (
+              <div className="px-4 py-10 text-center">
+                <Vote size={28} className="mx-auto text-slate-300" />
+
+                <div className="mt-2 text-base font-bold text-slate-700 lg:text-lg">
+                  No elections found
+                </div>
+
+                <div className="mt-1 text-sm text-slate-500 lg:text-base">
+                  Try changing your filters.
+                </div>
+              </div>
             )}
 
-            <button
-              type="button"
-              onClick={refreshNow}
-              disabled={electionsQ.isFetching}
-              className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-blue-100 ${
-                electionsQ.isFetching ? "opacity-60" : ""
-              }`}
-              title="Refresh elections"
-            >
-              <RefreshCw size={16} />
-              Refresh
-            </button>
-          </div>
-        }
-      >
-        {/* Filters */}
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          <div className="relative">
-            <Search
-              size={16}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-            />
-            <input
-              value={q}
-              onChange={(e) => {
-                setQ(e.target.value);
-                setPage(0);
-              }}
-              placeholder="Search election name…"
-              className="pl-8 pr-3 py-2 rounded-lg border border-slate-200 bg-white min-w-240px outline-none"
-            />
-          </div>
+          {/* ==============================================================
+              LIST
+          ============================================================== */}
 
-          <input
-            value={year}
-            onChange={(e) => {
-              setYear(e.target.value);
-              setPage(0);
-            }}
-            placeholder="Year (e.g., 2029)"
-            className="px-3 py-2 rounded-lg border border-slate-200 bg-white w-150px outline-none"
-            title="Filter by year"
-          />
+          {!electionsQuery.isLoading &&
+            !electionsQuery.isError &&
+            elections.length > 0 && (
+              <>
+                {/* ==========================================================
+                    DESKTOP HEADER
+                ========================================================== */}
 
-          <select
-            value={type}
-            onChange={(e) => {
-              setType(e.target.value as any);
-              setPage(0);
-            }}
-            className="px-3 py-2 rounded-lg border border-slate-200 bg-white outline-none"
-            title="Filter by election type"
-          >
-            <option value="">All Types</option>
-            {ELECTION_TYPE_OPTIONS.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
+                <div className="hidden border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-500 md:grid md:grid-cols-[minmax(0,1.55fr)_90px_minmax(150px,0.9fr)_100px_110px_110px_165px_24px] md:items-center md:gap-3 lg:text-sm">
+                  <div>Election</div>
 
-          <div
-            className="inline-flex items-center gap-3 px-3 py-2 rounded-lg border border-slate-200 bg-white"
-            title="Filter by status"
-          >
-            <span className="text-lg font-extrabold text-slate-600">
-              Status:
-            </span>
+                  <div>Year</div>
 
-            <label className="inline-flex items-center gap-1.5 text-sm">
-              <input
-                type="radio"
-                name="election-status"
-                checked={statusFilter === "active"}
-                onChange={() => {
-                  setStatusFilter("active");
-                  setPage(0);
-                }}
-              />
-              <span className="text-lg">Active</span>
-            </label>
+                  <div>Type</div>
 
-            <label className="inline-flex items-center gap-1.5 text-sm">
-              <input
-                type="radio"
-                name="election-status"
-                checked={statusFilter === "inactive"}
-                onChange={() => {
-                  setStatusFilter("inactive");
-                  setPage(0);
-                }}
-              />
-              <span className="text-lg">Inactive</span>
-            </label>
+                  <div>Spare %</div>
 
-            <label className="inline-flex items-center gap-1.5 text-base">
-              <input
-                type="radio"
-                name="election-status"
-                checked={statusFilter === "all"}
-                onChange={() => {
-                  setStatusFilter("all");
-                  setPage(0);
-                }}
-              />
-              <span className="text-lg">All</span>
-            </label>
-          </div>
+                  <div>Rule</div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setQ("");
-              setYear("");
-              setType("");
-              setStatusFilter("active");
-              setPage(0);
-            }}
-            className="px-3 py-2 rounded-lg border border-slate-200 bg-white"
-            title="Clear filters"
-          >
-            Clear
-          </button>
-        </div>
+                  <div>Status</div>
 
-        {/* Status */}
-        {electionsQ.isLoading ? (
-          <div className="p-2 text-slate-600">Loading elections…</div>
-        ) : electionsQ.isError ? (
-          <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700 mb-2">
-            {(electionsQ.error as any)?.message ?? "Failed to load elections."}
-          </div>
-        ) : null}
+                  <div>Date Created</div>
 
-        {/* Table */}
-        <SimpleTable
-          columns={[
-            "Election",
-            "Year",
-            "Type",
-            "Spare %",
-            "Rule",
-            "Status",
-            "Date Created",
-            "Actions",
-          ]}
-          rows={
-            rows.length
-              ? rows
-              : [
-                  [
-                    <span key="empty" className="text-slate-500">
-                      No elections found.
-                    </span>,
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                    "",
-                  ],
-                ]
-          }
-        />
-
-        {/* Pagination */}
-        <div className="mt-3 flex justify-between gap-2">
-          <div className="text-sm text-slate-500">
-            Page <b>{page + 1}</b> of <b>{totalPages}</b>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={page <= 0}
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                page <= 0 ? "opacity-50" : ""
-              }`}
-              title="Previous page"
-            >
-              Prev
-            </button>
-            <button
-              type="button"
-              disabled={page >= totalPages - 1}
-              onClick={() => setPage((p) => p + 1)}
-              className={`px-3 py-2 rounded-lg border border-slate-200 bg-white ${
-                page >= totalPages - 1 ? "opacity-50" : ""
-              }`}
-              title="Next page"
-            >
-              Next
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-3 text-lg">
-          <PlaceholderNote
-            title="Behavior"
-            bullets={[
-              "Default view shows Active elections only (use Status radio to switch).",
-              "Tenants can view elections read-only.",
-              "NEC/SYSTEM can Create, Edit, Activate/Deactivate, and Delete.",
-              "Spare % and Rule are election-level NEC ballot policies (used during allocations).",
-              "Click Open to enter election workspace (/elections/:id/overview).",
-            ]}
-          />
-        </div>
-      </Panel>
-
-      {/* CREATE/EDIT MODAL */}
-      {open ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm"
-          onClick={() => {
-            if (saving) return;
-            setOpen(false);
-          }}
-        />
-      ) : null}
-
-      {open ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-          <div
-            className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* HEADER WITH BLUE GRADIENT */}
-            <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400 px-4 sm:px-6 py-5 sm:py-6 border-b border-blue-600 flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <h2 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
-                  {editing ? "✏️ Edit Election" : "🗳️ Create Election"}
-                </h2>
-                <p className="text-xs sm:text-sm font-semibold text-blue-100 mt-1">
-                  {editing
-                    ? "Update election master data and ballot policies."
-                    : "Create a new official election."}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                disabled={saving}
-                className="flex-shrink-0 h-9 w-9 rounded-lg border-2 border-blue-300 hover:bg-blue-700 bg-blue-600 transition text-white flex items-center justify-center disabled:opacity-50"
-                aria-label="Close"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* CONTENT */}
-            <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5">
-              <div className="space-y-4">
-                {/* Name */}
-                <div>
-                  <label className="block text-base font-semibold text-slate-900 mb-2">
-                    Election Name <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    value={electionName}
-                    onChange={(e) => {
-                      setElectionName(e.target.value);
-                      setTouched(true);
-                    }}
-                    placeholder="e.g., Presidential General"
-                    className={`w-full rounded-lg border px-3 py-2.5 text-lg outline-none transition ${
-                      touched && !normalizeName(electionName)
-                        ? "border-red-300 bg-red-50 text-red-900 placeholder:text-red-400 focus:ring-2 focus:ring-red-400"
-                        : "border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500"
-                    }`}
-                  />
-                  {touched && !normalizeName(electionName) && (
-                    <div className="text-xs text-red-600 font-semibold mt-1">⚠️ Required</div>
-                  )}
+                  <div />
                 </div>
 
-                {/* Row: Year & Type */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-base font-semibold text-slate-900 mb-2">
-                      Year <span className="text-red-600">*</span>
-                    </label>
-                    <input
-                      value={formYear}
-                      onChange={(e) => {
-                        setFormYear(e.target.value);
-                        setTouched(true);
-                      }}
-                      placeholder="e.g., 2029"
-                      className={`w-full rounded-lg border px-3 py-2.5 text-lg outline-none transition ${
-                        touched && !toIntOrUndef(formYear)
-                          ? "border-red-300 bg-red-50 text-red-900 placeholder:text-red-400 focus:ring-2 focus:ring-red-400"
-                          : "border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500"
-                      }`}
-                    />
-                    {touched && !toIntOrUndef(formYear) && (
-                      <div className="text-xs text-red-600 font-semibold mt-1">⚠️ Required</div>
-                    )}
-                  </div>
+                {/* ==========================================================
+                    ROWS
+                ========================================================== */}
 
-                  <div>
-                    <label className="block text-base font-semibold text-slate-900 mb-2">
-                      Type <span className="text-red-600">*</span>
-                    </label>
-                    <select
-                      value={formType}
-                      onChange={(e) => {
-                        setFormType(e.target.value as any);
-                        setTouched(true);
-                      }}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-lg outline-none focus:ring-2 focus:ring-blue-500 transition bg-white text-slate-900"
-                    >
-                      {ELECTION_TYPE_OPTIONS.map((t) => (
-                        <option key={t.value} value={t.value}>
-                          {t.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
+                <div className="divide-y divide-slate-200">
+                  {elections.map((election) => {
+                    const created =
+                      (election as any).dateCreated ??
+                      (election as any).createdAt ??
+                      (election as any).createdOn ??
+                      (election as any).date_created;
 
-                {/* Active */}
-                <label className="flex items-center gap-2 p-3 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 cursor-pointer transition">
-                  <input
-                    type="checkbox"
-                    checked={formActive}
-                    onChange={(e) => {
-                      setFormActive(e.target.checked);
-                      setTouched(true);
-                    }}
-                    className="h-4 w-4 accent-blue-600"
-                  />
-                  <span className="text-sm font-semibold text-slate-900">Active</span>
-                </label>
+                    const spare = (election as any).ballotSparePercent;
 
-                {/* Ballot Policy */}
-                <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
-                  <div className="text-sm font-bold text-blue-900 mb-1 uppercase tracking-wide">
-                    🎫 Ballot Policy (NEC)
-                  </div>
-                  <p className="text-xs text-blue-800 mb-4">
-                    Configure spare ballot percent and enforcement rule for allocations.
-                  </p>
+                    const enforce = (election as any)
+                      .enforceBallotsGteRegistered;
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-900 mb-2">
-                        Spare Ballots Percent
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={ballotSparePercent}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setTouched(true);
-                          if (v === "") return setBallotSparePercent("");
-                          const n = Number(v);
-                          if (!Number.isFinite(n)) return;
-                          setBallotSparePercent(n);
-                        }}
-                        placeholder="e.g., 20"
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-lg outline-none focus:ring-2 focus:ring-blue-500 transition bg-white text-slate-900 placeholder:text-slate-400"
-                      />
-                      <div className="text-xs text-slate-600 mt-1 font-semibold">
-                        Optional. Leave empty if not set yet.
-                      </div>
-                    </div>
+                    const typeLabel = electionTypeLabel(election.electionType);
 
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-900 mb-2">
-                        Enforce ballotsIssued ≥ registeredVoters
-                      </label>
+                    return (
+                      <button
+                        key={election.electionId}
+                        type="button"
+                        onClick={() => openElectionDetail(election)}
+                        className="group block w-full bg-white text-left transition hover:bg-slate-50"
+                      >
+                        {/* ==================================================
+                              MOBILE
+                          ================================================== */}
 
-                      <div className="flex items-center gap-4">
-                        <label className="inline-flex items-center gap-2 text-sm">
-                          <input
-                            type="radio"
-                            name="enforceBallotsGteRegistered"
-                            checked={enforceBallotsGteRegistered === true}
-                            onChange={() => {
-                              setTouched(true);
-                              setEnforceBallotsGteRegistered(true);
-                            }}
-                            className="h-4 w-4 accent-green-600"
+                        <div className="px-3.5 py-3 md:hidden">
+                          {/* LINE 1 */}
+
+                          <div className="flex min-w-0 items-center gap-2">
+                            <div
+                              className="min-w-0 flex-1 truncate text-base font-bold text-slate-900"
+                              title={election.electionName}
+                            >
+                              {election.electionName}
+                            </div>
+
+                            <span
+                              className={
+                                election.isActive
+                                  ? "inline-flex shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700"
+                                  : "inline-flex shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600"
+                              }
+                            >
+                              {election.isActive ? "Active" : "Inactive"}
+                            </span>
+
+                            <ChevronRight
+                              size={20}
+                              className="shrink-0 text-slate-400 transition group-hover:text-blue-600"
+                            />
+                          </div>
+
+                          {/* LINE 2 */}
+
+                          <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
+                            <span className="inline-flex items-center gap-1 font-semibold text-slate-700">
+                              <CalendarDays size={13} />
+
+                              {election.year}
+                            </span>
+
+                            <span className="text-slate-300">•</span>
+
+                            <span>{typeLabel}</span>
+                          </div>
+
+                          {/* LINE 3 */}
+
+                          <div className="mt-2 grid grid-cols-3 gap-2">
+                            <MobileMetric
+                              label="Spare"
+                              value={
+                                spare == null || spare === ""
+                                  ? "—"
+                                  : `${Number(spare)}%`
+                              }
+                            />
+
+                            <MobileMetric
+                              label="Rule"
+                              value={enforce === false ? "Off" : "Enforced"}
+                            />
+
+                            <MobileMetric
+                              label="Created"
+                              value={
+                                created
+                                  ? new Date(created).toLocaleDateString()
+                                  : "—"
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        {/* ==================================================
+                              DESKTOP
+                          ================================================== */}
+
+                        <div className="hidden min-w-0 px-4 py-4 md:grid md:grid-cols-[minmax(0,1.55fr)_90px_minmax(150px,0.9fr)_100px_110px_110px_165px_24px] md:items-center md:gap-3">
+                          {/* ELECTION */}
+
+                          <div className="min-w-0">
+                            <div
+                              className="truncate text-base font-bold text-slate-900 lg:text-lg"
+                              title={election.electionName}
+                            >
+                              {election.electionName}
+                            </div>
+
+                            <div className="mt-1 text-xs font-medium text-slate-500 lg:text-sm">
+                              View details
+                            </div>
+                          </div>
+
+                          {/* YEAR */}
+
+                          <div className="text-base font-bold text-slate-900 lg:text-lg">
+                            {election.year}
+                          </div>
+
+                          {/* TYPE */}
+
+                          <div
+                            className="min-w-0 truncate text-sm font-semibold text-slate-700 lg:text-base"
+                            title={typeLabel}
+                          >
+                            {typeLabel}
+                          </div>
+
+                          {/* SPARE */}
+
+                          <div className="text-sm font-bold text-slate-900 lg:text-base">
+                            {spare == null || spare === ""
+                              ? "—"
+                              : `${Number(spare)}%`}
+                          </div>
+
+                          {/* RULE */}
+
+                          <div>
+                            <span
+                              className={
+                                enforce === false
+                                  ? "inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 lg:text-sm"
+                                  : "inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 lg:text-sm"
+                              }
+                            >
+                              {enforce === false ? "Off" : "Enforced"}
+                            </span>
+                          </div>
+
+                          {/* STATUS */}
+
+                          <div>
+                            <span
+                              className={
+                                election.isActive
+                                  ? "inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 lg:text-sm"
+                                  : "inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 lg:text-sm"
+                              }
+                            >
+                              {election.isActive ? "Active" : "Inactive"}
+                            </span>
+                          </div>
+
+                          {/* CREATED */}
+
+                          <div className="text-sm font-medium leading-5 text-slate-600 lg:text-base">
+                            {fmtDate(created)}
+                          </div>
+
+                          {/* CHEVRON */}
+
+                          <ChevronRight
+                            size={20}
+                            className="text-slate-400 transition group-hover:text-blue-600"
                           />
-                          <span className="font-semibold">Yes</span>
-                        </label>
-
-                        <label className="inline-flex items-center gap-2 text-sm">
-                          <input
-                            type="radio"
-                            name="enforceBallotsGteRegistered"
-                            checked={enforceBallotsGteRegistered === false}
-                            onChange={() => {
-                              setTouched(true);
-                              setEnforceBallotsGteRegistered(false);
-                            }}
-                            className="h-4 w-4 accent-red-600"
-                          />
-                          <span className="font-semibold">No</span>
-                        </label>
-                      </div>
-
-                      <div className="text-xs text-slate-600 mt-1 font-semibold">
-                        Recommended: <span className="text-green-700">Yes</span> (prevent shortage)
-                      </div>
-                    </div>
-                  </div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
+              </>
+            )}
 
-                {/* Errors */}
-                {createM.isError || updateM.isError ? (
-                  <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm font-semibold">
-                    ⚠️ {createM.isError
-                      ? friendlySaveError(createM.error)
-                      : friendlySaveError(updateM.error)}
-                  </div>
-                ) : null}
-              </div>
+          {/* ==============================================================
+              PAGINATION
+          ============================================================== */}
+
+          <div className="flex min-w-0 flex-col gap-2 border-t border-slate-200 bg-slate-50/50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+            <div className="text-xs font-semibold text-slate-500 sm:text-sm lg:text-base">
+              Page <span className="font-bold text-slate-700">{page + 1}</span>{" "}
+              of <span className="font-bold text-slate-700">{totalPages}</span>
             </div>
 
-            {/* FOOTER */}
-            <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-6 py-4 sm:py-5 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setOpen(false)}
-                disabled={saving}
-                className="px-4 h-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-sm font-semibold hover:bg-slate-50 transition disabled:opacity-50 sm:min-w-fit"
+                disabled={page <= 0}
+                onClick={() => setPage((current) => Math.max(0, current - 1))}
+                className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 lg:text-base"
               >
-                Cancel
+                Previous
               </button>
 
               <button
                 type="button"
-                onClick={save}
-                disabled={!canEdit || saving}
-                className={`px-4 h-10 rounded-lg text-sm font-semibold text-white transition flex items-center justify-center gap-2 sm:min-w-fit ${
-                  !canEdit || saving
-                    ? "bg-slate-300 cursor-not-allowed opacity-60"
-                    : "bg-blue-600 hover:bg-blue-700 shadow-sm"
-                }`}
+                disabled={page >= totalPages - 1}
+                onClick={() => setPage((current) => current + 1)}
+                className="min-h-10 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 lg:text-base"
               >
-                {saving ? (
-                  <>
-                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span className="hidden sm:inline">Saving…</span>
-                  </>
-                ) : (
-                  <>
-                    <Plus size={16} className="text-red-500" />
-                    <span className="hidden sm:inline">
-                      {editing ? "Update" : "Create"}
-                    </span>
-                  </>
-                )}
+                Next
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+        </section>
+      </div>
     </div>
   );
 }
 
+// ============================================================================
+// MOBILE METRIC
+// ============================================================================
+
+function MobileMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-lg bg-slate-50 px-2.5 py-2">
+      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+        {label}
+      </div>
+
+      <div className="mt-0.5 truncate text-sm font-bold text-slate-900">
+        {value}
+      </div>
+    </div>
+  );
+}

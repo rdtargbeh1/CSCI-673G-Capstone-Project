@@ -4,18 +4,35 @@ import { apiClient } from "../lib/apiClient";
 
 export type PollingCenterAllocationDto = {
   allocationId: string;
+
   electionId: string;
   electionName?: string | null;
   electionYear?: number | null;
+
   pollingCenterId?: string | null;
   centerCode?: string | null;
   centerName?: string | null;
+
   districtId?: string | null;
   districtName?: string | null;
+
   countyId?: string | null;
   countyName?: string | null;
+
   registeredVoters: number;
   ballotsIssued?: number | null;
+
+  // Audit
+  dateCreated?: string | null;
+  dateUpdated?: string | null;
+
+  createdBy?: string | null;
+  createdByName?: string | null;
+
+  updatedBy?: string | null;
+  updatedByName?: string | null;
+
+  active?: boolean | null;
 };
 
 export type PollingCenterAllocationCreateRequest = {
@@ -40,6 +57,7 @@ export type PageResult<T> = {
 
 function mapSpringPage<T>(p: any): PageResult<T> {
   const items = (p?.content ?? []) as T[];
+
   return {
     items,
     page: Number(p?.number ?? 0),
@@ -49,10 +67,6 @@ function mapSpringPage<T>(p: any): PageResult<T> {
   };
 }
 
-/**
- * Fetch paged polling center allocations.
- * Backend: GET /api/polling-center-allocations?electionId=...&page=0&size=20
- */
 export async function fetchAllocations(params: {
   electionId?: string;
   countyId?: string;
@@ -71,33 +85,37 @@ export async function fetchAllocations(params: {
       size: params.size ?? 20,
     },
   });
+
   return mapSpringPage<PollingCenterAllocationDto>(res.data);
 }
 
 export async function getAllocation(
-  allocationId: string
+  allocationId: string,
 ): Promise<PollingCenterAllocationDto> {
   const res = await apiClient.get(
-    `/polling-center-allocations/${allocationId}`
+    `/polling-center-allocations/${allocationId}`,
   );
+
   return res.data as PollingCenterAllocationDto;
 }
 
 export async function createAllocation(
-  req: PollingCenterAllocationCreateRequest
+  req: PollingCenterAllocationCreateRequest,
 ): Promise<PollingCenterAllocationDto> {
   const res = await apiClient.post("/polling-center-allocations", req);
+
   return res.data as PollingCenterAllocationDto;
 }
 
 export async function updateAllocation(
   allocationId: string,
-  req: PollingCenterAllocationUpdateRequest
+  req: PollingCenterAllocationUpdateRequest,
 ): Promise<PollingCenterAllocationDto> {
   const res = await apiClient.put(
     `/polling-center-allocations/${allocationId}`,
-    req
+    req,
   );
+
   return res.data as PollingCenterAllocationDto;
 }
 

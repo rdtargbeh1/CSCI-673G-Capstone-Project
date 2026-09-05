@@ -1,18 +1,23 @@
-
 // src/app/layout/SidebarNav.tsx
 
 import { useEffect, useMemo, useState } from "react";
+
 import { NavLink } from "react-router-dom";
+
 import {
-  LayoutDashboard,
-  Vote,
-  Zap,
-  MapPin,
   FileText,
+  LayoutDashboard,
+  MapPin,
   Shield,
+  Vote,
+  X,
+  Zap,
 } from "lucide-react";
+
 import type { LucideIcon } from "lucide-react";
+
 import { useAuth } from "../../auth/useAuth";
+
 import { useAuthStore } from "../../shared/store/authStore";
 
 type DashboardMode = "SYSTEM" | "NEC" | "TENANT";
@@ -25,164 +30,473 @@ type NavItem = {
   show: (mode: DashboardMode) => boolean;
 };
 
-// Side Bar Nav List item
+// ============================================================================
+// NAV LINK STYLE
+// ============================================================================
+
 function linkClass(isActive: boolean) {
   return [
-    "flex items-center gap-4 px-4 py-4 text-[26px] font-semibold",
+    `
+      flex
+      min-w-0
+      items-center
+      gap-3
+
+      rounded-lg
+
+      px-3
+      py-2.5
+
+      text-[17px]
+      font-semibold
+
+      transition
+
+      lg:gap-3
+      lg:px-3
+      lg:py-3
+      lg:text-lg
+
+      xl:text-xl
+    `,
+
     isActive
-      ? "text-green-600 border-slate-400 br-slate-400" // ✅ Keep original active state
-      : "border-transparent text-slate-200 hover:border-slate-400 hover:bg-slate-700", // ✅ Light text for dark bg
+      ? `
+          bg-slate-800/40
+          text-green-500
+        `
+      : `
+          text-slate-200
+          hover:bg-slate-700
+          hover:text-white
+        `,
   ].join(" ");
 }
 
-function normalizeMode(x: unknown): DashboardMode {
-  const v = String(x ?? "").toUpperCase();
-  if (v === "SYSTEM") return "SYSTEM";
-  if (v === "NEC") return "NEC";
+// ============================================================================
+// MODE NORMALIZATION
+// ============================================================================
+
+function normalizeMode(value: unknown): DashboardMode {
+  const mode = String(value ?? "").toUpperCase();
+
+  if (mode === "SYSTEM") {
+    return "SYSTEM";
+  }
+
+  if (mode === "NEC") {
+    return "NEC";
+  }
+
   return "TENANT";
 }
+
+// ============================================================================
+// COMPONENT
+// ============================================================================
 
 export default function SidebarNav() {
   const { tenant, user } = useAuth();
 
-  const storeMode = useAuthStore((s) => s.dashboardMode);
-  const tenantMeta = useAuthStore((s) => s.tenantMeta);
+  const storeMode = useAuthStore((state) => state.dashboardMode);
+
+  const tenantMeta = useAuthStore((state) => state.tenantMeta);
+
+  // ==========================================================================
+  // DASHBOARD MODE
+  // ==========================================================================
 
   const sysRole = String(user?.systemRole ?? "").toUpperCase();
+
   const isSystemAdmin = sysRole === "SYSTEM_ADMIN";
+
   const isNecAdmin = sysRole === "NEC_ADMIN";
 
   let mode: DashboardMode = normalizeMode(storeMode);
 
   if (!storeMode) {
     const orgType = String(tenantMeta?.orgType ?? "").toUpperCase();
-    if (isSystemAdmin) mode = "SYSTEM";
-    else if (orgType === "NEC" || isNecAdmin) mode = "NEC";
-    else mode = "TENANT";
+
+    if (isSystemAdmin) {
+      mode = "SYSTEM";
+    } else if (orgType === "NEC" || isNecAdmin) {
+      mode = "NEC";
+    } else {
+      mode = "TENANT";
+    }
   }
 
-  // ✅ SAME LOGIC AS TOPBAR: SYSTEM PLATFORM fallback when orgName is null/empty
+  // ==========================================================================
+  // TENANT NAME
+  // ==========================================================================
+
   const rawTenantName = tenantMeta?.orgName ?? tenant?.orgName ?? null;
 
   const isSystemPlatform =
     !rawTenantName || String(rawTenantName).trim().length === 0;
 
-  const tenantName = isSystemPlatform ? " PLATFORM" : rawTenantName;
+  const tenantName = isSystemPlatform ? "PLATFORM" : rawTenantName;
+
+  // ==========================================================================
+  // NAVIGATION
+  // ==========================================================================
 
   const navItems: NavItem[] = [
     {
       to: "/dashboard",
+
       label: "Dashboard",
+
       icon: LayoutDashboard,
-      iconColor: "#3b82f6", // Blue
+
+      iconColor: "#3b82f6",
+
       show: () => true,
     },
+
     {
       to: "/elections",
+
       label: "Elections",
+
       icon: Vote,
-      iconColor: "#ef4444", // Red
+
+      iconColor: "#ef4444",
+
       show: () => true,
     },
+
     {
       to: "/operations",
+
       label: "Operations",
+
       icon: Zap,
-      iconColor: "#f59e0b", // Amber
+
+      iconColor: "#f59e0b",
+
       show: () => true,
     },
+
     {
       to: "/geography-registry",
+
       label: "Geography & Registry",
+
       icon: MapPin,
-      iconColor: "#10b981", // Emerald
+
+      iconColor: "#10b981",
+
       show: () => true,
     },
+
     {
       to: "/reports",
+
       label: "Reports",
+
       icon: FileText,
-      iconColor: "#8b5cf6", // Violet
+
+      iconColor: "#8b5cf6",
+
       show: () => true,
     },
+
     {
       to: "/admin-security",
+
       label: "Admin & Security",
+
       icon: Shield,
-      iconColor: "#ec4899", // Pink
+
+      iconColor: "#ec4899",
+
       show: () => true,
     },
   ];
 
   const filteredNav = useMemo(
-    () => navItems.filter((n) => n.show(mode)),
-    [mode]
+    () => navItems.filter((item) => item.show(mode)),
+
+    [mode],
   );
 
-  // Mobile drawer state
+  // ==========================================================================
+  // MOBILE DRAWER
+  // ==========================================================================
+
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
     }
-    if (open) window.addEventListener("keydown", onKeyDown);
+
+    if (open) {
+      window.addEventListener("keydown", onKeyDown);
+    }
+
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
+  // ==========================================================================
+  // SHARED SIDEBAR CONTENT
+  // ==========================================================================
+
   const sidebarContent = (
-    <div className="h-full">
-      {/* ✅ UPDATED: Dark background box */}
-      <div 
-        className="rounded-xl border px-3 py-3"
-        style={{ backgroundColor: "#191970", borderColor: "#312e81" }}
+    <div
+      className="
+        flex
+        h-full
+        min-h-0
+        min-w-0
+        flex-col
+      "
+    >
+      {/* ================================================================
+          TOP CONTENT
+      ================================================================ */}
+
+      <div
+        className="
+          min-w-0
+          shrink-0
+        "
       >
-        <div className="text-2xl font-extrabold text-white">EMS</div>
+        {/* ==============================================================
+            WORKSPACE IDENTITY
+        ============================================================== */}
 
-        <div className="mt-2 space-y-1 text-sm text-slate-300">
-          <div>
-            Mode: <span className="font-bold text-white">{mode}</span>
+        <div
+          className="
+            min-w-0
+
+            rounded-xl
+            border
+
+            px-3
+            py-2.5
+
+            lg:px-3
+            lg:py-3
+          "
+          style={{
+            backgroundColor: "#191970",
+
+            borderColor: "#312e81",
+          }}
+        >
+          <div
+            className="
+              text-lg
+              font-extrabold
+              text-white
+
+              lg:text-xl
+
+              xl:text-2xl
+            "
+          >
+            EMS
           </div>
 
-          <div>
-            {/* Tenant name */}
-            <span className="font-bold text-2xl text-[#FFA500]">{tenantName}</span>  
+          <div
+            className="
+              mt-1
+              min-w-0
+              space-y-0.5
+
+              text-xs
+              text-slate-300
+
+              lg:mt-1.5
+              lg:space-y-1
+              lg:text-sm
+            "
+          >
+            {/* MODE */}
+
+            <div>
+              Mode:{" "}
+              <span
+                className="
+                  font-bold
+                  text-white
+                "
+              >
+                {mode}
+              </span>
+            </div>
+
+            {/* TENANT */}
+
+            <div className="min-w-0">
+              <span
+                className="
+                  block
+                  break-words
+
+                  text-base
+                  font-bold
+                  leading-tight
+                  text-[#FFA500]
+
+                  lg:text-lg
+
+                  xl:text-xl
+                "
+                title={String(tenantName)}
+              >
+                {tenantName}
+              </span>
+            </div>
+
+            {/* TENANT ROLE */}
+
+            {user?.tenantRole ? (
+              <div
+                className="
+                  min-w-0
+                  break-words
+                "
+              >
+                Role:{" "}
+                <span
+                  className="
+                    font-bold
+                    text-white
+                  "
+                >
+                  {user.tenantRole}
+                </span>
+              </div>
+            ) : null}
+
+            {/* SYSTEM ROLE */}
+
+            {user?.systemRole ? (
+              <div
+                className="
+                  min-w-0
+                  break-words
+                "
+              >
+                System:{" "}
+                <span
+                  className="
+                    font-bold
+                    text-white
+                  "
+                >
+                  {user.systemRole}
+                </span>
+              </div>
+            ) : null}
           </div>
-
-          {user?.tenantRole ? (
-            <div>
-              Role:{" "}
-              <span className="font-bold text-white">{user.tenantRole}</span>
-            </div>
-          ) : null}
-
-          {user?.systemRole ? (
-            <div>
-              System:{" "}
-              <span className="font-bold text-white">{user.systemRole}</span>
-            </div>
-          ) : null}
         </div>
+
+        {/* ==============================================================
+            NAVIGATION
+        ============================================================== */}
+
+        <nav
+          className="
+            mt-2.5
+            flex
+            min-w-0
+            flex-col
+            gap-0.5
+
+            lg:mt-3
+            lg:gap-1
+          "
+        >
+          {filteredNav.map((item) => {
+            const Icon = item.icon;
+
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={() => setOpen(false)}
+                className={({ isActive }) => linkClass(isActive)}
+              >
+                <Icon
+                  size={22}
+                  className="
+                      shrink-0
+
+                      lg:h-6
+                      lg:w-6
+
+                      xl:h-7
+                      xl:w-7
+                    "
+                  style={{
+                    color: item.iconColor,
+                  }}
+                />
+
+                <span
+                  className="
+                      min-w-0
+                      break-words
+                      leading-tight
+                    "
+                >
+                  {item.label}
+                </span>
+              </NavLink>
+            );
+          })}
+        </nav>
       </div>
 
-      <nav className="mt-3 flex flex-col gap-2">
-        {filteredNav.map((n) => {
-          const Icon = n.icon;
-          return (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              onClick={() => setOpen(false)}
-              className={({ isActive }) => linkClass(isActive)}
-            >
-              <Icon size={30} className="flex-shrink-0" style={{ color: n.iconColor }} />
-              <span>{n.label}</span>
-            </NavLink>
-          );
-        })}
-      </nav>
+      {/* ================================================================
+          FLEXIBLE SPACE
+      ================================================================ */}
 
-      <div className="mt-4 border-t border-dashed border-slate-400 pt-3 text-sm text-slate-300">
+      <div className="min-h-4 flex-1" />
+
+      {/* ================================================================
+          FOOTER NOTE
+      ================================================================ */}
+
+      <div
+        className="
+          shrink-0
+
+          border-t
+          border-dashed
+          border-white/25
+
+          pt-2.5
+
+          text-[10px]
+          leading-4
+          text-slate-300
+
+          lg:pt-3
+          lg:text-xs
+          lg:leading-5
+        "
+      >
         Elections are viewable by all tenants.
         <br />
         Create/edit controls remain restricted inside pages.
@@ -190,61 +504,235 @@ export default function SidebarNav() {
     </div>
   );
 
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
+
   return (
     <>
-      {/* ✅ Desktop sidebar (lg+) with dark background */}
-      <aside 
-        className="hidden lg:block w-280px shrink-0 border-r p-3"
-        style={{ backgroundColor: "#191970", borderColor: "#312e81" }}
+      {/* ================================================================
+          DESKTOP SIDEBAR
+      ================================================================ */}
+
+      <aside
+        className="
+          hidden
+          shrink-0
+
+          border-r
+
+          p-2
+
+          lg:block
+          lg:w-[230px]
+
+          xl:w-[260px]
+          xl:p-3
+
+          2xl:w-[280px]
+        "
+        style={{
+          backgroundColor: "#191970",
+
+          borderColor: "#312e81",
+        }}
       >
         {sidebarContent}
       </aside>
 
-      {/* ✅ Mobile "Menu" button */}
-      <div className="lg:hidden px-3 pt-3">
+      {/* ================================================================
+          MOBILE / TABLET MENU BUTTON
+      ================================================================ */}
+
+      <div
+        className="
+          px-3
+          pt-3
+
+          lg:hidden
+        "
+      >
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50"
+          className="
+            inline-flex
+            min-h-10
+            items-center
+            justify-center
+
+            gap-2
+
+            rounded-lg
+
+            border
+            border-slate-200
+
+            bg-white
+
+            px-3
+            py-2
+
+            text-sm
+            font-semibold
+            text-slate-900
+
+            shadow-sm
+
+            transition
+
+            hover:bg-slate-50
+          "
           aria-label="Open menu"
         >
-          ☰ Menu
+          <span
+            className="
+              text-base
+              leading-none
+            "
+          >
+            ☰
+          </span>
+          Menu
         </button>
       </div>
 
-      {/* ✅ Mobile drawer with dark background */}
+      {/* ================================================================
+          MOBILE DRAWER
+      ================================================================ */}
+
       {open ? (
         <>
+          {/* BACKDROP */}
+
           <div
-            className="fixed inset-0 z-40 bg-black/35"
+            className="
+              fixed
+              inset-0
+              z-40
+
+              bg-black/40
+
+              backdrop-blur-[1px]
+
+              lg:hidden
+            "
             onClick={() => setOpen(false)}
             aria-hidden="true"
           />
+
+          {/* DRAWER */}
+
           <aside
-            className={[
-              "fixed z-50 inset-y-0 left-0",
-              "w-[78vw] max-w-[320px]",
-              "border-r shadow-2xl",
-              "p-3",
-            ].join(" ")}
-            style={{ backgroundColor: "#800000", borderColor: "#312e81" }}
+            className="
+              fixed
+              inset-y-0
+              left-0
+              z-50
+
+              w-[78vw]
+              max-w-[300px]
+
+              overflow-hidden
+
+              border-r
+
+              shadow-2xl
+
+              sm:w-[72vw]
+              sm:max-w-[320px]
+
+              lg:hidden
+            "
+            style={{
+              backgroundColor: "#191970",
+
+              borderColor: "#312e81",
+            }}
             role="dialog"
             aria-modal="true"
+            aria-label="Navigation menu"
           >
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-base font-extrabold text-white">Menu</div>
+            {/* ============================================================
+                DRAWER HEADER
+            ============================================================ */}
+
+            <div
+              className="
+                flex
+                min-h-[50px]
+                items-center
+                justify-between
+
+                gap-3
+
+                border-b
+
+                px-3
+                py-2
+              "
+              style={{
+                borderColor: "rgba(255,255,255,0.15)",
+              }}
+            >
+              <div
+                className="
+                  text-base
+                  font-extrabold
+                  text-white
+                "
+              >
+                Menu
+              </div>
+
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="h-9 w-9 rounded-xl border hover:bg-slate-700"
-                style={{ borderColor: "#312e81", color: "white" }}
+                className="
+                  flex
+                  h-9
+                  w-9
+                  min-h-0
+                  shrink-0
+                  items-center
+                  justify-center
+
+                  rounded-lg
+
+                  border
+
+                  text-white
+
+                  transition
+
+                  hover:bg-white/10
+                "
+                style={{
+                  borderColor: "rgba(255,255,255,0.25)",
+                }}
                 aria-label="Close menu"
               >
-                ✕
+                <X size={17} />
               </button>
             </div>
 
-            <div className="overflow-auto max-h-[calc(100vh-80px)]">
+            {/* ============================================================
+                DRAWER CONTENT
+            ============================================================ */}
+
+            <div
+              className="
+                h-[calc(100vh-50px)]
+                min-h-0
+                overflow-y-auto
+
+                p-2.5
+
+                overscroll-contain
+
+                sm:p-3
+              "
+            >
               {sidebarContent}
             </div>
           </aside>
@@ -253,4 +741,3 @@ export default function SidebarNav() {
     </>
   );
 }
-
