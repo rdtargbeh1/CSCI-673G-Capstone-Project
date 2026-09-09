@@ -1,106 +1,527 @@
-
-
 // src/pages/elections/workspace/tabs/results/party/shared/PartyResultsLayout.tsx
 
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import { Check, ChevronDown, ChevronUp } from "lucide-react";
+
 import {
+  Navigate,
   NavLink,
   Outlet,
-  useOutletContext,
   useLocation,
-  Navigate,
+  useOutletContext,
 } from "react-router-dom";
 
 /**
+ * ============================================================================
  * RESULTS • PARTY • LAYOUT
+ * ============================================================================
+ *
+ * Path:
  *
  * /elections/:electionId/results/party/*
  *
- * Candidates (Centers/Districts/Counties/Election)  |  Totals (Centers/Districts/Counties/Election)
- * contest-aware (contestId from query param)
+ * Default:
+ *
+ * candidates/centers
+ *
+ * Mobile:
+ *
+ * Shows only the current Local Results sub-tab with a compact dropdown.
+ *
+ * Desktop:
+ *
+ * Keeps Candidate Stats and Geo Stats navigation visible.
+ *
+ * ResultsTab outlet context is forwarded to nested pages.
+ * ============================================================================
  */
 
-/** ✅ ResultsTab passes this when nested under Results workspace */
-type ResultsOutletCtx = { orgId?: string };
+// ============================================================================
+// TYPES
+// ============================================================================
+
+type ResultsOutletCtx = {
+  orgId?: string;
+};
+
+type PartyResultTab = {
+  to: string;
+
+  label: string;
+
+  group: "CANDIDATE" | "TOTALS";
+};
+
+// ============================================================================
+// DESKTOP TAB CLASS
+// ============================================================================
 
 function tabClass(active: boolean) {
   return [
-    "relative inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-lg font-extrabold transition",
+    `
+      relative
+      inline-flex
+      min-h-9
+      items-center
+      gap-1.5
+      rounded-lg
+      border
+      px-2.5
+      py-1.5
+      text-sm
+      font-bold
+      transition
+    `,
+
     active
-      ? "border-indigo-200 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-100"
-      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+      ? `
+          border-red-300
+          bg-red-50
+          text-red-900
+        `
+      : `
+          border-slate-200
+          bg-white
+          text-slate-700
+          hover:bg-slate-50
+        `,
   ].join(" ");
 }
 
-function TabPill({ to, label }: { to: string; label: string }) {
-  return (
-    <NavLink to={to} className={({ isActive }) => tabClass(isActive)}>
-      {({ isActive }) => (
-        <>
-          {/* active dot */}
-          <span
-            className={[
-              "h-2.5 w-2.5 rounded-full",
-              isActive ? "bg-red-600" : "bg-slate-300",
-            ].join(" ")}
-          />
-          <span>{label}</span>
+// ============================================================================
+// ACTIVE DOT
+// ============================================================================
 
-          {/* subtle underline */}
-          {isActive ? (
-            <span className="absolute -bottom-[2px] left-2 right-2 h-[2px] rounded-full bg-red-600" />
-          ) : null}
-        </>
-      )}
-    </NavLink>
+function ActiveDot({ active }: { active: boolean }) {
+  return (
+    <span
+      className={[
+        "h-2 w-2 rounded-full",
+
+        active ? "bg-red-600" : "bg-slate-300",
+      ].join(" ")}
+    />
   );
 }
 
-export default function PartyResultsLayout() {
-  // ✅ IMPORTANT: forward ResultsTab outlet context (orgId) to nested pages
-  const ctx = useOutletContext<ResultsOutletCtx>();
+// ============================================================================
+// COMPONENT
+// ============================================================================
 
-  // ✅ Default landing: /party -> /party/candidates/centers
-  const { pathname } = useLocation();
-  const isIndex = pathname.endsWith("/results/party") || pathname.endsWith("/results/party/");
+export default function PartyResultsLayout() {
+  // ==========================================================================
+  // OUTLET CONTEXT
+  // ==========================================================================
+
+  const context = useOutletContext<ResultsOutletCtx>();
+
+  // ==========================================================================
+  // LOCATION
+  // ==========================================================================
+
+  const location = useLocation();
+
+  // ==========================================================================
+  // DEFAULT ROUTE
+  // ==========================================================================
+
+  const pathname = location.pathname.replace(/\/+$/, "");
+
+  const isIndex = pathname.endsWith("/results/party");
+
   if (isIndex) {
-    return <Navigate to="candidates/centers" replace />;
+    return <Navigate to={`candidates/centers${location.search}`} replace />;
   }
 
+  // ==========================================================================
+  // TABS
+  // ==========================================================================
+
+  const candidateTabs = useMemo<PartyResultTab[]>(
+    () => [
+      {
+        to: "candidates/centers",
+
+        label: "Centers",
+
+        group: "CANDIDATE",
+      },
+
+      {
+        to: "candidates/districts",
+
+        label: "Districts",
+
+        group: "CANDIDATE",
+      },
+
+      {
+        to: "candidates/counties",
+
+        label: "Counties",
+
+        group: "CANDIDATE",
+      },
+
+      {
+        to: "candidates/election",
+
+        label: "Election",
+
+        group: "CANDIDATE",
+      },
+    ],
+
+    [],
+  );
+
+  const totalsTabs = useMemo<PartyResultTab[]>(
+    () => [
+      {
+        to: "totals/centers",
+
+        label: "Centers",
+
+        group: "TOTALS",
+      },
+
+      {
+        to: "totals/districts",
+
+        label: "Districts",
+
+        group: "TOTALS",
+      },
+
+      {
+        to: "totals/counties",
+
+        label: "Counties",
+
+        group: "TOTALS",
+      },
+
+      {
+        to: "totals/election",
+
+        label: "Election",
+
+        group: "TOTALS",
+      },
+    ],
+
+    [],
+  );
+
+  const allTabs = useMemo(
+    () => [...candidateTabs, ...totalsTabs],
+
+    [candidateTabs, totalsTabs],
+  );
+
+  // ==========================================================================
+  // CURRENT TAB
+  // ==========================================================================
+
+  const currentTab = useMemo(
+    () =>
+      allTabs.find((tab) => location.pathname.includes(`/party/${tab.to}`)) ??
+      candidateTabs[0],
+
+    [allTabs, candidateTabs, location.pathname],
+  );
+
+  // ==========================================================================
+  // CURRENT GROUP
+  // ==========================================================================
+
+  const currentGroupLabel =
+    currentTab.group === "CANDIDATE" ? "Candidate Stats" : "Geo Stats";
+
+  // ==========================================================================
+  // PRESERVE QUERY STRING
+  // ==========================================================================
+
+  function tabDestination(to: string) {
+    return `${to}${location.search}`;
+  }
+
+  // ==========================================================================
+  // MOBILE NAV
+  // ==========================================================================
+
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  const mobileNavRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!mobileNavOpen) {
+      return;
+    }
+
+    const handleOutside = (event: MouseEvent) => {
+      if (
+        mobileNavRef.current &&
+        !mobileNavRef.current.contains(event.target as Node)
+      ) {
+        setMobileNavOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", handleOutside);
+
+    return () => window.removeEventListener("mousedown", handleOutside);
+  }, [mobileNavOpen]);
+
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
+
   return (
-    <div className="flex flex-col gap-2">
-      {/* Header (reduced padding/margins) */}
-      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-        <div className="text-2xl font-extrabold text-slate-900">Local Results</div>
+    <div className="relative flex min-w-0 flex-col gap-2">
+      {/* ====================================================================
+          MOBILE HEADER
+      ==================================================================== */}
 
-        {/* ✅ ONE LINE NAV: Candidates (left) | Totals (right) */}
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-          {/* Candidates LEFT */}
+      <div ref={mobileNavRef} className="relative z-40 sm:hidden">
+        <section className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+          <div className="flex items-center justify-between gap-3">
+            {/* TITLE */}
+
+            <div className="min-w-0">
+              <div className="text-lg font-bold text-slate-900">
+                Local Results
+              </div>
+
+              <div className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-red-500">
+                {currentGroupLabel}
+              </div>
+            </div>
+
+            {/* CURRENT TAB */}
+
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen((current) => !current)}
+              className="
+                inline-flex
+                min-h-9
+                max-w-[165px]
+                items-center
+                justify-between
+                gap-1.5
+                rounded-lg
+                border
+                border-red-300
+                bg-red-50
+                px-2.5
+                py-1
+                text-[11px]
+                font-bold
+                text-red-800
+                shadow-sm
+              "
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="h-2 w-2 shrink-0 rounded-full bg-red-600" />
+
+                <span className="truncate">{currentTab.label}</span>
+              </span>
+
+              {mobileNavOpen ? (
+                <ChevronUp size={13} />
+              ) : (
+                <ChevronDown size={13} />
+              )}
+            </button>
+          </div>
+        </section>
+
+        {/* ==================================================================
+            MOBILE DROPDOWN
+        ================================================================== */}
+
+        {mobileNavOpen && (
+          <div className="absolute right-3 top-[58px] z-[100] w-[225px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+            {/* ==============================================================
+                CANDIDATE STATS
+            ============================================================== */}
+
+            <div className="border-b border-slate-100 px-3 pb-1.5 pt-2.5 text-[9px] font-bold uppercase tracking-wider text-red-500">
+              Candidate Stats
+            </div>
+
+            {candidateTabs.map((tab) => (
+              <PartyMobileOption
+                key={tab.to}
+                label={tab.label}
+                to={tabDestination(tab.to)}
+                active={currentTab.to === tab.to}
+              />
+            ))}
+
+            {/* ==============================================================
+                GEO STATS
+            ============================================================== */}
+
+            <div className="border-y border-slate-100 px-3 pb-1.5 pt-2.5 text-[9px] font-bold uppercase tracking-wider text-red-500">
+              Geo Stats
+            </div>
+
+            {totalsTabs.map((tab) => (
+              <PartyMobileOption
+                key={tab.to}
+                label={tab.label}
+                to={tabDestination(tab.to)}
+                active={currentTab.to === tab.to}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ====================================================================
+          DESKTOP HEADER
+      ==================================================================== */}
+
+      <div className="hidden rounded-xl border border-slate-200 bg-white px-3 py-2 sm:block">
+        {/* TITLE */}
+
+        <div className="text-base font-bold text-slate-900">Local Results</div>
+
+        {/* NAV */}
+
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+          {/* ================================================================
+              CANDIDATE STATS
+          ================================================================ */}
+
           <div className="flex flex-wrap items-center gap-2">
-            <span className=" text-xl font-extrabold text-red-700">Candidates Stats:</span>
+            <span className="text-sm font-bold text-red-700">
+              Candidate Stats:
+            </span>
 
-            {/* ✅ ORDER: Centers (default), Districts, Counties, Election */}
-            <TabPill to="candidates/centers" label="Centers" />
-            <TabPill to="candidates/districts" label="Districts" />
-            <TabPill to="candidates/counties" label="Counties" />
-            <TabPill to="candidates/election" label="Election" />
+            <div className="flex flex-wrap items-center gap-1.5">
+              {candidateTabs.map((tab) => (
+                <NavLink
+                  key={tab.to}
+                  to={tabDestination(tab.to)}
+                  className={({ isActive }) => tabClass(isActive)}
+                >
+                  {({ isActive }) => (
+                    <>
+                      <ActiveDot active={isActive} />
+
+                      <span>{tab.label}</span>
+
+                      {isActive && (
+                        <span className="absolute -bottom-[1px] left-2 right-2 h-[2px] rounded-full bg-red-600" />
+                      )}
+                    </>
+                  )}
+                </NavLink>
+              ))}
+            </div>
           </div>
 
-          {/* Totals RIGHT */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xl font-extrabold text-red-700">Geo Stats:</span>
+          {/* ================================================================
+              GEO STATS
+          ================================================================ */}
 
-            {/* ✅ ORDER: Centers (default), Districts, Counties, Election */}
-            <TabPill to="totals/centers" label="Centers" />
-            <TabPill to="totals/districts" label="Districts" />
-            <TabPill to="totals/counties" label="Counties" />
-            <TabPill to="totals/election" label="Election" />
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-bold text-red-700">Geo Stats:</span>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              {totalsTabs.map((tab) => (
+                <NavLink
+                  key={tab.to}
+                  to={tabDestination(tab.to)}
+                  className={({ isActive }) => tabClass(isActive)}
+                >
+                  {({ isActive }) => (
+                    <>
+                      <ActiveDot active={isActive} />
+
+                      <span>{tab.label}</span>
+
+                      {isActive && (
+                        <span className="absolute -bottom-[1px] left-2 right-2 h-[2px] rounded-full bg-red-600" />
+                      )}
+                    </>
+                  )}
+                </NavLink>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ✅ Child pages render here — forward orgId context */}
-      <Outlet context={ctx} />
+      {/* ====================================================================
+          CHILD PAGE
+      ==================================================================== */}
+
+      <Outlet context={context} />
     </div>
   );
 }
 
+// ============================================================================
+// MOBILE OPTION
+// ============================================================================
+
+function PartyMobileOption({
+  label,
+  to,
+  active,
+}: {
+  label: string;
+
+  to: string;
+
+  active: boolean;
+}) {
+  return (
+    <NavLink
+      to={to}
+      className={[
+        `
+          flex
+          min-h-10
+          w-full
+          items-center
+          justify-between
+          gap-3
+          border-b
+          border-slate-50
+          px-3
+          py-2
+          text-left
+          text-xs
+          font-bold
+          last:border-b-0
+        `,
+
+        active ? "bg-red-50 text-red-700" : "text-slate-700 hover:bg-slate-50",
+      ].join(" ")}
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <span
+          className={[
+            "h-2 w-2 shrink-0 rounded-full",
+
+            active ? "bg-red-600" : "bg-slate-300",
+          ].join(" ")}
+        />
+
+        <span className="truncate">{label}</span>
+      </span>
+
+      {active && <Check size={13} className="shrink-0 text-red-600" />}
+    </NavLink>
+  );
+}

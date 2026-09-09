@@ -44,6 +44,8 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
+
+import static io.jsonwebtoken.lang.Strings.clean;
 import static org.springframework.http.HttpStatus.*;
 
 /**
@@ -92,6 +94,8 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     private final VoteSubmissionContestService voteSubmissionContestService;
     private final VoteSubmissionContestRepository voteSubmissionContestRepository;
     private  final VoteSubmissionRankingRepository voteSubmissionRankingRepository;
+    private final VoteSubmissionActionServiceImplementation voteSubmissionActionService;
+    private final VoteSubmissionActionRepository voteSubmissionActionRepository;
     private final DiscrepancyService discrepancyService;
     private final DiscrepancyRepository discrepancyRepository;
 
@@ -601,11 +605,31 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     public VoteSubmissionDto verify(UUID id, VoteSubmissionVerifyRequest req) {
 
         VoteSubmission s = voteSubmissionRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found"));
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Submission not found"
+                        )
+                );
 
-        if (s.getStatus() != VoteStatus.PENDING && s.getStatus() != VoteStatus.FLAGGED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submission already processed");
+        if (
+                s.getStatus() != VoteStatus.PENDING &&
+                        s.getStatus() != VoteStatus.FLAGGED
+        ) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Submission already processed"
+            );
         }
+
+        // ========================================================================
+        // ACTION HISTORY: CAPTURE STATE BEFORE VERIFY / REJECT
+        // ========================================================================
+
+        final String statusBefore =
+                s.getStatus() != null
+                        ? s.getStatus().name()
+                        : null;
 
         validateCandidateVotes(
                 s.getOrganization().getOrgId(),
@@ -616,77 +640,220 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         );
 
         SystemUser verifier = userRepo.findById(req.getVerifierUserId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Verifier not found"));
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Verifier not found"
+                        )
+                );
 
-        // ✅ FREEZE: If NECResult is published for this scope, block verification/rejection
-        assertNecResultNotPublishedOrThrow(s, "verified or rejected");
+        // ✅ FREEZE:
+        // If NECResult is published for this scope,
+        // block verification/rejection
+        assertNecResultNotPublishedOrThrow(
+                s,
+                "verified or rejected"
+        );
 
-        boolean accept = Boolean.TRUE.equals(req.getAccept());
-        s.setStatus(accept ? VoteStatus.VERIFIED : VoteStatus.REJECTED);
+        boolean accept =
+                Boolean.TRUE.equals(
+                        req.getAccept()
+                );
+
+        s.setStatus(
+                accept
+                        ? VoteStatus.VERIFIED
+                        : VoteStatus.REJECTED
+        );
+
         s.setVerifiedBy(verifier);
-        s.setDateVerified(LocalDateTime.now());
 
-        if (req.getComment() != null && !req.getComment().isBlank()) {
-            String prefix = accept ? "[submission review] " : "[submission rejected] ";
-            s.setComments(prefix + req.getComment());
+        s.setDateVerified(
+                LocalDateTime.now()
+        );
+
+        if (
+                req.getComment() != null &&
+                        !req.getComment().isBlank()
+        ) {
+
+            String prefix =
+                    accept
+                            ? "[submission review] "
+                            : "[submission rejected] ";
+
+            s.setComments(
+                    prefix + req.getComment()
+            );
+
         } else {
+
             s.setComments(null);
         }
 
-        // ✅ CRITICAL FIX: flush update to DB so JdbcTemplate can see new status
-        VoteSubmission saved = voteSubmissionRepository.saveAndFlush(s);
+        // ✅ CRITICAL FIX:
+        // flush update to DB so JdbcTemplate can see new status
+        VoteSubmission saved =
+                voteSubmissionRepository.saveAndFlush(s);
 
-        // ===== DISCREPANCY RESOLUTION ON VERIFICATION =====
-        if (accept) {
-            // Auto-resolve all OPEN discrepancies when submission is verified
-            resolveAllDiscrepancies(saved);
-        }
+        // ========================================================================
+        // ACTION HISTORY: RECORD VERIFY / REJECT
+        // ========================================================================
 
-        // ✅ keep your existing tally recompute event untouched
-        final RecomputeEvent recomputeEvent = new RecomputeEvent(
-                this,
-                saved.getOrganization().getOrgId(),
-                saved.getElection().getElectionId(),
+        VoteSubmissionActionRequest actionRequest =
+                new VoteSubmissionActionRequest();
+
+        actionRequest.setActorUserId(
                 verifier.getUserId()
         );
 
+        actionRequest.setActionType(
+                accept
+                        ? VoteSubmissionActionType.VERIFY
+                        : VoteSubmissionActionType.REJECT
+        );
+
+        actionRequest.setStatusBefore(
+                statusBefore
+        );
+
+        actionRequest.setStatusAfter(
+                saved.getStatus() != null
+                        ? saved.getStatus().name()
+                        : null
+        );
+
+        actionRequest.setComments(
+                req.getComment() != null
+                        ? req.getComment().trim()
+                        : null
+        );
+
+        actionRequest.setReason(
+                !accept &&
+                        req.getComment() != null
+                        ? req.getComment().trim()
+                        : null
+        );
+
+        actionRequest.setTypedSignature(
+                req.getTypedSignature()
+        );
+
+        actionRequest.setCertificationStatement(
+                req.getCertificationStatement()
+        );
+
+        actionRequest.setCertificationConfirmed(
+                req.getCertificationConfirmed()
+        );
+
+        voteSubmissionActionService.recordAction(
+                saved.getSubmissionId(),
+                actionRequest,
+                null
+        );
+
+        // ========================================================================
+        // DISCREPANCY RESOLUTION ON VERIFICATION
+        // ========================================================================
+
+        if (accept) {
+
+            // Auto-resolve all OPEN discrepancies
+            // when submission is verified
+            resolveAllDiscrepancies(saved);
+        }
+
+        // ========================================================================
+        // EXISTING TALLY RECOMPUTE EVENT — UNCHANGED
+        // ========================================================================
+
+        final RecomputeEvent recomputeEvent =
+                new RecomputeEvent(
+                        this,
+                        saved.getOrganization().getOrgId(),
+                        saved.getElection().getElectionId(),
+                        verifier.getUserId()
+                );
+
         try {
-            if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        try {
-                            eventPublisher.publishEvent(recomputeEvent);
-                        } catch (Exception ex) {
-                            log.warn("Failed to publish RecomputeEvent after commit: {}", ex.getMessage());
-                        }
-                    }
-                });
+
+            if (
+                    TransactionSynchronizationManager
+                            .isSynchronizationActive()
+            ) {
+
+                TransactionSynchronizationManager
+                        .registerSynchronization(
+                                new TransactionSynchronization() {
+
+                                    @Override
+                                    public void afterCommit() {
+
+                                        try {
+
+                                            eventPublisher.publishEvent(
+                                                    recomputeEvent
+                                            );
+
+                                        } catch (Exception ex) {
+
+                                            log.warn(
+                                                    "Failed to publish RecomputeEvent after commit: {}",
+                                                    ex.getMessage()
+                                            );
+                                        }
+                                    }
+                                }
+                        );
+
             } else {
-                eventPublisher.publishEvent(recomputeEvent);
+
+                eventPublisher.publishEvent(
+                        recomputeEvent
+                );
             }
+
         } catch (Exception ex) {
-            log.warn("Could not schedule recompute event: {}", ex.getMessage());
+
+            log.warn(
+                    "Could not schedule recompute event: {}",
+                    ex.getMessage()
+            );
         }
 
         // ---------------------------------------------------------------------
         // ✅ NECResult recompute (DIRECT, NO EVENTS)
+        //
         // RULE:
         // - Only NEC submission + NEC verifier triggers recompute
         // ---------------------------------------------------------------------
+
         OrganizationType submissionType =
-                (saved.getOrganization() != null ? saved.getOrganization().getOrganizationType() : null);
+                saved.getOrganization() != null
+                        ? saved.getOrganization().getOrganizationType()
+                        : null;
 
         OrganizationType verifierType =
-                (verifier.getDefaultOrg() != null ? verifier.getDefaultOrg().getOrganizationType() : null);
+                verifier.getDefaultOrg() != null
+                        ? verifier.getDefaultOrg().getOrganizationType()
+                        : null;
 
-        boolean submissionIsNec = (submissionType == OrganizationType.NEC);
-        boolean verifierIsNec = (verifierType == OrganizationType.NEC);
+        boolean submissionIsNec =
+                submissionType == OrganizationType.NEC;
+
+        boolean verifierIsNec =
+                verifierType == OrganizationType.NEC;
 
         if (submissionIsNec && verifierIsNec) {
 
-            log.info("Triggering NEC recomputeFromSubmission (status={}): submissionId={} verifier={}",
-                    saved.getStatus(), saved.getSubmissionId(), verifier.getUserId());
+            log.info(
+                    "Triggering NEC recomputeFromSubmission (status={}): submissionId={} verifier={}",
+                    saved.getStatus(),
+                    saved.getSubmissionId(),
+                    verifier.getUserId()
+            );
 
             // ✅ IMPORTANT:
             // - VERIFIED => upsert nec_result
@@ -699,50 +866,84 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
             );
 
         } else {
-            log.info("NEC recompute skipped: status={}, submissionType={}, verifierType={}",
-                    saved.getStatus(), submissionType, verifierType);
+
+            log.info(
+                    "NEC recompute skipped: status={}, submissionType={}, verifierType={}",
+                    saved.getStatus(),
+                    submissionType,
+                    verifierType
+            );
         }
 
-        // notifications & audits unchanged
+        // ========================================================================
+        // NOTIFICATIONS & AUDITS — UNCHANGED
+        // ========================================================================
+
         if (saved.getStatus() == VoteStatus.VERIFIED) {
+
             notify(
-                    saved.getOrganization().getOrgId(), saved.getAgent().getUserId(),
+                    saved.getOrganization().getOrgId(),
+                    saved.getAgent().getUserId(),
                     NotificationType.VOTE,
                     "Submission Verified",
-                    "Your submission at " + saved.getPollingCenter().getCenterName() + " was verified.",
-                    "vote_submission", saved.getSubmissionId(),
-                    NotificationPriority.NORMAL, DeliveryMethod.IN_APP
+                    "Your submission at " +
+                            saved.getPollingCenter().getCenterName() +
+                            " was verified.",
+                    "vote_submission",
+                    saved.getSubmissionId(),
+                    NotificationPriority.NORMAL,
+                    DeliveryMethod.IN_APP
             );
 
             auditLogService.logSubmissionVerify(
                     saved.getOrganization().getOrgId(),
                     verifier.getUserId(),
                     "VoteSubmission",
-                    "Verified submission: " + saved.getSubmissionId()
+                    "Verified submission: " +
+                            saved.getSubmissionId()
             );
+
         } else {
-            String message = "Your submission at " + saved.getPollingCenter().getCenterName() + " was rejected.";
-            if (req.getComment() != null && !req.getComment().isBlank()) {
-                message += " Reason: " + req.getComment();
+
+            String message =
+                    "Your submission at " +
+                            saved.getPollingCenter().getCenterName() +
+                            " was rejected.";
+
+            if (
+                    req.getComment() != null &&
+                            !req.getComment().isBlank()
+            ) {
+                message +=
+                        " Reason: " +
+                                req.getComment();
             }
 
             notify(
-                    saved.getOrganization().getOrgId(), saved.getAgent().getUserId(),
+                    saved.getOrganization().getOrgId(),
+                    saved.getAgent().getUserId(),
                     NotificationType.VOTE,
                     "Submission Rejected",
                     message,
-                    "vote_submission", saved.getSubmissionId(),
-                    NotificationPriority.NORMAL, DeliveryMethod.IN_APP
+                    "vote_submission",
+                    saved.getSubmissionId(),
+                    NotificationPriority.NORMAL,
+                    DeliveryMethod.IN_APP
             );
 
             auditLogService.logSubmissionReject(
                     saved.getOrganization().getOrgId(),
                     verifier.getUserId(),
                     "VoteSubmission",
-                    "Rejected submission: " + saved.getSubmissionId() +
-                            (req.getComment() != null && !req.getComment().isBlank()
-                                    ? " Reason: " + req.getComment()
-                                    : "")
+                    "Rejected submission: " +
+                            saved.getSubmissionId() +
+                            (
+                                    req.getComment() != null &&
+                                            !req.getComment().isBlank()
+                                            ? " Reason: " +
+                                            req.getComment()
+                                            : ""
+                            )
             );
         }
 
@@ -750,57 +951,145 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     }
 
 
-
     @Override
     @Transactional
     public VoteSubmissionDto amend(UUID id, VoteSubmissionAmendRequest req) {
 
-        if (req == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Request body is required");
-        if (req.getActorUserId() == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "actorUserId is required");
-        if (req.getReason() == null || req.getReason().isBlank())
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "reason is required");
+        if (req == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Request body is required"
+            );
+        }
+
+        if (req.getActorUserId() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "actorUserId is required"
+            );
+        }
+
+        if (req.getReason() == null || req.getReason().isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "reason is required"
+            );
+        }
 
         VoteSubmission s = voteSubmissionRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found"));
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Submission not found"
+                        )
+                );
 
         // ✅ FREEZE: block amend if NECResult already published
         assertNecResultNotPublishedOrThrow(s, "amended");
 
-        // ✅ Only NEC admins should do this (enforce via AuthorizationService elsewhere)
+        // ✅ Only NEC admins should do this
+        // (enforce via AuthorizationService elsewhere)
         SystemUser actor = userRepo.findById(req.getActorUserId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Actor not found"));
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Actor not found"
+                        )
+                );
 
         // ✅ Allow amending VERIFIED / REJECTED / PENDING
-        if (s.getStatus() != VoteStatus.VERIFIED &&
-                s.getStatus() != VoteStatus.REJECTED &&
-                s.getStatus() != VoteStatus.PENDING) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only VERIFIED/REJECTED/PENDING submissions can be amended");
+        if (
+                s.getStatus() != VoteStatus.VERIFIED &&
+                        s.getStatus() != VoteStatus.REJECTED &&
+                        s.getStatus() != VoteStatus.PENDING
+        ) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Only VERIFIED/REJECTED/PENDING submissions can be amended"
+            );
         }
 
+        // ========================================================================
+        // ACTION HISTORY: CAPTURE STATE BEFORE AMENDMENT
+        // ========================================================================
+
+        final String statusBefore =
+                s.getStatus() != null
+                        ? s.getStatus().name()
+                        : null;
+
         PollingPlace place = s.getPollingPlace();
-        if (place == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submission missing polling place");
+
+        if (place == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Submission missing polling place"
+            );
+        }
 
         var alloc = placeAllocationRepo
                 .findByElection_ElectionIdAndPollingPlace_PlaceId(
                         s.getElection().getElectionId(),
                         place.getPlaceId()
                 )
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Polling place not allocated for this election"));
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.BAD_REQUEST,
+                                "Polling place not allocated for this election"
+                        )
+                );
 
-        // Merge candidate votes
-        Map<String, Integer> mergedVotes = mergeCandidateVotes(s.getCandidateVotes(), req.getCandidateVotes());
+        // ========================================================================
+        // MERGE CANDIDATE VOTES
+        // ========================================================================
+
+        Map<String, Integer> mergedVotes =
+                mergeCandidateVotes(
+                        s.getCandidateVotes(),
+                        req.getCandidateVotes()
+                );
+
         if (mergedVotes.size() > MAX_CANDIDATE_KEYS) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Too many candidate entries");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Too many candidate entries"
+            );
         }
 
-        int cast   = (req.getBallotsInBox() != null) ? req.getBallotsInBox() : nzInt(s.getBallotsInBox());
-        int invalid= (req.getInvalidBallots() != null) ? req.getInvalidBallots() : nzInt(s.getInvalidBallots());
-        int unmark = (req.getUnmarkedBallots() != null) ? req.getUnmarkedBallots() : nzInt(s.getUnmarkedBallots());
-        int rej    = (req.getRejectedBallots() != null) ? req.getRejectedBallots() : nzInt(s.getRejectedBallots());
-        int spo    = (req.getSpoiledBallots() != null) ? req.getSpoiledBallots() : nzInt(s.getSpoiledBallots());
-        int unused = (req.getUnusedBallots() != null) ? req.getUnusedBallots() : nzInt(s.getUnusedBallots());
+        int cast =
+                req.getBallotsInBox() != null
+                        ? req.getBallotsInBox()
+                        : nzInt(s.getBallotsInBox());
 
-        // ✅ Full validation
+        int invalid =
+                req.getInvalidBallots() != null
+                        ? req.getInvalidBallots()
+                        : nzInt(s.getInvalidBallots());
+
+        int unmark =
+                req.getUnmarkedBallots() != null
+                        ? req.getUnmarkedBallots()
+                        : nzInt(s.getUnmarkedBallots());
+
+        int rej =
+                req.getRejectedBallots() != null
+                        ? req.getRejectedBallots()
+                        : nzInt(s.getRejectedBallots());
+
+        int spo =
+                req.getSpoiledBallots() != null
+                        ? req.getSpoiledBallots()
+                        : nzInt(s.getSpoiledBallots());
+
+        int unused =
+                req.getUnusedBallots() != null
+                        ? req.getUnusedBallots()
+                        : nzInt(s.getUnusedBallots());
+
+        // ========================================================================
+        // EXISTING FULL VALIDATION
+        // ========================================================================
+
         validateCandidateVotes(
                 s.getOrganization().getOrgId(),
                 s.getElection().getElectionId(),
@@ -810,17 +1099,44 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         );
 
         validateTally(
-                mergedVotes, invalid, unmark, rej, spo, unused, cast,
-                alloc.getRegisteredVoters(), alloc.getBallotsIssued()
+                mergedVotes,
+                invalid,
+                unmark,
+                rej,
+                spo,
+                unused,
+                cast,
+                alloc.getRegisteredVoters(),
+                alloc.getBallotsIssued()
         );
 
-        // Apply updated fields
-        if (req.getBallotsInBox() != null) s.setBallotsInBox(req.getBallotsInBox());
-        if (req.getInvalidBallots() != null) s.setInvalidBallots(req.getInvalidBallots());
-        if (req.getUnmarkedBallots() != null) s.setUnmarkedBallots(req.getUnmarkedBallots());
-        if (req.getRejectedBallots() != null) s.setRejectedBallots(req.getRejectedBallots());
-        if (req.getSpoiledBallots() != null) s.setSpoiledBallots(req.getSpoiledBallots());
-        if (req.getUnusedBallots() != null) s.setUnusedBallots(req.getUnusedBallots());
+        // ========================================================================
+        // APPLY UPDATED FIELDS
+        // ========================================================================
+
+        if (req.getBallotsInBox() != null) {
+            s.setBallotsInBox(req.getBallotsInBox());
+        }
+
+        if (req.getInvalidBallots() != null) {
+            s.setInvalidBallots(req.getInvalidBallots());
+        }
+
+        if (req.getUnmarkedBallots() != null) {
+            s.setUnmarkedBallots(req.getUnmarkedBallots());
+        }
+
+        if (req.getRejectedBallots() != null) {
+            s.setRejectedBallots(req.getRejectedBallots());
+        }
+
+        if (req.getSpoiledBallots() != null) {
+            s.setSpoiledBallots(req.getSpoiledBallots());
+        }
+
+        if (req.getUnusedBallots() != null) {
+            s.setUnusedBallots(req.getUnusedBallots());
+        }
 
         s.setCandidateVotes(mergedVotes);
 
@@ -831,70 +1147,196 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
 
         // ✅ FINAL RULE:
         // comments always explain the CURRENT status only
-        s.setComments("[submission amended] " + req.getReason().trim());
+        s.setComments(
+                "[submission amended] " +
+                        req.getReason().trim()
+        );
 
         // Update submission hash
-        s.setSubmissionHash(buildSubmissionPayloadHash(s));
+        s.setSubmissionHash(
+                buildSubmissionPayloadHash(s)
+        );
 
         // Flush so recompute sees updated values
-        VoteSubmission saved = voteSubmissionRepository.saveAndFlush(s);
+        VoteSubmission saved =
+                voteSubmissionRepository.saveAndFlush(s);
 
-        // ===== DISCREPANCY REVALIDATION ON AMENDMENT =====
+        // ========================================================================
+        // ACTION HISTORY: RECORD AMENDMENT
+        // ========================================================================
+
+        VoteSubmissionActionRequest actionRequest =
+                new VoteSubmissionActionRequest();
+
+        actionRequest.setActorUserId(
+                actor.getUserId()
+        );
+
+        actionRequest.setActionType(
+                VoteSubmissionActionType.AMEND
+        );
+
+        actionRequest.setStatusBefore(
+                statusBefore
+        );
+
+        actionRequest.setStatusAfter(
+                saved.getStatus() != null
+                        ? saved.getStatus().name()
+                        : null
+        );
+
+        actionRequest.setReason(
+                req.getReason().trim()
+        );
+
+        actionRequest.setComments(
+                saved.getComments()
+        );
+
+        actionRequest.setTypedSignature(
+                req.getTypedSignature()
+        );
+
+        actionRequest.setCertificationStatement(
+                req.getCertificationStatement()
+        );
+
+        actionRequest.setCertificationConfirmed(
+                req.getCertificationConfirmed()
+        );
+
+        voteSubmissionActionService.recordAction(
+                saved.getSubmissionId(),
+                actionRequest,
+                null
+        );
+
+        // ========================================================================
+        // DISCREPANCY REVALIDATION ON AMENDMENT
+        // ========================================================================
+
         if (alloc != null) {
-            PollingPlaceAllocationDto allocDto = PollingPlaceAllocationDto.builder()
-                    .electionId(alloc.getElection().getElectionId())
-                    .placeId(alloc.getPollingPlace().getPlaceId())
-                    .registeredVoters(alloc.getRegisteredVoters())
-                    .ballotsIssued(alloc.getBallotsIssued())
-                    .build();
 
-            discrepancyService.revalidateSubmissionDiscrepancies(saved, allocDto);
+            PollingPlaceAllocationDto allocDto =
+                    PollingPlaceAllocationDto.builder()
+                            .electionId(
+                                    alloc.getElection().getElectionId()
+                            )
+                            .placeId(
+                                    alloc.getPollingPlace().getPlaceId()
+                            )
+                            .registeredVoters(
+                                    alloc.getRegisteredVoters()
+                            )
+                            .ballotsIssued(
+                                    alloc.getBallotsIssued()
+                            )
+                            .build();
+
+            discrepancyService.revalidateSubmissionDiscrepancies(
+                    saved,
+                    allocDto
+            );
         }
 
         // ✅ Normalize (amend changes vote content)
-        voteSubmissionContestService.normalizeSubmission(saved.getSubmissionId());
-
-        // ---- Ledger / signing (unchanged) ----
-        String payloadHash = buildSubmissionPayloadHash(saved);
-        Map<String, Object> ledgerRes = jdbc.queryForMap(
-                "SELECT * FROM fn_log_ledger_and_update_submission(?, ?, ?, ?)",
-                "VOTE_SUBMISSION_AMEND",
-                saved.getSubmissionId(),
-                payloadHash,
-                actor.getUserId()
+        voteSubmissionContestService.normalizeSubmission(
+                saved.getSubmissionId()
         );
 
-        UUID ledgerId = toUuid(ledgerRes.get("ledger_id"));
-        String chainHash = ledgerRes.get("chain_hash") != null ? ledgerRes.get("chain_hash").toString() : null;
+        // ========================================================================
+        // LEDGER / SIGNING — UNCHANGED
+        // ========================================================================
 
-        SigningService.SignResult signResult = signingService.signHex(chainHash);
-        jdbc.update("UPDATE audit_ledger SET signature = ? WHERE ledger_id = ?", signResult.signature(), ledgerId);
+        String payloadHash =
+                buildSubmissionPayloadHash(saved);
+
+        Map<String, Object> ledgerRes =
+                jdbc.queryForMap(
+                        "SELECT * FROM fn_log_ledger_and_update_submission(?, ?, ?, ?)",
+                        "VOTE_SUBMISSION_AMEND",
+                        saved.getSubmissionId(),
+                        payloadHash,
+                        actor.getUserId()
+                );
+
+        UUID ledgerId =
+                toUuid(
+                        ledgerRes.get("ledger_id")
+                );
+
+        String chainHash =
+                ledgerRes.get("chain_hash") != null
+                        ? ledgerRes.get("chain_hash").toString()
+                        : null;
+
+        SigningService.SignResult signResult =
+                signingService.signHex(chainHash);
+
+        jdbc.update(
+                "UPDATE audit_ledger SET signature = ? WHERE ledger_id = ?",
+                signResult.signature(),
+                ledgerId
+        );
+
         jdbc.update(
                 "UPDATE vote_submission SET submission_signature = ?, submission_signer_key_id = ? WHERE submission_id = ?",
-                signResult.signature(), signResult.keyId(), saved.getSubmissionId()
+                signResult.signature(),
+                signResult.keyId(),
+                saved.getSubmissionId()
         );
 
-        // Trigger VoteTally recompute (unchanged)
-        final RecomputeEvent recomputeEvent = new RecomputeEvent(
-                this,
-                saved.getOrganization().getOrgId(),
-                saved.getElection().getElectionId(),
-                actor.getUserId()
-        );
+        // ========================================================================
+        // VOTE TALLY RECOMPUTE — UNCHANGED
+        // ========================================================================
 
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    try { eventPublisher.publishEvent(recomputeEvent); } catch (Exception ignored) {}
-                }
-            });
+        final RecomputeEvent recomputeEvent =
+                new RecomputeEvent(
+                        this,
+                        saved.getOrganization().getOrgId(),
+                        saved.getElection().getElectionId(),
+                        actor.getUserId()
+                );
+
+        if (
+                TransactionSynchronizationManager
+                        .isSynchronizationActive()
+        ) {
+
+            TransactionSynchronizationManager
+                    .registerSynchronization(
+                            new TransactionSynchronization() {
+
+                                @Override
+                                public void afterCommit() {
+                                    try {
+                                        eventPublisher.publishEvent(
+                                                recomputeEvent
+                                        );
+                                    } catch (Exception ignored) {
+                                    }
+                                }
+                            }
+                    );
+
         } else {
-            eventPublisher.publishEvent(recomputeEvent);
+
+            eventPublisher.publishEvent(
+                    recomputeEvent
+            );
         }
 
-        // ✅ Trigger NEC recompute ONLY for NEC submissions
-        if (saved.getOrganization() != null && saved.getOrganization().getOrganizationType() == OrganizationType.NEC) {
+        // ========================================================================
+        // NEC RECOMPUTE — UNCHANGED
+        // ========================================================================
+
+        if (
+                saved.getOrganization() != null &&
+                        saved.getOrganization().getOrganizationType()
+                                == OrganizationType.NEC
+        ) {
+
             necResultService.recomputeFromSubmissionWithNotes(
                     saved.getSubmissionId(),
                     actor.getUserId(),
@@ -902,13 +1344,19 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
             );
         }
 
+        // ========================================================================
+        // EXISTING AUDIT LOG — UNCHANGED
+        // ========================================================================
+
         auditLogService.log(
                 saved.getOrganization().getOrgId(),
                 actor.getUserId(),
                 ActivityType.VOTE_UPDATED,
                 "vote_submission",
-                "Amended submission (reset to PENDING): " + saved.getSubmissionId() +
-                        " reason=" + req.getReason()
+                "Amended submission (reset to PENDING): " +
+                        saved.getSubmissionId() +
+                        " reason=" +
+                        req.getReason()
         );
 
         return mapper.toDTO(saved);
@@ -920,85 +1368,213 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     public void delete(UUID submissionId, VoteSubmissionDeleteRequest req) {
 
         if (submissionId == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "submissionId is required");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "submissionId is required"
+            );
         }
+
         if (req == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "request body is required");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "request body is required"
+            );
         }
+
         if (req.getDeletedByUserId() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "deletedByUserId is required");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "deletedByUserId is required"
+            );
         }
+
         if (req.getReason() == null || req.getReason().trim().isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "reason is required");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "reason is required"
+            );
         }
 
         final UUID deletedByUserId = req.getDeletedByUserId();
         final String cleanReason = req.getReason().trim();
 
         VoteSubmission s = voteSubmissionRepository.findById(submissionId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found"));
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Submission not found"
+                        )
+                );
 
         // ✅ FREEZE: block delete if NECResult already published
         assertNecResultNotPublishedOrThrow(s, "deleted");
 
-        UUID orgId = s.getOrganization() != null ? s.getOrganization().getOrgId() : null;
-        if (orgId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submission missing orgId");
+        UUID orgId =
+                s.getOrganization() != null
+                        ? s.getOrganization().getOrgId()
+                        : null;
 
-        UUID electionId = s.getElection() != null ? s.getElection().getElectionId() : null;
-        if (electionId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submission missing electionId");
+        if (orgId == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Submission missing orgId"
+            );
+        }
+
+        UUID electionId =
+                s.getElection() != null
+                        ? s.getElection().getElectionId()
+                        : null;
+
+        if (electionId == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Submission missing electionId"
+            );
+        }
 
         UUID contestId = s.getContestId();
-        if (contestId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submission missing contestId");
 
-        // centerId resolution (keep your existing logic)
-        UUID centerId = null;
-        if (s.getPollingCenter() != null) centerId = s.getPollingCenter().getCenterId();
-        if (centerId == null && s.getPollingPlace() != null
-                && s.getPollingPlace().getPollingCenter() != null) {
-            centerId = s.getPollingPlace().getPollingCenter().getCenterId();
+        if (contestId == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Submission missing contestId"
+            );
         }
-        if (centerId == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submission missing centerId");
+
+        // centerId resolution (keep existing logic)
+        UUID centerId = null;
+
+        if (s.getPollingCenter() != null) {
+            centerId = s.getPollingCenter().getCenterId();
+        }
+
+        if (
+                centerId == null &&
+                        s.getPollingPlace() != null &&
+                        s.getPollingPlace().getPollingCenter() != null
+        ) {
+            centerId =
+                    s.getPollingPlace()
+                            .getPollingCenter()
+                            .getCenterId();
+        }
+
+        if (centerId == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Submission missing centerId"
+            );
+        }
 
         // ✅ idempotent delete
-        if (s.getDateDeleted() != null || s.getStatus() == VoteStatus.DELETED) {
+        if (
+                s.getDateDeleted() != null ||
+                        s.getStatus() == VoteStatus.DELETED
+        ) {
             return;
         }
 
-        // ✅ mark deleted (LocalDateTime required)
+        // ========================================================================
+        // ACTION HISTORY: CAPTURE PREVIOUS STATE
+        // ========================================================================
+
+        final String statusBefore =
+                s.getStatus() != null
+                        ? s.getStatus().name()
+                        : null;
+
+        // ✅ mark deleted
         s.setStatus(VoteStatus.DELETED);
         s.setDateDeleted(LocalDateTime.now());
 
         // ✅ OVERRIDE comments (do NOT append)
-        s.setComments(buildStatusComment(VoteStatus.DELETED, deletedByUserId, cleanReason));
+        s.setComments(
+                buildStatusComment(
+                        VoteStatus.DELETED,
+                        deletedByUserId,
+                        cleanReason
+                )
+        );
 
         voteSubmissionRepository.save(s);
         voteSubmissionRepository.flush();
 
-        // ===== DISCREPANCY RESOLUTION ON DELETION =====
+        // ========================================================================
+        // ACTION HISTORY: RECORD DELETE
+        // ========================================================================
+
+        VoteSubmissionActionRequest actionRequest =
+                new VoteSubmissionActionRequest();
+
+        actionRequest.setActorUserId(deletedByUserId);
+        actionRequest.setActionType(VoteSubmissionActionType.DELETE);
+
+        actionRequest.setStatusBefore(statusBefore);
+        actionRequest.setStatusAfter(VoteStatus.DELETED.name());
+
+        actionRequest.setReason(cleanReason);
+
+        /*
+         * DELETE uses its own destructive confirmation workflow:
+         *
+         *   - deletion reason is required
+         *   - frontend requires the user to type DELETE
+         *
+         * Therefore the typed-name certification used by
+         * VERIFY / REJECT / FLAG / UNFLAG / AMEND is not used here.
+         */
+        actionRequest.setTypedSignature(null);
+        actionRequest.setCertificationStatement(null);
+        actionRequest.setCertificationConfirmed(false);
+
+        voteSubmissionActionService.recordAction(
+                submissionId,
+                actionRequest,
+                null
+        );
+
+        // ========================================================================
+        // DISCREPANCY RESOLUTION ON DELETION
+        // ========================================================================
+
         deleteRelatedDiscrepancies(submissionId);
 
         // ✅ Cleanup normalized rows for this submission
         voteSubmissionContestRepository.deleteBySubmissionId(submissionId);
         voteSubmissionRankingRepository.deleteBySubmissionId(submissionId);
 
+        // ========================================================================
+        // RECOMPUTE OFFICIAL RESULTS
+        // ========================================================================
 
-        // ✅ recompute official results immediately
-        // NOTE: recompute will ALSO hard-block inside NECResultServiceImpl if published (safety net)
+        // NOTE:
+        // recompute will ALSO hard-block inside NECResultServiceImpl
+        // if published (safety net)
         necResultService.recomputeForCenterContestWithNotes(
                 orgId,
                 electionId,
                 contestId,
                 centerId,
                 deletedByUserId,
-                "DELETE_SUBMISSION: submissionId=" + s.getSubmissionId() + " | reason=" + cleanReason
+                "DELETE_SUBMISSION: submissionId=" +
+                        s.getSubmissionId() +
+                        " | reason=" +
+                        cleanReason
         );
 
-        // ✅ audit log (use your working method)
+        // ========================================================================
+        // EXISTING AUDIT LOG
+        // ========================================================================
+
         auditLogService.logDelete(
                 orgId,
                 deletedByUserId,
                 "VoteSubmission",
-                "Deleted submission: " + s.getSubmissionId() + " | reason: " + cleanReason
+                "Deleted submission: " +
+                        s.getSubmissionId() +
+                        " | reason: " +
+                        cleanReason
         );
     }
 
@@ -1106,31 +1682,77 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     public VoteSubmissionDto flag(UUID id, VoteSubmissionFlagRequest req) {
 
         VoteSubmission s = voteSubmissionRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Submission not found"));
+                .orElseThrow(() -> new ResponseStatusException(
+                        NOT_FOUND,
+                        "Submission not found"
+                ));
 
         if (req == null) {
-            throw new ResponseStatusException(BAD_REQUEST, "Request body is required");
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "Request body is required"
+            );
         }
+
         if (req.getActorUserId() == null) {
-            throw new ResponseStatusException(BAD_REQUEST, "actorUserId is required");
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "actorUserId is required"
+            );
         }
+
         if (req.getFlagged() == null) {
-            throw new ResponseStatusException(BAD_REQUEST, "flagged is required");
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "flagged is required"
+            );
         }
 
         SystemUser actor = userRepo.findById(req.getActorUserId())
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Actor not found"));
+                .orElseThrow(() -> new ResponseStatusException(
+                        NOT_FOUND,
+                        "Actor not found"
+                ));
 
         boolean flagged = Boolean.TRUE.equals(req.getFlagged());
-        String comment = req.getComments() == null ? null : req.getComments().trim();
+
+        String comment =
+                req.getComments() == null
+                        ? null
+                        : req.getComments().trim();
+
+        // ========================================================================
+        // ACTION HISTORY: CAPTURE STATE BEFORE FLAG / UNFLAG
+        // ========================================================================
+
+        final String statusBefore =
+                s.getStatus() != null
+                        ? s.getStatus().name()
+                        : null;
+
+        // ========================================================================
+        // EXISTING FLAG / UNFLAG LOGIC
+        // ========================================================================
 
         if (flagged) {
+
             VoteStatus st = s.getStatus();
-            if (st != VoteStatus.PENDING && st != VoteStatus.DRAFT) {
-                throw new ResponseStatusException(BAD_REQUEST, "Only DRAFT or PENDING submissions can be flagged");
+
+            if (
+                    st != VoteStatus.PENDING &&
+                            st != VoteStatus.DRAFT
+            ) {
+                throw new ResponseStatusException(
+                        BAD_REQUEST,
+                        "Only DRAFT or PENDING submissions can be flagged"
+                );
             }
+
             if (comment == null || comment.isBlank()) {
-                throw new ResponseStatusException(BAD_REQUEST, "Comments is required when flagging a submission");
+                throw new ResponseStatusException(
+                        BAD_REQUEST,
+                        "Comments is required when flagging a submission"
+                );
             }
 
             s.setStatus(VoteStatus.FLAGGED);
@@ -1143,29 +1765,849 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                     actor.getUserId(),
                     ActivityType.VOTE_FLAGGED,
                     "vote_submission",
-                    "Flagged submission: " + s.getSubmissionId() + " comments=" + comment
+                    "Flagged submission: " +
+                            s.getSubmissionId() +
+                            " comments=" +
+                            comment
             );
+
         } else {
+
             if (s.getStatus() != VoteStatus.FLAGGED) {
-                throw new ResponseStatusException(BAD_REQUEST, "Only FLAGGED submissions can be unflagged");
+                throw new ResponseStatusException(
+                        BAD_REQUEST,
+                        "Only FLAGGED submissions can be unflagged"
+                );
             }
 
             s.setStatus(VoteStatus.PENDING);
             s.setFlaggedBy(null);
             s.setDateFlagged(null);
 
-            if (comment != null && !comment.isBlank()) s.setComments("[unflagged] " + comment);
+            if (comment != null && !comment.isBlank()) {
+                s.setComments("[unflagged] " + comment);
+            }
 
             auditLogService.log(
                     s.getOrganization().getOrgId(),
                     actor.getUserId(),
                     ActivityType.VOTE_UNFLAGGED,
                     "vote_submission",
-                    "Unflagged submission: " + s.getSubmissionId() + (comment != null ? " comments=" + comment : "")
+                    "Unflagged submission: " +
+                            s.getSubmissionId() +
+                            (comment != null
+                                    ? " comments=" + comment
+                                    : "")
             );
         }
 
-        return mapper.toDTO(voteSubmissionRepository.save(s));
+        // ========================================================================
+        // SAVE EXISTING SUBMISSION CHANGE
+        // ========================================================================
+
+        VoteSubmission saved =
+                voteSubmissionRepository.save(s);
+
+        // ========================================================================
+        // ACTION HISTORY: RECORD FLAG / UNFLAG
+        // ========================================================================
+
+        VoteSubmissionActionRequest actionRequest =
+                new VoteSubmissionActionRequest();
+
+        actionRequest.setActorUserId(
+                actor.getUserId()
+        );
+
+        actionRequest.setActionType(
+                flagged
+                        ? VoteSubmissionActionType.FLAG
+                        : VoteSubmissionActionType.UNFLAG
+        );
+
+        actionRequest.setStatusBefore(
+                statusBefore
+        );
+
+        actionRequest.setStatusAfter(
+                saved.getStatus() != null
+                        ? saved.getStatus().name()
+                        : null
+        );
+
+        actionRequest.setComments(
+                comment
+        );
+
+        actionRequest.setReason(
+                comment
+        );
+
+        actionRequest.setTypedSignature(
+                req.getTypedSignature()
+        );
+
+        actionRequest.setCertificationStatement(
+                req.getCertificationStatement()
+        );
+
+        actionRequest.setCertificationConfirmed(
+                req.getCertificationConfirmed()
+        );
+
+        voteSubmissionActionService.recordAction(
+                saved.getSubmissionId(),
+                actionRequest,
+                null
+        );
+
+        return mapper.toDTO(saved);
+    }
+
+
+    @Override
+    @Transactional
+    public VoteSubmissionDto resubmitRejected(
+            UUID id,
+            VoteSubmissionResubmitRequest req
+    ) {
+
+        if (req == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Request body is required"
+            );
+        }
+
+        if (req.getActorUserId() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "actorUserId is required"
+            );
+        }
+
+        if (req.getReason() == null || req.getReason().isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Resubmission reason is required"
+            );
+        }
+
+        VoteSubmission s =
+                voteSubmissionRepository.findById(id)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        "Submission not found"
+                                )
+                        );
+
+        // ========================================================================
+        // STRICT STATE RULE
+        // ========================================================================
+
+        if (s.getStatus() != VoteStatus.REJECTED) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Only REJECTED submissions can be resubmitted"
+            );
+        }
+
+        // ========================================================================
+        // RESULT FREEZE
+        // ========================================================================
+
+        assertNecResultNotPublishedOrThrow(
+                s,
+                "resubmitted"
+        );
+
+        // ========================================================================
+        // ACTOR
+        // ========================================================================
+
+        SystemUser actor =
+                userRepo.findById(
+                                req.getActorUserId()
+                        )
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        "Actor not found"
+                                )
+                        );
+
+        // ========================================================================
+        // REQUIRE PRIOR REJECTION HISTORY
+        //
+        // This prevents a corrupted/manual REJECTED status from being silently
+        // converted through this workflow without an actual rejection action.
+        // ========================================================================
+
+        boolean rejectionExists =
+                voteSubmissionActionRepository
+                        .existsBySubmission_SubmissionIdAndActionType(
+                                s.getSubmissionId(),
+                                VoteSubmissionActionType.REJECT
+                        );
+
+        if (!rejectionExists) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Rejected submission has no rejection action history"
+            );
+        }
+
+        // ========================================================================
+        // POLLING PLACE / ALLOCATION
+        // ========================================================================
+
+        PollingPlace place =
+                s.getPollingPlace();
+
+        if (place == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Submission missing polling place"
+            );
+        }
+
+        var alloc =
+                placeAllocationRepo
+                        .findByElection_ElectionIdAndPollingPlace_PlaceId(
+                                s.getElection().getElectionId(),
+                                place.getPlaceId()
+                        )
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.BAD_REQUEST,
+                                        "Polling place not allocated for this election"
+                                )
+                        );
+
+        // ========================================================================
+        // CAPTURE BEFORE STATE
+        // ========================================================================
+
+        final String statusBefore =
+                s.getStatus() != null
+                        ? s.getStatus().name()
+                        : null;
+
+        // ========================================================================
+        // MERGE CORRECTED VALUES
+        // ========================================================================
+
+        Map<String, Integer> mergedVotes =
+                mergeCandidateVotes(
+                        s.getCandidateVotes(),
+                        req.getCandidateVotes()
+                );
+
+        if (mergedVotes.size() > MAX_CANDIDATE_KEYS) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Too many candidate entries"
+            );
+        }
+
+        int cast =
+                req.getBallotsInBox() != null
+                        ? req.getBallotsInBox()
+                        : nzInt(s.getBallotsInBox());
+
+        int invalid =
+                req.getInvalidBallots() != null
+                        ? req.getInvalidBallots()
+                        : nzInt(s.getInvalidBallots());
+
+        int unmarked =
+                req.getUnmarkedBallots() != null
+                        ? req.getUnmarkedBallots()
+                        : nzInt(s.getUnmarkedBallots());
+
+        int rejected =
+                req.getRejectedBallots() != null
+                        ? req.getRejectedBallots()
+                        : nzInt(s.getRejectedBallots());
+
+        int spoiled =
+                req.getSpoiledBallots() != null
+                        ? req.getSpoiledBallots()
+                        : nzInt(s.getSpoiledBallots());
+
+        int unused =
+                req.getUnusedBallots() != null
+                        ? req.getUnusedBallots()
+                        : nzInt(s.getUnusedBallots());
+
+        // ========================================================================
+        // FULL VALIDATION BEFORE MUTATION
+        // ========================================================================
+
+        validateCandidateVotes(
+                s.getOrganization().getOrgId(),
+                s.getElection().getElectionId(),
+                s.getContestId(),
+                mergedVotes,
+                cast
+        );
+
+        validateTally(
+                mergedVotes,
+                invalid,
+                unmarked,
+                rejected,
+                spoiled,
+                unused,
+                cast,
+                alloc.getRegisteredVoters(),
+                alloc.getBallotsIssued()
+        );
+
+        // ========================================================================
+        // APPLY CORRECTED VALUES
+        // ========================================================================
+
+        s.setCandidateVotes(
+                mergedVotes
+        );
+
+        if (req.getBallotsInBox() != null) {
+            s.setBallotsInBox(
+                    req.getBallotsInBox()
+            );
+        }
+
+        if (req.getInvalidBallots() != null) {
+            s.setInvalidBallots(
+                    req.getInvalidBallots()
+            );
+        }
+
+        if (req.getUnmarkedBallots() != null) {
+            s.setUnmarkedBallots(
+                    req.getUnmarkedBallots()
+            );
+        }
+
+        if (req.getRejectedBallots() != null) {
+            s.setRejectedBallots(
+                    req.getRejectedBallots()
+            );
+        }
+
+        if (req.getSpoiledBallots() != null) {
+            s.setSpoiledBallots(
+                    req.getSpoiledBallots()
+            );
+        }
+
+        if (req.getUnusedBallots() != null) {
+            s.setUnusedBallots(
+                    req.getUnusedBallots()
+            );
+        }
+
+        // ========================================================================
+        // STATE TRANSITION
+        //
+        // Same row. Same submission ID. Same polling place.
+        // ========================================================================
+
+        s.setStatus(
+                VoteStatus.PENDING
+        );
+
+        s.setVerifiedBy(
+                null
+        );
+
+        s.setDateVerified(
+                null
+        );
+
+        s.setComments(
+                "[submission resubmitted] " +
+                        req.getReason().trim()
+        );
+
+        // ========================================================================
+        // REBUILD HASH
+        // ========================================================================
+
+        s.setSubmissionHash(
+                buildSubmissionPayloadHash(
+                        s
+                )
+        );
+
+        VoteSubmission saved =
+                voteSubmissionRepository.saveAndFlush(
+                        s
+                );
+
+        // ========================================================================
+        // ACTION HISTORY
+        // ========================================================================
+
+        VoteSubmissionActionRequest actionRequest =
+                new VoteSubmissionActionRequest();
+
+        actionRequest.setActorUserId(
+                actor.getUserId()
+        );
+
+        actionRequest.setActionType(
+                VoteSubmissionActionType.RESUBMIT
+        );
+
+        actionRequest.setStatusBefore(
+                statusBefore
+        );
+
+        actionRequest.setStatusAfter(
+                VoteStatus.PENDING.name()
+        );
+
+        actionRequest.setReason(
+                req.getReason().trim()
+        );
+
+        actionRequest.setComments(
+                saved.getComments()
+        );
+
+        actionRequest.setTypedSignature(
+                req.getTypedSignature()
+        );
+
+        actionRequest.setCertificationStatement(
+                req.getCertificationStatement()
+        );
+
+        actionRequest.setCertificationConfirmed(
+                req.getCertificationConfirmed()
+        );
+
+        voteSubmissionActionService.recordAction(
+                saved.getSubmissionId(),
+                actionRequest,
+                null
+        );
+
+        // ========================================================================
+        // DISCREPANCY REVALIDATION
+        // ========================================================================
+
+        PollingPlaceAllocationDto allocDto =
+                PollingPlaceAllocationDto.builder()
+                        .electionId(
+                                alloc.getElection().getElectionId()
+                        )
+                        .placeId(
+                                alloc.getPollingPlace().getPlaceId()
+                        )
+                        .registeredVoters(
+                                alloc.getRegisteredVoters()
+                        )
+                        .ballotsIssued(
+                                alloc.getBallotsIssued()
+                        )
+                        .build();
+
+        discrepancyService.revalidateSubmissionDiscrepancies(
+                saved,
+                allocDto
+        );
+
+        // ========================================================================
+        // NORMALIZE
+        // ========================================================================
+
+        voteSubmissionContestService.normalizeSubmission(
+                saved.getSubmissionId()
+        );
+
+        // ========================================================================
+        // LEDGER / SIGNING
+        // ========================================================================
+
+        String payloadHash =
+                buildSubmissionPayloadHash(
+                        saved
+                );
+
+        Map<String, Object> ledgerRes =
+                jdbc.queryForMap(
+                        "SELECT * FROM fn_log_ledger_and_update_submission(?, ?, ?, ?)",
+                        "VOTE_SUBMISSION_RESUBMIT",
+                        saved.getSubmissionId(),
+                        payloadHash,
+                        actor.getUserId()
+                );
+
+        UUID ledgerId =
+                toUuid(
+                        ledgerRes.get(
+                                "ledger_id"
+                        )
+                );
+
+        String chainHash =
+                ledgerRes.get("chain_hash") != null
+                        ? ledgerRes.get("chain_hash").toString()
+                        : null;
+
+        SigningService.SignResult signResult =
+                signingService.signHex(
+                        chainHash
+                );
+
+        jdbc.update(
+                "UPDATE audit_ledger SET signature = ? WHERE ledger_id = ?",
+                signResult.signature(),
+                ledgerId
+        );
+
+        jdbc.update(
+                "UPDATE vote_submission " +
+                        "SET submission_signature = ?, submission_signer_key_id = ? " +
+                        "WHERE submission_id = ?",
+                signResult.signature(),
+                signResult.keyId(),
+                saved.getSubmissionId()
+        );
+
+        // ========================================================================
+        // RECOMPUTE AFTER COMMIT
+        // ========================================================================
+
+        final RecomputeEvent recomputeEvent =
+                new RecomputeEvent(
+                        this,
+                        saved.getOrganization().getOrgId(),
+                        saved.getElection().getElectionId(),
+                        actor.getUserId()
+                );
+
+        if (
+                TransactionSynchronizationManager
+                        .isSynchronizationActive()
+        ) {
+
+            TransactionSynchronizationManager
+                    .registerSynchronization(
+                            new TransactionSynchronization() {
+
+                                @Override
+                                public void afterCommit() {
+
+                                    try {
+
+                                        eventPublisher.publishEvent(
+                                                recomputeEvent
+                                        );
+
+                                    } catch (Exception ex) {
+
+                                        log.warn(
+                                                "Failed to publish RecomputeEvent after rejected submission resubmit: {}",
+                                                ex.getMessage()
+                                        );
+                                    }
+                                }
+                            }
+                    );
+
+        } else {
+
+            eventPublisher.publishEvent(
+                    recomputeEvent
+            );
+        }
+
+        // ========================================================================
+        // AUDIT
+        // ========================================================================
+
+        auditLogService.log(
+                saved.getOrganization().getOrgId(),
+                actor.getUserId(),
+                ActivityType.VOTE_UPDATED,
+                "vote_submission",
+                "Resubmitted rejected submission: " +
+                        saved.getSubmissionId() +
+                        " reason=" +
+                        req.getReason().trim()
+        );
+
+        return mapper.toDTO(
+                saved
+        );
+    }
+
+
+
+    @Override
+    @Transactional
+    public VoteSubmissionDto reopenRejected(
+            UUID id,
+            VoteSubmissionReopenRequest req
+    ) {
+
+        if (req == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Request body is required"
+            );
+        }
+
+        if (req.getActorUserId() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "actorUserId is required"
+            );
+        }
+
+        if (req.getReason() == null || req.getReason().isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Reopen reason is required"
+            );
+        }
+
+        VoteSubmission s =
+                voteSubmissionRepository.findById(id)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        "Submission not found"
+                                )
+                        );
+
+        // ========================================================================
+        // STRICT STATE RULE
+        // ========================================================================
+
+        if (s.getStatus() != VoteStatus.REJECTED) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Only REJECTED submissions can be reopened"
+            );
+        }
+
+        // ========================================================================
+        // RESULT FREEZE
+        // ========================================================================
+
+        assertNecResultNotPublishedOrThrow(
+                s,
+                "reopened"
+        );
+
+        // ========================================================================
+        // ACTOR
+        // ========================================================================
+
+        SystemUser actor =
+                userRepo.findById(
+                                req.getActorUserId()
+                        )
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        "Actor not found"
+                                )
+                        );
+
+        // ========================================================================
+        // NEC DOMAIN RESTRICTION
+        //
+        // This is deliberately stricter than normal org access.
+        // ========================================================================
+
+        OrganizationType actorOrgType =
+                actor.getDefaultOrg() != null
+                        ? actor.getDefaultOrg().getOrganizationType()
+                        : null;
+
+        if (actorOrgType != OrganizationType.NEC) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Only NEC-authorized users can reopen rejected submissions"
+            );
+        }
+
+        // ========================================================================
+        // REQUIRE ACTUAL REJECTION HISTORY
+        // ========================================================================
+
+        boolean rejectionExists =
+                voteSubmissionActionRepository
+                        .existsBySubmission_SubmissionIdAndActionType(
+                                s.getSubmissionId(),
+                                VoteSubmissionActionType.REJECT
+                        );
+
+        if (!rejectionExists) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Rejected submission has no rejection action history"
+            );
+        }
+
+        // ========================================================================
+        // CAPTURE BEFORE STATE
+        // ========================================================================
+
+        final String statusBefore =
+                s.getStatus().name();
+
+        // ========================================================================
+        // IMPORTANT:
+        // DO NOT MODIFY VOTE VALUES
+        // ========================================================================
+
+        s.setStatus(
+                VoteStatus.PENDING
+        );
+
+        s.setVerifiedBy(
+                null
+        );
+
+        s.setDateVerified(
+                null
+        );
+
+        s.setComments(
+                "[submission reopened] " +
+                        req.getReason().trim()
+        );
+
+        VoteSubmission saved =
+                voteSubmissionRepository.saveAndFlush(
+                        s
+                );
+
+        // ========================================================================
+        // ACTION HISTORY
+        // ========================================================================
+
+        VoteSubmissionActionRequest actionRequest =
+                new VoteSubmissionActionRequest();
+
+        actionRequest.setActorUserId(
+                actor.getUserId()
+        );
+
+        actionRequest.setActionType(
+                VoteSubmissionActionType.REOPEN
+        );
+
+        actionRequest.setStatusBefore(
+                statusBefore
+        );
+
+        actionRequest.setStatusAfter(
+                VoteStatus.PENDING.name()
+        );
+
+        actionRequest.setReason(
+                req.getReason().trim()
+        );
+
+        actionRequest.setComments(
+                saved.getComments()
+        );
+
+        actionRequest.setTypedSignature(
+                req.getTypedSignature()
+        );
+
+        actionRequest.setCertificationStatement(
+                req.getCertificationStatement()
+        );
+
+        actionRequest.setCertificationConfirmed(
+                req.getCertificationConfirmed()
+        );
+
+        voteSubmissionActionService.recordAction(
+                saved.getSubmissionId(),
+                actionRequest,
+                null
+        );
+
+        // ========================================================================
+        // RECOMPUTE
+        //
+        // No tally content changed, but status changed back into review workflow.
+        // ========================================================================
+
+        final RecomputeEvent recomputeEvent =
+                new RecomputeEvent(
+                        this,
+                        saved.getOrganization().getOrgId(),
+                        saved.getElection().getElectionId(),
+                        actor.getUserId()
+                );
+
+        if (
+                TransactionSynchronizationManager
+                        .isSynchronizationActive()
+        ) {
+
+            TransactionSynchronizationManager
+                    .registerSynchronization(
+                            new TransactionSynchronization() {
+
+                                @Override
+                                public void afterCommit() {
+
+                                    try {
+
+                                        eventPublisher.publishEvent(
+                                                recomputeEvent
+                                        );
+
+                                    } catch (Exception ex) {
+
+                                        log.warn(
+                                                "Failed to publish RecomputeEvent after rejected submission reopen: {}",
+                                                ex.getMessage()
+                                        );
+                                    }
+                                }
+                            }
+                    );
+
+        } else {
+
+            eventPublisher.publishEvent(
+                    recomputeEvent
+            );
+        }
+
+        // ========================================================================
+        // AUDIT
+        // ========================================================================
+
+        auditLogService.log(
+                saved.getOrganization().getOrgId(),
+                actor.getUserId(),
+                ActivityType.VOTE_UPDATED,
+                "vote_submission",
+                "Reopened rejected submission to PENDING: " +
+                        saved.getSubmissionId() +
+                        " reason=" +
+                        req.getReason().trim()
+        );
+
+        return mapper.toDTO(
+                saved
+        );
     }
 
 
@@ -1236,11 +2678,19 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     @Transactional(readOnly = true)
     public VoteSubmissionDto get(UUID id) {
         VoteSubmission s = voteSubmissionRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Submission not found"));
+                .orElseThrow(() -> new ResponseStatusException(
+                        NOT_FOUND,
+                        "Submission not found"
+                ));
 
         VoteSubmissionDto dto = mapper.toDTO(s);
 
+        // ---------------------------------------------------------------------
+        // Allocation context
+        // ---------------------------------------------------------------------
+
         PollingPlace place = s.getPollingPlace();
+
         if (place != null) {
             placeAllocationRepo
                     .findByElection_ElectionIdAndPollingPlace_PlaceId(
@@ -1251,6 +2701,27 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         } else {
             dto.setAllocationSource("NONE");
         }
+
+        // ---------------------------------------------------------------------
+        // Tally-sheet evidence
+        // ---------------------------------------------------------------------
+
+        List<TallySheet> tallySheets =
+                tallySheetRepository
+                        .findBySubmission_SubmissionIdOrderByDateUploadedDesc(
+                                s.getSubmissionId()
+                        );
+
+        dto.setTallySheetCount(tallySheets.size());
+        dto.setHasTallySheet(!tallySheets.isEmpty());
+
+        dto.setTallySheetUrl(
+                tallySheets.stream()
+                        .map(TallySheet::getImageUrl)
+                        .filter(url -> url != null && !url.isBlank())
+                        .findFirst()
+                        .orElse(null)
+        );
 
         return dto;
     }
@@ -1275,7 +2746,6 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
             boolean includeDeleted,
             Pageable pageable
     ) {
-        // ✅ used for agent-only draft visibility
         UUID currentUserId = resolveCurrentUserId();
 
         Specification<VoteSubmission> spec = Specification
@@ -1283,66 +2753,133 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                 .and(VoteSubmissionSpecs.electionEquals(electionId))
                 .and(VoteSubmissionSpecs.centerEquals(centerId))
                 .and(VoteSubmissionSpecs.agentEquals(agentId))
-
-                // ✅ NEW: ACTIVE ONLY unless includeDeleted=true
                 .and(VoteSubmissionSpecs.includeDeleted(includeDeleted))
-
-                // ✅ DRAFT rules:
-                // - status=null => exclude drafts unless owned by current user
-                // - status=DRAFT => only owned drafts
                 .and(VoteSubmissionSpecs.statusEquals(status, currentUserId))
-
                 .and(VoteSubmissionSpecs.between(from, to))
                 .and(VoteSubmissionSpecs.textSearch(q))
                 .and(VoteSubmissionSpecs.contestCategoryEquals(category))
                 .and(VoteSubmissionSpecs.contestScopeEquals(scopeType))
-
-                // ✅ contest dropdown should filter by submission's contest
                 .and(VoteSubmissionSpecs.contestEquals(contestId))
-
-                // ✅ FIX: filter by submission location (center->district->county)
                 .and(VoteSubmissionSpecs.countyEquals(countyId))
                 .and(VoteSubmissionSpecs.districtEquals(districtId))
-
-                // ✅ UX: FLAGGED first, then PENDING, VERIFIED, REJECTED, DRAFT
-                // (does nothing for count query)
                 .and(VoteSubmissionSpecs.orderByStatusPriorityThenDateDesc());
 
-        Page<VoteSubmission> page = voteSubmissionRepository.findAll(spec, pageable);
+        Page<VoteSubmission> page =
+                voteSubmissionRepository.findAll(spec, pageable);
 
-        // ✅ keep allocation mapping as-is
-        List<UUID> placeIds = page.getContent().stream()
-                .map(s -> s.getPollingPlace() == null ? null : s.getPollingPlace().getPlaceId())
+        // ---------------------------------------------------------------------
+        // Allocation lookup for the entire page
+        // ---------------------------------------------------------------------
+
+        List<UUID> placeIds = page.getContent()
+                .stream()
+                .map(s ->
+                        s.getPollingPlace() == null
+                                ? null
+                                : s.getPollingPlace().getPlaceId()
+                )
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
 
-        Map<UUID, PollingPlaceAllocation> allocByPlaceId = placeIds.isEmpty()
-                ? Map.of()
-                : placeAllocationRepo
-                .findByElection_ElectionIdAndPollingPlace_PlaceIdIn(electionId, placeIds)
+        Map<UUID, PollingPlaceAllocation> allocByPlaceId =
+                placeIds.isEmpty()
+                        ? Map.of()
+                        : placeAllocationRepo
+                        .findByElection_ElectionIdAndPollingPlace_PlaceIdIn(
+                                electionId,
+                                placeIds
+                        )
+                        .stream()
+                        .filter(a ->
+                                a.getPollingPlace() != null
+                                        && a.getPollingPlace().getPlaceId() != null
+                        )
+                        .collect(Collectors.toMap(
+                                a -> a.getPollingPlace().getPlaceId(),
+                                a -> a,
+                                (a, b) -> a
+                        ));
+
+        // ---------------------------------------------------------------------
+        // Evidence lookup for the entire page
+        // ---------------------------------------------------------------------
+
+        List<UUID> submissionIds = page.getContent()
                 .stream()
-                .filter(a -> a.getPollingPlace() != null && a.getPollingPlace().getPlaceId() != null)
-                .collect(Collectors.toMap(
-                        a -> a.getPollingPlace().getPlaceId(),
-                        a -> a,
-                        (a, b) -> a
-                ));
+                .map(VoteSubmission::getSubmissionId)
+                .filter(Objects::nonNull)
+                .toList();
+
+        Map<UUID, List<TallySheet>> tallySheetsBySubmission =
+                submissionIds.isEmpty()
+                        ? Map.of()
+                        : tallySheetRepository
+                        .findBySubmission_SubmissionIdIn(submissionIds)
+                        .stream()
+                        .filter(t ->
+                                t.getSubmission() != null
+                                        && t.getSubmission().getSubmissionId() != null
+                        )
+                        .collect(Collectors.groupingBy(
+                                t -> t.getSubmission().getSubmissionId()
+                        ));
+
+        // ---------------------------------------------------------------------
+        // DTO mapping
+        // ---------------------------------------------------------------------
 
         return page.map(s -> {
             VoteSubmissionDto dto = mapper.toDTO(s);
 
-            PollingPlaceAllocation alloc = (s.getPollingPlace() == null)
-                    ? null
-                    : allocByPlaceId.get(s.getPollingPlace().getPlaceId());
+            // -------------------------------------------------------------
+            // Allocation + turnout/percentages
+            // -------------------------------------------------------------
+
+            PollingPlaceAllocation alloc =
+                    s.getPollingPlace() == null
+                            ? null
+                            : allocByPlaceId.get(
+                            s.getPollingPlace().getPlaceId()
+                    );
 
             if (alloc != null) {
-                dto.setRegisteredVoters(alloc.getRegisteredVoters());
-                dto.setBallotsIssued(alloc.getBallotsIssued());
-                dto.setAllocationSource("PLACE");
+                enrichWithAllocation(dto, alloc);
             } else {
                 dto.setAllocationSource("NONE");
             }
+
+            // -------------------------------------------------------------
+            // Evidence
+            // -------------------------------------------------------------
+
+            List<TallySheet> tallySheets =
+                    tallySheetsBySubmission.getOrDefault(
+                            s.getSubmissionId(),
+                            List.of()
+                    );
+
+            dto.setTallySheetCount(tallySheets.size());
+            dto.setHasTallySheet(!tallySheets.isEmpty());
+
+            dto.setTallySheetUrl(
+                    tallySheets.stream()
+                            .sorted(
+                                    Comparator.comparing(
+                                            TallySheet::getDateUploaded,
+                                            Comparator.nullsLast(
+                                                    Comparator.reverseOrder()
+                                            )
+                                    )
+                            )
+                            .map(TallySheet::getImageUrl)
+                            .filter(url ->
+                                    url != null
+                                            && !url.isBlank()
+                            )
+                            .findFirst()
+                            .orElse(null)
+            );
 
             return dto;
         });
@@ -1541,32 +3078,50 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
 
     private static int nz(Integer x) { return x == null ? 0 : x; }
 
-    private void attachFilesToSubmission(Organization org, VoteSubmission submission, SystemUser uploadedBy, List<MultipartFile> files) {
+
+    private void attachFilesToSubmission(
+            Organization org,
+            VoteSubmission submission,
+            SystemUser uploadedBy,
+            List<MultipartFile> files
+    ) {
         if (files == null || files.isEmpty()) return;
 
         List<FileUploadDto> stored = fileUploadService.saveAllForEntity(
-                org, "vote_submission", submission.getSubmissionId(), uploadedBy, files, Map.of("source", "agent_upload")
+                org,
+                "vote_submission",
+                submission.getSubmissionId(),
+                uploadedBy,
+                files,
+                Map.of("source", "agent_upload")
         );
 
         for (FileUploadDto f : stored) {
-            String mime = f.getMimeType();
-            if (mime != null && mime.startsWith("image/")) {
-                if (f.getSha256() != null && tallySheetRepository.existsBySubmissionAndSha(submission.getSubmissionId(), f.getSha256())) {
-                    continue;
-                }
-                TallySheet t = new TallySheet();
-                t.setOrganization(org);
-                t.setSubmission(submission);
-                t.setImageUrl(f.getFileUrl());
-                t.setFileSha256(f.getSha256());
-                tallySheetRepository.save(t);
+
+            // Avoid duplicate tally-sheet records for the same uploaded file.
+            if (f.getSha256() != null
+                    && tallySheetRepository.existsBySubmissionAndSha(
+                    submission.getSubmissionId(),
+                    f.getSha256()
+            )) {
+                continue;
             }
+
+            // Every successfully stored attachment is evidence for this submission.
+            TallySheet t = new TallySheet();
+            t.setOrganization(org);
+            t.setSubmission(submission);
+            t.setImageUrl(f.getFileUrl());
+            t.setFileSha256(f.getSha256());
+
+            tallySheetRepository.save(t);
 
             auditLogService.logTallyUpload(
                     org.getOrgId(),
                     uploadedBy.getUserId(),
                     "TallySheet",
-                    "Uploaded tally sheet for submission: " + submission.getSubmissionId()
+                    "Uploaded tally sheet for submission: "
+                            + submission.getSubmissionId()
             );
         }
     }
@@ -1901,5 +3456,103 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
             log.warn("Error deleting discrepancies for submission {}: {}", submissionId, ex.getMessage());
         }
     }
+
+
+    private void validateCertification(
+            SystemUser actor,
+            VoteSubmissionActionRequest request
+    ) {
+        // DELETE uses its own confirmation workflow and does not
+        // require typed-name certification.
+        if (request.getActionType() == VoteSubmissionActionType.DELETE) {
+            return;
+        }
+
+        if (!Boolean.TRUE.equals(request.getCertificationConfirmed())) {
+            throw new IllegalArgumentException(
+                    "Certification must be confirmed."
+            );
+        }
+
+        String expectedName = resolveUserName(actor);
+
+        String typedSignature = clean(
+                request.getTypedSignature()
+        );
+
+        if (expectedName == null || expectedName.isBlank()) {
+            throw new IllegalStateException(
+                    "Authenticated user does not have a valid account name for certification."
+            );
+        }
+
+        if (typedSignature == null || typedSignature.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Typed signature is required."
+            );
+        }
+
+        if (!expectedName.equalsIgnoreCase(typedSignature)) {
+            throw new IllegalArgumentException(
+                    "Typed signature does not match the authenticated user's account name."
+            );
+        }
+
+        if (clean(request.getCertificationStatement()) == null) {
+            throw new IllegalArgumentException(
+                    "Certification statement is required."
+            );
+        }
+    }
+
+    private String resolveUserName(SystemUser user) {
+
+        String firstName = clean(user.getFirstName());
+//        String middleName = clean(user.getMiddleName());
+        String lastName = clean(user.getLastName());
+
+        StringBuilder builder = new StringBuilder();
+
+        appendName(builder, firstName);
+//        appendName(builder, middleName);
+        appendName(builder, lastName);
+
+        String fullName = builder.toString().trim();
+
+        if (!fullName.isBlank()) {
+            return fullName;
+        }
+
+        return clean(user.getUserName());
+    }
+
+    private void appendName(
+            StringBuilder builder,
+            String value
+    ) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+
+        if (!builder.isEmpty()) {
+            builder.append(" ");
+        }
+
+        builder.append(value);
+    }
+
+    private String clean(String value) {
+
+        if (value == null) {
+            return null;
+        }
+
+        String cleaned = value.trim();
+
+        return cleaned.isBlank()
+                ? null
+                : cleaned;
+    }
+
 
 }

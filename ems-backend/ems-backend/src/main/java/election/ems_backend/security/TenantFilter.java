@@ -78,6 +78,7 @@ public class TenantFilter extends OncePerRequestFilter {
                 || path.startsWith("/api/votes/")
                 || path.startsWith("/api/org-settings")
                 || path.startsWith("/api/tenants/")
+                || path.startsWith("/api/vote-submissions")
                 || path.startsWith("/api/users/");
     }
 

@@ -10,5 +10,6 @@ public enum RoleName {
     SUPERVISOR,
     COORDINATOR,
     DATA_ENTRY,
+    NEC_VERIFIER,
     AUDITOR
 }

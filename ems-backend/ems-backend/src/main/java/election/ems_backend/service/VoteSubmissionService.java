@@ -57,6 +57,9 @@ public interface VoteSubmissionService {
 
     VoteSubmissionDto amend(UUID id, VoteSubmissionAmendRequest req);
 
+    VoteSubmissionDto resubmitRejected(UUID id, VoteSubmissionResubmitRequest req);
+
+    VoteSubmissionDto reopenRejected(UUID id, VoteSubmissionReopenRequest req);
 
 
 }

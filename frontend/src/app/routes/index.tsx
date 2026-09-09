@@ -29,7 +29,7 @@ import ElectionWorkspaceLayout from "../../pages/elections/workspace/ElectionWor
 import OverviewTab from "../../pages/elections/workspace/tabs/overview/OverviewTab";
 import SetupTab from "../../pages/elections/workspace/tabs/setup/SetupTab";
 import AllocationTab from "../../pages/elections/workspace/tabs/allocation/AllocationTab";
-import SubmissionsTab from "../../pages/elections/workspace/tabs/submissions/SubmissionsTab";
+import SubmissionsTab from "../../pages/elections/workspace/tabs/submissions/shared/SubmissionsTab";
 import IntegrityTab from "../../pages/elections/workspace/tabs/integrity/IntegrityTab";
 
 // ============================================================================
@@ -153,6 +153,8 @@ import SigningKeysPage from "../../pages/admin-security/security/SigningKeysPage
 
 import AuditLogsPage from "../../pages/admin-security/oversight/AuditLogsPage";
 import AuditLedgerPage from "../../pages/admin-security/oversight/AuditLedgerPage";
+import VoteSubmissionActionsPage from "../../pages/admin-security/oversight/VoteSubmissionActionsPage";
+import SubmissionActionDetailPage from "../../pages/admin-security/oversight/SubmissionActionDetailPage";
 import FileUploadsPage from "../../pages/admin-security/oversight/FileUploadsPage";
 
 // ============================================================================
@@ -305,8 +307,6 @@ export const router = createBrowserRouter([
         children: [
           // ================================================================
           // ELECTION DETAIL
-          //
-          // /elections/:electionId
           // ================================================================
 
           {
@@ -316,20 +316,7 @@ export const router = createBrowserRouter([
           },
 
           // ================================================================
-          // EXISTING ELECTION WORKSPACE
-          //
-          // This is intentionally a PATHLESS layout route.
-          //
-          // It allows:
-          //
-          // /elections/:electionId         -> ElectionDetailPage
-          //
-          // while preserving:
-          //
-          // /elections/:electionId/overview
-          // /elections/:electionId/setup
-          // /elections/:electionId/allocation
-          // etc.
+          // ELECTION WORKSPACE
           // ================================================================
 
           {
@@ -352,13 +339,9 @@ export const router = createBrowserRouter([
 
               {
                 path: "setup/*",
+
                 element: <SetupTab />,
               },
-              // {
-              //   path: "setup",
-
-              //   element: <SetupTab />,
-              // },
 
               // ============================================================
               // ALLOCATION
@@ -370,10 +353,6 @@ export const router = createBrowserRouter([
                 element: <AllocationTab />,
 
                 children: [
-                  // ========================================================
-                  // ALLOCATION INDEX
-                  // ========================================================
-
                   {
                     index: true,
 
@@ -432,6 +411,12 @@ export const router = createBrowserRouter([
 
               {
                 path: "submissions",
+
+                element: <SubmissionsTab />,
+              },
+
+              {
+                path: "submissions/*",
 
                 element: <SubmissionsTab />,
               },
@@ -498,10 +483,6 @@ export const router = createBrowserRouter([
                 element: <ResultsTab />,
 
                 children: [
-                  // ========================================================
-                  // RESULTS INDEX
-                  // ========================================================
-
                   {
                     index: true,
 
@@ -852,6 +833,10 @@ export const router = createBrowserRouter([
             element: <AdminSecurityIndexRedirect />,
           },
 
+          // ================================================================
+          // TENANT ADMIN
+          // ================================================================
+
           {
             path: "organizations",
 
@@ -869,6 +854,10 @@ export const router = createBrowserRouter([
 
             element: <OrgSettingsPage />,
           },
+
+          // ================================================================
+          // SECURITY
+          // ================================================================
 
           {
             path: "users",
@@ -900,6 +889,10 @@ export const router = createBrowserRouter([
             element: <SigningKeysPage />,
           },
 
+          // ================================================================
+          // OVERSIGHT
+          // ================================================================
+
           {
             path: "audit-logs",
 
@@ -910,6 +903,30 @@ export const router = createBrowserRouter([
             path: "audit-ledger",
 
             element: <AuditLedgerPage />,
+          },
+
+          // ================================================================
+          // VOTE SUBMISSION ACTION LEDGER
+          //
+          // /admin-security/submission-actions
+          // ================================================================
+
+          {
+            path: "submission-actions",
+
+            element: <VoteSubmissionActionsPage />,
+          },
+
+          // ================================================================
+          // VOTE SUBMISSION ACTION DETAIL
+          //
+          // /admin-security/submission-actions/:actionId
+          // ================================================================
+
+          {
+            path: "submission-actions/:actionId",
+
+            element: <SubmissionActionDetailPage />,
           },
 
           {

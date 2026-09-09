@@ -26,9 +26,11 @@ import ElectionCandidateAssignPage from "./election/ElectionCandidateAssignPage"
 
 import ContestsTab from "./election/ContestsTab";
 
+import ContestFormPage from "./election/ContestFormPage";
+
 import ContestOptionsPage from "./election/ContestOptionsPage";
 
-import ContestFormPage from "./election/ContestFormPage";
+import ContestOptionFormPage from "./election/ContestOptionFormPage";
 
 // ============================================================================
 // MASTER DATA
@@ -55,6 +57,9 @@ type SetupRoute =
   | "CONTESTS"
   | "CONTEST_CREATE"
   | "CONTEST_EDIT"
+  | "CONTEST_OPTIONS"
+  | "CONTEST_OPTION_CREATE"
+  | "CONTEST_OPTION_EDIT"
   | "MASTER_PARTIES"
   | "MASTER_PARTY_CREATE"
   | "MASTER_PARTY_EDIT"
@@ -63,7 +68,7 @@ type SetupRoute =
   | "MASTER_CANDIDATE_EDIT";
 
 // ============================================================================
-// MOBILE NAV ITEM
+// NAV ITEM
 // ============================================================================
 
 type SetupNavigationItem = {
@@ -99,80 +104,78 @@ export default function SetupTab() {
   const canEdit = dashboardMode === "NEC" || dashboardMode === "SYSTEM";
 
   // ==========================================================================
-  // LOCAL TAB STATE
+  // TAB STATE
   // ==========================================================================
 
   const [tab, setTab] = useState<SetupSubTab>("ELECTION_PARTIES");
-
-  const [selectedContestId, setSelectedContestId] = useState<string | null>(
-    null,
-  );
-
-  // ==========================================================================
-  // MOBILE SETUP NAVIGATION
-  // ==========================================================================
 
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const mobileNavRef = useRef<HTMLDivElement | null>(null);
 
   // ==========================================================================
-  // INTERNAL SETUP ROUTE
-  //
-  // Root router only needs:
-  //
-  // /elections/:electionId/setup/*
-  //
-  // SetupTab owns everything beneath /setup.
+  // INTERNAL ROUTE
   // ==========================================================================
 
   const setupRoute = useMemo<SetupRoute>(() => {
     const pathname = location.pathname.replace(/\/+$/, "");
 
     // ====================================================================
-    // ELECTION PARTY ASSIGN
-    //
-    // /setup/parties/assign
+    // PARTY ASSIGN
     // ====================================================================
 
     if (pathname.endsWith("/setup/parties/assign")) {
       return "PARTY_ASSIGN";
     }
 
-    // ====================================================================
-    // ELECTION PARTY LIST
-    //
-    // /setup/parties
-    // ====================================================================
-
     if (pathname.endsWith("/setup/parties")) {
       return "PARTIES";
     }
 
     // ====================================================================
-    // ELECTION CANDIDATE ASSIGN
-    //
-    // /setup/candidates/assign
+    // CANDIDATE ASSIGN
     // ====================================================================
 
     if (pathname.endsWith("/setup/candidates/assign")) {
       return "CANDIDATE_ASSIGN";
     }
 
-    // ====================================================================
-    // ELECTION CANDIDATE LIST
-    //
-    // /setup/candidates
-    // ====================================================================
-
     if (pathname.endsWith("/setup/candidates")) {
       return "CANDIDATES";
     }
 
     // ====================================================================
-    // CONTEST CREATE
+    // CONTEST OPTION CREATE
     //
-    // /setup/contests/new
+    // /setup/contests/{contestId}/options/new
+    // ====================================================================
+
+    if (/\/setup\/contests\/[^/]+\/options\/new$/.test(pathname)) {
+      return "CONTEST_OPTION_CREATE";
+    }
+
+    // ====================================================================
+    // CONTEST OPTION EDIT
+    //
+    // /setup/contests/{contestId}/options/{optionId}/edit
+    // ====================================================================
+
+    if (/\/setup\/contests\/[^/]+\/options\/[^/]+\/edit$/.test(pathname)) {
+      return "CONTEST_OPTION_EDIT";
+    }
+
+    // ====================================================================
+    // CONTEST OPTIONS LIST
+    //
+    // /setup/contests/{contestId}/options
+    // ====================================================================
+
+    if (/\/setup\/contests\/[^/]+\/options$/.test(pathname)) {
+      return "CONTEST_OPTIONS";
+    }
+
+    // ====================================================================
+    // CONTEST CREATE
     // ====================================================================
 
     if (pathname.endsWith("/setup/contests/new")) {
@@ -181,93 +184,53 @@ export default function SetupTab() {
 
     // ====================================================================
     // CONTEST EDIT
-    //
-    // /setup/contests/:contestId/edit
     // ====================================================================
 
     if (/\/setup\/contests\/[^/]+\/edit$/.test(pathname)) {
       return "CONTEST_EDIT";
     }
 
-    // ====================================================================
-    // CONTEST LIST
-    //
-    // /setup/contests
-    // ====================================================================
-
     if (pathname.endsWith("/setup/contests")) {
       return "CONTESTS";
     }
 
     // ====================================================================
-    // MASTER PARTY CREATE
-    //
-    // /setup/master-parties/new
+    // MASTER PARTY
     // ====================================================================
 
     if (pathname.endsWith("/setup/master-parties/new")) {
       return "MASTER_PARTY_CREATE";
     }
 
-    // ====================================================================
-    // MASTER PARTY EDIT
-    //
-    // /setup/master-parties/:partyId/edit
-    // ====================================================================
-
     if (/\/setup\/master-parties\/[^/]+\/edit$/.test(pathname)) {
       return "MASTER_PARTY_EDIT";
     }
-
-    // ====================================================================
-    // MASTER PARTY LIST
-    //
-    // /setup/master-parties
-    // ====================================================================
 
     if (pathname.endsWith("/setup/master-parties")) {
       return "MASTER_PARTIES";
     }
 
     // ====================================================================
-    // MASTER CANDIDATE CREATE
-    //
-    // /setup/master-candidates/new
+    // MASTER CANDIDATE
     // ====================================================================
 
     if (pathname.endsWith("/setup/master-candidates/new")) {
       return "MASTER_CANDIDATE_CREATE";
     }
 
-    // ====================================================================
-    // MASTER CANDIDATE EDIT
-    //
-    // /setup/master-candidates/:candidateId/edit
-    // ====================================================================
-
     if (/\/setup\/master-candidates\/[^/]+\/edit$/.test(pathname)) {
       return "MASTER_CANDIDATE_EDIT";
     }
-
-    // ====================================================================
-    // MASTER CANDIDATE LIST
-    //
-    // /setup/master-candidates
-    // ====================================================================
 
     if (pathname.endsWith("/setup/master-candidates")) {
       return "MASTER_CANDIDATES";
     }
 
-    // ====================================================================
-    // DEFAULT SETUP WORKSPACE
-    // ====================================================================
-
     return "MAIN";
   }, [location.pathname]);
 
   // ==========================================================================
-  // KEEP LOCAL TAB STATE ALIGNED WITH ROUTE
+  // ROUTE -> TAB
   // ==========================================================================
 
   useEffect(() => {
@@ -301,51 +264,34 @@ export default function SetupTab() {
   }, [setupRoute]);
 
   // ==========================================================================
-  // CLOSE MOBILE NAV ON ROUTE CHANGE
+  // MOBILE NAV CLOSE
   // ==========================================================================
 
   useEffect(() => {
     setMobileNavOpen(false);
   }, [location.pathname]);
 
-  // ==========================================================================
-  // CLOSE MOBILE NAV ON OUTSIDE CLICK
-  // ==========================================================================
-
   useEffect(() => {
     if (!mobileNavOpen) {
       return;
     }
 
-    const handlePointerDown = (event: MouseEvent) => {
-      if (!mobileNavRef.current) {
-        return;
-      }
-
-      if (!mobileNavRef.current.contains(event.target as Node)) {
+    const handler = (event: MouseEvent) => {
+      if (
+        mobileNavRef.current &&
+        !mobileNavRef.current.contains(event.target as Node)
+      ) {
         setMobileNavOpen(false);
       }
     };
 
-    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("mousedown", handler);
 
-    return () => window.removeEventListener("mousedown", handlePointerDown);
+    return () => window.removeEventListener("mousedown", handler);
   }, [mobileNavOpen]);
 
   // ==========================================================================
-  // ROOT SETUP
-  // ==========================================================================
-
-  const goToSetup = () => {
-    if (!electionId) {
-      return;
-    }
-
-    navigate(`/elections/${electionId}/setup`);
-  };
-
-  // ==========================================================================
-  // ELECTION PARTIES
+  // NAVIGATION
   // ==========================================================================
 
   const openElectionParties = () => {
@@ -353,194 +299,123 @@ export default function SetupTab() {
       return;
     }
 
-    setSelectedContestId(null);
-
     setTab("ELECTION_PARTIES");
-
-    setMobileNavOpen(false);
 
     navigate(`/elections/${electionId}/setup/parties`);
   };
-
-  // ==========================================================================
-  // ELECTION CANDIDATES
-  // ==========================================================================
 
   const openElectionCandidates = () => {
     if (!electionId) {
       return;
     }
 
-    setSelectedContestId(null);
-
     setTab("ELECTION_CANDIDATES");
-
-    setMobileNavOpen(false);
 
     navigate(`/elections/${electionId}/setup/candidates`);
   };
-
-  // ==========================================================================
-  // CONTESTS
-  // ==========================================================================
 
   const openContests = () => {
     if (!electionId) {
       return;
     }
 
-    setSelectedContestId(null);
-
     setTab("CONTESTS");
-
-    setMobileNavOpen(false);
 
     navigate(`/elections/${electionId}/setup/contests`);
   };
-
-  // ==========================================================================
-  // MASTER PARTIES
-  // ==========================================================================
 
   const openMasterParties = () => {
     if (!electionId) {
       return;
     }
 
-    setSelectedContestId(null);
-
     setTab("MASTER_PARTIES");
-
-    setMobileNavOpen(false);
 
     navigate(`/elections/${electionId}/setup/master-parties`);
   };
-
-  // ==========================================================================
-  // MASTER CANDIDATES
-  // ==========================================================================
 
   const openMasterCandidates = () => {
     if (!electionId) {
       return;
     }
 
-    setSelectedContestId(null);
-
     setTab("MASTER_CANDIDATES");
-
-    setMobileNavOpen(false);
 
     navigate(`/elections/${electionId}/setup/master-candidates`);
   };
 
-  // ==========================================================================
-  // CONTEST OPTIONS
-  // ==========================================================================
-
   const openContestOptions = (contestId: string) => {
-    setSelectedContestId(contestId);
-
-    setTab("CONTEST_OPTIONS");
-
-    setMobileNavOpen(false);
-
-    goToSetup();
-  };
-
-  const goBackToContests = () => {
-    setSelectedContestId(null);
-
-    setTab("CONTESTS");
-
-    setMobileNavOpen(false);
-
-    if (electionId) {
-      navigate(`/elections/${electionId}/setup/contests`);
+    if (!electionId) {
+      return;
     }
+
+    navigate(`/elections/${electionId}/setup/contests/${contestId}/options`);
   };
 
   // ==========================================================================
-  // SETUP NAVIGATION OPTIONS
+  // NAV OPTIONS
   // ==========================================================================
 
-  const setupNavigation = useMemo<SetupNavigationItem[]>(
-    () => [
-      {
-        key: "ELECTION_PARTIES",
+  const setupNavigation: SetupNavigationItem[] = [
+    {
+      key: "ELECTION_PARTIES",
 
-        label: "E-Parties",
+      label: "E-Parties",
 
-        group: "ELECTION",
+      group: "ELECTION",
 
-        action: openElectionParties,
-      },
+      action: openElectionParties,
+    },
 
-      {
-        key: "ELECTION_CANDIDATES",
+    {
+      key: "ELECTION_CANDIDATES",
 
-        label: "E-Candidates",
+      label: "E-Candidates",
 
-        group: "ELECTION",
+      group: "ELECTION",
 
-        action: openElectionCandidates,
-      },
+      action: openElectionCandidates,
+    },
 
-      {
-        key: "CONTESTS",
+    {
+      key: "CONTESTS",
 
-        label: "Contests",
+      label: "Contests",
 
-        group: "ELECTION",
+      group: "ELECTION",
 
-        action: openContests,
-      },
+      action: openContests,
+    },
 
-      {
-        key: "MASTER_PARTIES",
+    {
+      key: "MASTER_PARTIES",
 
-        label: "Master Party",
+      label: "Master Party",
 
-        group: "MASTER",
+      group: "MASTER",
 
-        action: openMasterParties,
-      },
+      action: openMasterParties,
+    },
 
-      {
-        key: "MASTER_CANDIDATES",
+    {
+      key: "MASTER_CANDIDATES",
 
-        label: "Master Candidate",
+      label: "Master Candidate",
 
-        group: "MASTER",
+      group: "MASTER",
 
-        action: openMasterCandidates,
-      },
-    ],
+      action: openMasterCandidates,
+    },
+  ];
 
-    [electionId],
-  );
-
-  // ==========================================================================
-  // CURRENT SETUP LABEL
-  // ==========================================================================
-
-  const currentSetupLabel = useMemo(() => {
-    if (tab === "CONTEST_OPTIONS") {
-      return "Contest Options";
-    }
-
-    return setupNavigation.find((item) => item.key === tab)?.label ?? "Setup";
-  }, [tab, setupNavigation]);
-
-  // ==========================================================================
-  // CURRENT TAB IS MASTER
-  // ==========================================================================
+  const currentSetupLabel =
+    setupNavigation.find((item) => item.key === tab)?.label ?? "Setup";
 
   const currentIsMaster =
     tab === "MASTER_PARTIES" || tab === "MASTER_CANDIDATES";
 
   // ==========================================================================
-  // DEDICATED SETUP PAGES
+  // DEDICATED ROUTES
   // ==========================================================================
 
   if (setupRoute === "PARTY_ASSIGN") {
@@ -549,6 +424,25 @@ export default function SetupTab() {
 
   if (setupRoute === "CANDIDATE_ASSIGN") {
     return <ElectionCandidateAssignPage />;
+  }
+
+  // ==========================================================================
+  // CONTEST OPTION CREATE / EDIT
+  // ==========================================================================
+
+  if (
+    setupRoute === "CONTEST_OPTION_CREATE" ||
+    setupRoute === "CONTEST_OPTION_EDIT"
+  ) {
+    return <ContestOptionFormPage />;
+  }
+
+  // ==========================================================================
+  // CONTEST OPTIONS LIST
+  // ==========================================================================
+
+  if (setupRoute === "CONTEST_OPTIONS") {
+    return <ContestOptionsPage />;
   }
 
   // ==========================================================================
@@ -592,7 +486,7 @@ export default function SetupTab() {
         right={
           <>
             {/* ================================================================
-                MOBILE SETUP NAV
+                MOBILE
             ================================================================ */}
 
             <div
@@ -606,8 +500,6 @@ export default function SetupTab() {
                 sm:hidden
               "
             >
-              {/* CURRENT TAB */}
-
               <button
                 type="button"
                 onClick={() => setMobileNavOpen((current) => !current)}
@@ -640,162 +532,58 @@ export default function SetupTab() {
                         text-blue-800
                       `,
                 ].join(" ")}
-                aria-expanded={mobileNavOpen}
-                aria-label="Change setup section"
               >
                 <span className="truncate">{currentSetupLabel}</span>
 
                 {mobileNavOpen ? (
-                  <ChevronUp size={13} className="shrink-0" />
+                  <ChevronUp size={13} />
                 ) : (
-                  <ChevronDown size={13} className="shrink-0" />
+                  <ChevronDown size={13} />
                 )}
               </button>
 
-              {/* ==========================================================
-                  MOBILE DROPDOWN
-              ========================================================== */}
-
               {mobileNavOpen && (
-                <div
-                  className="
-                    absolute
-                    right-0
-                    top-[calc(100%+6px)]
-                    z-50
-                    w-[210px]
-                    overflow-hidden
-                    rounded-xl
-                    border
-                    border-slate-200
-                    bg-white
-                    shadow-xl
-                  "
-                >
-                  {/* ELECTION SETUP */}
-
-                  <div className="px-3 pb-1 pt-2.5">
-                    <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                      Election Setup
-                    </div>
+                <div className="absolute right-0 top-[calc(100%+6px)] z-50 w-[210px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                  <div className="px-3 pb-1 pt-2.5 text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                    Election Setup
                   </div>
 
                   {setupNavigation
                     .filter((item) => item.group === "ELECTION")
-                    .map((item) => {
-                      const active = tab === item.key;
+                    .map((item) => (
+                      <SetupMobileOption
+                        key={item.key}
+                        label={item.label}
+                        active={tab === item.key}
+                        master={false}
+                        onClick={item.action}
+                      />
+                    ))}
 
-                      return (
-                        <button
-                          key={item.key}
-                          type="button"
-                          onClick={item.action}
-                          className={[
-                            `
-                                flex
-                                min-h-9
-                                w-full
-                                items-center
-                                justify-between
-                                gap-3
-                                px-3
-                                py-2
-                                text-left
-                                text-xs
-                                font-bold
-                                transition
-                              `,
-
-                            active
-                              ? `
-                                    bg-blue-50
-                                    text-blue-700
-                                  `
-                              : `
-                                    text-slate-700
-                                    hover:bg-slate-50
-                                  `,
-                          ].join(" ")}
-                        >
-                          <span>{item.label}</span>
-
-                          {active && (
-                            <Check
-                              size={13}
-                              className="shrink-0 text-blue-600"
-                            />
-                          )}
-                        </button>
-                      );
-                    })}
-
-                  {/* MASTER DATA */}
-
-                  <div className="mt-1 border-t border-slate-100 px-3 pb-1 pt-2.5">
-                    <div className="text-[9px] font-bold uppercase tracking-wider text-violet-500">
-                      Master Data
-                    </div>
+                  <div className="mt-1 border-t border-slate-100 px-3 pb-1 pt-2.5 text-[9px] font-bold uppercase tracking-wider text-violet-500">
+                    Master Data
                   </div>
 
                   {setupNavigation
                     .filter((item) => item.group === "MASTER")
-                    .map((item) => {
-                      const active = tab === item.key;
-
-                      return (
-                        <button
-                          key={item.key}
-                          type="button"
-                          onClick={item.action}
-                          className={[
-                            `
-                                flex
-                                min-h-9
-                                w-full
-                                items-center
-                                justify-between
-                                gap-3
-                                px-3
-                                py-2
-                                text-left
-                                text-xs
-                                font-bold
-                                transition
-                              `,
-
-                            active
-                              ? `
-                                    bg-violet-50
-                                    text-violet-700
-                                  `
-                              : `
-                                    text-slate-700
-                                    hover:bg-slate-50
-                                  `,
-                          ].join(" ")}
-                        >
-                          <span>{item.label}</span>
-
-                          {active && (
-                            <Check
-                              size={13}
-                              className="shrink-0 text-violet-600"
-                            />
-                          )}
-                        </button>
-                      );
-                    })}
+                    .map((item) => (
+                      <SetupMobileOption
+                        key={item.key}
+                        label={item.label}
+                        active={tab === item.key}
+                        master
+                        onClick={item.action}
+                      />
+                    ))}
                 </div>
               )}
             </div>
 
             {/* ================================================================
-                DESKTOP SETUP NAV
+                DESKTOP
             ================================================================ */}
 
             <div className="hidden min-w-0 flex-wrap items-center gap-2 sm:flex">
-              {/* ELECTION PARTIES */}
-
               <button
                 type="button"
                 onClick={openElectionParties}
@@ -805,8 +593,6 @@ export default function SetupTab() {
               >
                 E-Parties
               </button>
-
-              {/* ELECTION CANDIDATES */}
 
               <button
                 type="button"
@@ -818,8 +604,6 @@ export default function SetupTab() {
                 E-Candidates
               </button>
 
-              {/* CONTESTS */}
-
               <button
                 type="button"
                 onClick={openContests}
@@ -828,28 +612,7 @@ export default function SetupTab() {
                 Contests
               </button>
 
-              {/* CONTEST OPTIONS */}
-
-              {selectedContestId && (
-                <button
-                  type="button"
-                  onClick={() => setTab("CONTEST_OPTIONS")}
-                  className={
-                    tab === "CONTEST_OPTIONS" ? ACTIVE_TAB_CLASS : TAB_CLASS
-                  }
-                >
-                  Contest Options
-                </button>
-              )}
-
-              {/* DIVIDER */}
-
-              <span
-                className="hidden h-7 w-px bg-slate-200 md:block"
-                aria-hidden="true"
-              />
-
-              {/* MASTER PARTY */}
+              <span className="hidden h-7 w-px bg-slate-200 md:block" />
 
               <button
                 type="button"
@@ -863,8 +626,6 @@ export default function SetupTab() {
                 Master Party
               </button>
 
-              {/* MASTER CANDIDATE */}
-
               <button
                 type="button"
                 onClick={openMasterCandidates}
@@ -877,8 +638,6 @@ export default function SetupTab() {
                 Master Candidate
               </button>
 
-              {/* ACCESS */}
-
               <Badge
                 text={canEdit ? "Editable (NEC/SYSTEM)" : "Read-only (Tenant)"}
               />
@@ -886,46 +645,15 @@ export default function SetupTab() {
           </>
         }
       >
-        {/* ================================================================
-            ELECTION PARTIES
-        ================================================================ */}
-
         {tab === "ELECTION_PARTIES" && <ElectionPartiesTab />}
 
-        {/* ================================================================
-            ELECTION CANDIDATES
-        ================================================================ */}
-
         {tab === "ELECTION_CANDIDATES" && <ElectionCandidatesTab />}
-
-        {/* ================================================================
-            CONTESTS
-        ================================================================ */}
 
         {tab === "CONTESTS" && (
           <ContestsTab onOpenOptions={openContestOptions} />
         )}
 
-        {/* ================================================================
-            CONTEST OPTIONS
-        ================================================================ */}
-
-        {tab === "CONTEST_OPTIONS" && (
-          <ContestOptionsPage
-            contestId={selectedContestId}
-            onBack={goBackToContests}
-          />
-        )}
-
-        {/* ================================================================
-            MASTER PARTY
-        ================================================================ */}
-
         {tab === "MASTER_PARTIES" && <PartiesMasterTab />}
-
-        {/* ================================================================
-            MASTER CANDIDATE
-        ================================================================ */}
 
         {tab === "MASTER_CANDIDATES" && <CandidatesMasterTab />}
       </Panel>
@@ -934,141 +662,129 @@ export default function SetupTab() {
 }
 
 // ============================================================================
-// STANDARD SETUP TAB
+// MOBILE OPTION
+// ============================================================================
+
+function SetupMobileOption({
+  label,
+  active,
+  master,
+  onClick,
+}: {
+  label: string;
+
+  active: boolean;
+
+  master: boolean;
+
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        `
+          flex
+          min-h-9
+          w-full
+          items-center
+          justify-between
+          gap-3
+          px-3
+          py-2
+          text-left
+          text-xs
+          font-bold
+        `,
+
+        active
+          ? master
+            ? "bg-violet-50 text-violet-700"
+            : "bg-blue-50 text-blue-700"
+          : "text-slate-700 hover:bg-slate-50",
+      ].join(" ")}
+    >
+      <span>{label}</span>
+
+      {active && (
+        <Check
+          size={13}
+          className={master ? "text-violet-600" : "text-blue-600"}
+        />
+      )}
+    </button>
+  );
+}
+
+// ============================================================================
+// CLASSES
 // ============================================================================
 
 const TAB_CLASS = [
   "inline-flex",
-
   "min-h-10",
-
   "items-center",
-
   "justify-center",
-
   "rounded-lg",
-
   "border",
-
   "border-slate-300",
-
   "bg-white",
-
   "px-3",
-
   "py-2",
-
   "text-sm",
-
   "font-bold",
-
   "text-slate-700",
-
-  "transition",
-
   "hover:bg-slate-50",
 ].join(" ");
 
-// ============================================================================
-// ACTIVE STANDARD SETUP TAB
-// ============================================================================
-
 const ACTIVE_TAB_CLASS = [
   "inline-flex",
-
   "min-h-10",
-
   "items-center",
-
   "justify-center",
-
   "rounded-lg",
-
   "border",
-
   "border-blue-600",
-
   "bg-blue-600",
-
   "px-3",
-
   "py-2",
-
   "text-sm",
-
   "font-bold",
-
   "text-white",
-
   "shadow-sm",
 ].join(" ");
 
-// ============================================================================
-// MASTER TAB
-// ============================================================================
-
 const MASTER_TAB_CLASS = [
   "inline-flex",
-
   "min-h-10",
-
   "items-center",
-
   "justify-center",
-
   "rounded-lg",
-
   "border",
-
   "border-violet-200",
-
   "bg-violet-50",
-
   "px-3",
-
   "py-2",
-
   "text-sm",
-
   "font-bold",
-
   "text-violet-700",
-
-  "transition",
-
   "hover:bg-violet-100",
 ].join(" ");
 
-// ============================================================================
-// ACTIVE MASTER TAB
-// ============================================================================
-
 const ACTIVE_MASTER_TAB_CLASS = [
   "inline-flex",
-
   "min-h-10",
-
   "items-center",
-
   "justify-center",
-
   "rounded-lg",
-
   "border",
-
   "border-violet-600",
-
   "bg-violet-600",
-
   "px-3",
-
   "py-2",
-
   "text-sm",
-
   "font-bold",
-
   "text-white",
-
   "shadow-sm",
 ].join(" ");

@@ -4,7 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import election.ems_backend.dto.VoteSubmissionCreateRequest;
 import election.ems_backend.dto.VoteSubmissionDto;
 import election.ems_backend.dto.VoteSubmissionUpdateRequest;
-import election.ems_backend.entity.*;
+import election.ems_backend.entity.Contest;
+import election.ems_backend.entity.Election;
+import election.ems_backend.entity.Organization;
+import election.ems_backend.entity.PollingCenter;
+import election.ems_backend.entity.PollingPlace;
+import election.ems_backend.entity.SystemUser;
+import election.ems_backend.entity.VoteSubmission;
 import election.ems_backend.enums.VoteStatus;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
@@ -15,189 +21,751 @@ import org.springframework.stereotype.Component;
 import java.util.Collections;
 import java.util.Map;
 
-
 @Component
 public class VoteSubmissionMapper {
 
-    private static final GeometryFactory GF = new GeometryFactory(new PrecisionModel(), 4326);
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private static final GeometryFactory GF =
+            new GeometryFactory(
+                    new PrecisionModel(),
+                    4326
+            );
 
+    private final ObjectMapper objectMapper =
+            new ObjectMapper();
 
-    public VoteSubmissionDto toDTO(VoteSubmission s) {
-        Organization org = s.getOrganization();
-        Election e = s.getElection();
-        PollingPlace p = s.getPollingPlace();
-        PollingCenter c = s.getPollingCenter();
-        SystemUser a = s.getAgent();
-        SystemUser v = s.getVerifiedBy();
-        SystemUser f = s.getFlaggedBy(); // ✅ NEW
-        Contest contest = s.getContest();
+    // =========================================================================
+    // ENTITY -> DTO
+    // =========================================================================
 
-        Double lat = null, lon = null;
-        if (s.getGpsLocation() != null) {
-            lon = s.getGpsLocation().getX();
-            lat = s.getGpsLocation().getY();
+    public VoteSubmissionDto toDTO(
+            VoteSubmission submission
+    ) {
+
+        Organization organization =
+                submission.getOrganization();
+
+        Election election =
+                submission.getElection();
+
+        PollingPlace pollingPlace =
+                submission.getPollingPlace();
+
+        PollingCenter pollingCenter =
+                submission.getPollingCenter();
+
+        SystemUser agent =
+                submission.getAgent();
+
+        SystemUser verifier =
+                submission.getVerifiedBy();
+
+        SystemUser flaggedBy =
+                submission.getFlaggedBy();
+
+        Contest contest =
+                submission.getContest();
+
+        // =====================================================================
+        // GPS
+        // =====================================================================
+
+        Double latitude = null;
+        Double longitude = null;
+
+        if (submission.getGpsLocation() != null) {
+            longitude =
+                    submission
+                            .getGpsLocation()
+                            .getX();
+
+            latitude =
+                    submission
+                            .getGpsLocation()
+                            .getY();
         }
 
-        String agentName = a != null ? a.getFirstName() + " " + a.getLastName() : null;
-        String verifiedByName = v != null ? v.getFirstName() + " " + v.getLastName() : null;
+        // =====================================================================
+        // USER NAMES
+        // =====================================================================
 
-        // ✅ NEW (safe, does not touch lazy role)
-        String flaggedByName = f != null ? (f.getFirstName() + " " + f.getLastName()).trim() : null;
+        String agentName =
+                buildUserName(agent);
+
+        String verifiedByName =
+                buildUserName(verifier);
+
+        String flaggedByName =
+                buildUserName(flaggedBy);
+
+        // =====================================================================
+        // CANDIDATE VOTES
+        // =====================================================================
 
         Map<String, Integer> votesMap =
-                s.getCandidateVotes() != null ? s.getCandidateVotes() : Collections.emptyMap();
+                submission.getCandidateVotes() != null
+                        ? submission.getCandidateVotes()
+                        : Collections.emptyMap();
 
-        int validVotes = votesMap.values().stream().mapToInt(Integer::intValue).sum();
+        int validVotes =
+                votesMap
+                        .values()
+                        .stream()
+                        .mapToInt(VoteSubmissionMapper::nz)
+                        .sum();
+
+        // =====================================================================
+        // INVALID VOTES INSIDE BOX
+        // =====================================================================
+        //
+        // IMPORTANT:
+        //
+        // Spoiled ballots are OUTSIDE the ballot box.
+        //
+        // invalidTotal =
+        //     invalid
+        //   + rejected
+        //   + unmarked
+        //
+        // =====================================================================
 
         int invalidTotal =
-                nz(s.getInvalidBallots()) +
-                        nz(s.getUnmarkedBallots()) +
-                        nz(s.getRejectedBallots()) +
-                        nz(s.getSpoiledBallots());
+                nz(submission.getInvalidBallots())
+                        + nz(submission.getRejectedBallots())
+                        + nz(submission.getUnmarkedBallots());
+
+        // =====================================================================
+        // BALLOTS IN BOX
+        // =====================================================================
+
+        int ballotsInBox =
+                nz(submission.getBallotsInBox());
+
+        // =====================================================================
+        // PERCENTAGES
+        // =====================================================================
+
+        Double validPct =
+                ballotsInBox > 0
+                        ? (validVotes * 100.0) / ballotsInBox
+                        : null;
+
+        Double invalidPct =
+                ballotsInBox > 0
+                        ? (invalidTotal * 100.0) / ballotsInBox
+                        : null;
+
+        // Turnout is calculated later from allocation context when available.
+        // Mapper leaves it null here.
+        Double turnoutPct = null;
+
+        // =====================================================================
+        // CANDIDATE VOTES JSON
+        // =====================================================================
 
         String candidateVotesJson;
+
         try {
-            candidateVotesJson = objectMapper.writeValueAsString(votesMap);
+            candidateVotesJson =
+                    objectMapper.writeValueAsString(
+                            votesMap
+                    );
         } catch (Exception ex) {
             candidateVotesJson = "{}";
         }
 
-        return VoteSubmissionDto.builder()
-                .submissionId(s.getSubmissionId())
+        // =====================================================================
+        // BUILD DTO
+        // =====================================================================
 
-                .orgId(org.getOrgId())
-                .orgName(org.getOrgName())
+        return VoteSubmissionDto
+                .builder()
 
-                .electionId(e.getElectionId())
-                .electionName(e.getElectionName())
-                .year(e.getYear())
-                .contestId(s.getContestId())
-                .contestName(contest != null ? contest.getContestName() : null)
-                .contestCategory(contest != null && contest.getCategory() != null ? contest.getCategory().name() : null)
-                .contestScopeType(contest != null && contest.getScopeType() != null ? contest.getScopeType().name() : null)
+                // -------------------------------------------------------------
+                // ID
+                // -------------------------------------------------------------
 
-                .centerId(c.getCenterId())
-                .centerCode(c.getCode())
-                .centerName(c.getCenterName())
+                .submissionId(
+                        submission.getSubmissionId()
+                )
 
-                .placeId(p.getPlaceId())
-                .placeCode(p.getCode())
-                .placeNumber(p.getPlaceNumber())
-                .placeLabel(p.getLabel())
+                // -------------------------------------------------------------
+                // ORGANIZATION
+                // -------------------------------------------------------------
 
-                .agentId(a.getUserId())
-                .agentName(agentName)
+                .orgId(
+                        organization != null
+                                ? organization.getOrgId()
+                                : null
+                )
 
-                .submissionTime(s.getSubmissionTime())
+                .orgName(
+                        organization != null
+                                ? organization.getOrgName()
+                                : null
+                )
 
-                .validVotes(validVotes)
-                .invalidTotal(invalidTotal)
+                // -------------------------------------------------------------
+                // ELECTION
+                // -------------------------------------------------------------
 
-                .candidateVotesJson(candidateVotesJson)
-                .candidateVotes(votesMap)
+                .electionId(
+                        election != null
+                                ? election.getElectionId()
+                                : null
+                )
 
-                .ballotsInBox(s.getBallotsInBox())
-                .ballotsReceived(s.getBallotsReceived())
-                .invalidBallots(s.getInvalidBallots())
-                .unmarkedBallots(s.getUnmarkedBallots())
-                .rejectedBallots(s.getRejectedBallots())
-                .spoiledBallots(s.getSpoiledBallots())
-                .unusedBallots(s.getUnusedBallots())
+                .electionName(
+                        election != null
+                                ? election.getElectionName()
+                                : null
+                )
 
-                .status(s.getStatus())
-                .comments(s.getComments())
+                .year(
+                        election != null
+                                ? election.getYear()
+                                : 0
+                )
 
-                // ✅ FIX: never return entity; return primitives only
-                .flaggedBy(f != null ? f.getUserId() : null)
-                .flaggedByName(flaggedByName)
-                .dateFlagged(s.getDateFlagged())
+                // -------------------------------------------------------------
+                // CONTEST
+                // -------------------------------------------------------------
 
-                .latitude(lat)
-                .longitude(lon)
+                .contestId(
+                        submission.getContestId()
+                )
 
-                .verifiedBy(v != null ? v.getUserId() : null)
-                .verifiedByName(verifiedByName)
-                .dateVerified(s.getDateVerified())
+                .contestName(
+                        contest != null
+                                ? contest.getContestName()
+                                : null
+                )
 
-                .clientIp(s.getClientIp())
-                .userAgent(s.getUserAgent())
-                .submissionHash(s.getSubmissionHash())
-                .version(s.getVersion())
-                .idempotencyKey(s.getIdempotencyKey())
+                .contestCategory(
+                        contest != null
+                                && contest.getCategory() != null
+                                ? contest
+                                .getCategory()
+                                .name()
+                                : null
+                )
 
-                .submissionSignerKeyId(s.getSubmissionSignerKeyId())
-                .submissionSignature(s.getSubmissionSignature())
-                .chainHash(s.getChainHash())
-                .hasDiscrepancy(s.getHasDiscrepancies())
+                .contestScopeType(
+                        contest != null
+                                && contest.getScopeType() != null
+                                ? contest
+                                .getScopeType()
+                                .name()
+                                : null
+                )
+
+                // -------------------------------------------------------------
+                // POLLING CENTER
+                // -------------------------------------------------------------
+
+                .centerId(
+                        pollingCenter != null
+                                ? pollingCenter.getCenterId()
+                                : null
+                )
+
+                .centerCode(
+                        pollingCenter != null
+                                ? pollingCenter.getCode()
+                                : null
+                )
+
+                .centerName(
+                        pollingCenter != null
+                                ? pollingCenter.getCenterName()
+                                : null
+                )
+
+                // -------------------------------------------------------------
+                // POLLING PLACE
+                // -------------------------------------------------------------
+
+                .placeId(
+                        pollingPlace != null
+                                ? pollingPlace.getPlaceId()
+                                : null
+                )
+
+                .placeCode(
+                        pollingPlace != null
+                                ? pollingPlace.getCode()
+                                : null
+                )
+
+                .placeNumber(
+                        pollingPlace != null
+                                ? pollingPlace.getPlaceNumber()
+                                : null
+                )
+
+                .placeLabel(
+                        pollingPlace != null
+                                ? pollingPlace.getLabel()
+                                : null
+                )
+
+                // -------------------------------------------------------------
+                // AGENT / SUBMITTER
+                // -------------------------------------------------------------
+
+                .agentId(
+                        agent != null
+                                ? agent.getUserId()
+                                : null
+                )
+
+                .agentName(
+                        agentName
+                )
+
+                // -------------------------------------------------------------
+                // SUBMISSION TIME
+                // -------------------------------------------------------------
+
+                .submissionTime(
+                        submission.getSubmissionTime()
+                )
+
+                // -------------------------------------------------------------
+                // VOTE DATA
+                // -------------------------------------------------------------
+
+                .candidateVotesJson(
+                        candidateVotesJson
+                )
+
+                .candidateVotes(
+                        votesMap
+                )
+
+                .validVotes(
+                        validVotes
+                )
+
+                .invalidTotal(
+                        invalidTotal
+                )
+
+                // -------------------------------------------------------------
+                // BALLOT DATA
+                // -------------------------------------------------------------
+
+                .ballotsInBox(
+                        submission.getBallotsInBox()
+                )
+
+                .ballotsReceived(
+                        submission.getBallotsReceived()
+                )
+
+                .invalidBallots(
+                        submission.getInvalidBallots()
+                )
+
+                .unmarkedBallots(
+                        submission.getUnmarkedBallots()
+                )
+
+                .rejectedBallots(
+                        submission.getRejectedBallots()
+                )
+
+                .spoiledBallots(
+                        submission.getSpoiledBallots()
+                )
+
+                .unusedBallots(
+                        submission.getUnusedBallots()
+                )
+
+                // -------------------------------------------------------------
+                // STATUS / COMMENTS
+                // -------------------------------------------------------------
+
+                .status(
+                        submission.getStatus()
+                )
+
+                .comments(
+                        submission.getComments()
+                )
+
+                // -------------------------------------------------------------
+                // FLAGGING
+                // -------------------------------------------------------------
+
+                .flaggedBy(
+                        flaggedBy != null
+                                ? flaggedBy.getUserId()
+                                : null
+                )
+
+                .flaggedByName(
+                        flaggedByName
+                )
+
+                .dateFlagged(
+                        submission.getDateFlagged()
+                )
+
+                // -------------------------------------------------------------
+                // GPS
+                // -------------------------------------------------------------
+
+                .latitude(
+                        latitude
+                )
+
+                .longitude(
+                        longitude
+                )
+
+                // -------------------------------------------------------------
+                // VERIFICATION
+                // -------------------------------------------------------------
+
+                .verifiedBy(
+                        verifier != null
+                                ? verifier.getUserId()
+                                : null
+                )
+
+                .verifiedByName(
+                        verifiedByName
+                )
+
+                .dateVerified(
+                        submission.getDateVerified()
+                )
+
+                // -------------------------------------------------------------
+                // REQUEST / DEVICE
+                // -------------------------------------------------------------
+
+                .clientIp(
+                        submission.getClientIp()
+                )
+
+                .userAgent(
+                        submission.getUserAgent()
+                )
+
+                // -------------------------------------------------------------
+                // INTEGRITY
+                // -------------------------------------------------------------
+
+                .submissionHash(
+                        submission.getSubmissionHash()
+                )
+
+                .chainHash(
+                        submission.getChainHash()
+                )
+
+                .submissionSignature(
+                        submission.getSubmissionSignature()
+                )
+
+                .submissionSignerKeyId(
+                        submission.getSubmissionSignerKeyId()
+                )
+
+                .idempotencyKey(
+                        submission.getIdempotencyKey()
+                )
+
+                // -------------------------------------------------------------
+                // VERSION
+                // -------------------------------------------------------------
+
+                .version(
+                        submission.getVersion()
+                )
+
+                // -------------------------------------------------------------
+                // AUDIT DATES
+                // -------------------------------------------------------------
+
+                .dateCreated(
+                        submission.getDateCreated()
+                )
+
+                .dateUpdated(
+                        submission.getDateUpdated()
+                )
+
+                .dateDeleted(
+                        submission.getDateDeleted()
+                )
+
+                // -------------------------------------------------------------
+                // DERIVED PERCENTAGES
+                // -------------------------------------------------------------
+
+                .validPct(
+                        validPct
+                )
+
+                .invalidPct(
+                        invalidPct
+                )
+
+                .turnoutPct(
+                        turnoutPct
+                )
+
+                // -------------------------------------------------------------
+                // DISCREPANCY
+                // -------------------------------------------------------------
+
+                .hasDiscrepancy(
+                        submission.getHasDiscrepancies()
+                )
+
+                // -------------------------------------------------------------
+                // EVIDENCE
+                //
+                // Populated later by service.get(...)
+                // -------------------------------------------------------------
+
+                .tallySheetCount(0)
+                .hasTallySheet(false)
+                .tallySheetUrl(null)
+
                 .build();
     }
 
-
+    // =========================================================================
+    // CREATE REQUEST -> ENTITY
+    // =========================================================================
 
     public VoteSubmission toEntity(
             VoteSubmissionCreateRequest req,
-            Organization org, Election e, PollingCenter c, SystemUser agent
+            Organization organization,
+            Election election,
+            PollingCenter pollingCenter,
+            SystemUser agent
     ) {
-        VoteSubmission s = new VoteSubmission();
 
-        s.setOrganization(org);
-        s.setElection(e);
-        s.setPollingCenter(c);
-        s.setAgent(agent);
-        s.setContestId(req.getContestId());
-        s.setCandidateVotes(req.getCandidateVotes());
+        VoteSubmission submission =
+                new VoteSubmission();
 
-        s.setBallotsReceived(nz(req.getBallotsReceived()));
-        s.setBallotsInBox(nz(req.getBallotsInBox()));
-        s.setInvalidBallots(nz(req.getInvalidBallots()));
-        s.setUnmarkedBallots(nz(req.getUnmarkedBallots()));
-        s.setRejectedBallots(nz(req.getRejectedBallots()));
-        s.setSpoiledBallots(nz(req.getSpoiledBallots()));
-        // ✅ NEW
-        s.setUnusedBallots(nz(req.getUnusedBallots()));
+        submission.setOrganization(
+                organization
+        );
 
-        if (req.getUnusedBallots() != null)
-            s.setUnusedBallots(req.getUnusedBallots()); // ✅ add this
+        submission.setElection(
+                election
+        );
 
-        s.setStatus(VoteStatus.PENDING);
-        s.setComments(req.getComments());
+        submission.setPollingCenter(
+                pollingCenter
+        );
 
-        s.setClientIp(req.getClientIp());
-        s.setUserAgent(req.getUserAgent());
+        submission.setAgent(
+                agent
+        );
 
-        s.setIdempotencyKey(req.getIdempotencyKey());
+        submission.setContestId(
+                req.getContestId()
+        );
 
-        return s;
+        submission.setCandidateVotes(
+                req.getCandidateVotes()
+        );
+
+        submission.setBallotsReceived(
+                nz(req.getBallotsReceived())
+        );
+
+        submission.setBallotsInBox(
+                nz(req.getBallotsInBox())
+        );
+
+        submission.setInvalidBallots(
+                nz(req.getInvalidBallots())
+        );
+
+        submission.setUnmarkedBallots(
+                nz(req.getUnmarkedBallots())
+        );
+
+        submission.setRejectedBallots(
+                nz(req.getRejectedBallots())
+        );
+
+        submission.setSpoiledBallots(
+                nz(req.getSpoiledBallots())
+        );
+
+        submission.setUnusedBallots(
+                nz(req.getUnusedBallots())
+        );
+
+        submission.setStatus(
+                VoteStatus.PENDING
+        );
+
+        submission.setComments(
+                req.getComments()
+        );
+
+        submission.setClientIp(
+                req.getClientIp()
+        );
+
+        submission.setUserAgent(
+                req.getUserAgent()
+        );
+
+        submission.setIdempotencyKey(
+                req.getIdempotencyKey()
+        );
+
+        return submission;
     }
 
-    public void apply(VoteSubmissionUpdateRequest req, VoteSubmission s) {
-        if (req.getCandidateVotes() != null) s.setCandidateVotes(req.getCandidateVotes());
-        if (req.getBallotsReceived() != null) s.setBallotsReceived(req.getBallotsReceived());
-        if (req.getBallotsInBox() != null) s.setBallotsInBox(req.getBallotsInBox());
-        if (req.getInvalidBallots() != null) s.setInvalidBallots(req.getInvalidBallots());
-        if (req.getUnmarkedBallots() != null) s.setUnmarkedBallots(req.getUnmarkedBallots());
-        if (req.getRejectedBallots() != null) s.setRejectedBallots(req.getRejectedBallots());
-        if (req.getSpoiledBallots() != null) s.setSpoiledBallots(req.getSpoiledBallots());
-        if (req.getUnusedBallots() != null) s.setUnusedBallots(req.getUnusedBallots());
+    // =========================================================================
+    // UPDATE REQUEST -> ENTITY
+    // =========================================================================
 
-        if (req.getComments() != null) s.setComments(req.getComments());
-        if (req.getLatitude() != null && req.getLongitude() != null)
-            s.setGpsLocation(point(req.getLongitude(), req.getLatitude()));
+    public void apply(
+            VoteSubmissionUpdateRequest req,
+            VoteSubmission submission
+    ) {
+
+        if (req.getCandidateVotes() != null) {
+            submission.setCandidateVotes(
+                    req.getCandidateVotes()
+            );
+        }
+
+        if (req.getBallotsReceived() != null) {
+            submission.setBallotsReceived(
+                    req.getBallotsReceived()
+            );
+        }
+
+        if (req.getBallotsInBox() != null) {
+            submission.setBallotsInBox(
+                    req.getBallotsInBox()
+            );
+        }
+
+        if (req.getInvalidBallots() != null) {
+            submission.setInvalidBallots(
+                    req.getInvalidBallots()
+            );
+        }
+
+        if (req.getUnmarkedBallots() != null) {
+            submission.setUnmarkedBallots(
+                    req.getUnmarkedBallots()
+            );
+        }
+
+        if (req.getRejectedBallots() != null) {
+            submission.setRejectedBallots(
+                    req.getRejectedBallots()
+            );
+        }
+
+        if (req.getSpoiledBallots() != null) {
+            submission.setSpoiledBallots(
+                    req.getSpoiledBallots()
+            );
+        }
+
+        if (req.getUnusedBallots() != null) {
+            submission.setUnusedBallots(
+                    req.getUnusedBallots()
+            );
+        }
+
+        if (req.getComments() != null) {
+            submission.setComments(
+                    req.getComments()
+            );
+        }
+
+        if (
+                req.getLatitude() != null
+                        && req.getLongitude() != null
+        ) {
+
+            submission.setGpsLocation(
+                    point(
+                            req.getLongitude(),
+                            req.getLatitude()
+                    )
+            );
+        }
     }
 
-    private static Point point(double lon, double lat) {
-        Point p = GF.createPoint(new Coordinate(lon, lat));
-        p.setSRID(4326);
-        return p;
+    // =========================================================================
+    // HELPERS
+    // =========================================================================
+
+    private static String buildUserName(
+            SystemUser user
+    ) {
+
+        if (user == null) {
+            return null;
+        }
+
+        String firstName =
+                user.getFirstName() != null
+                        ? user.getFirstName().trim()
+                        : "";
+
+        String lastName =
+                user.getLastName() != null
+                        ? user.getLastName().trim()
+                        : "";
+
+        String name =
+                (
+                        firstName
+                                + " "
+                                + lastName
+                ).trim();
+
+        return name.isBlank()
+                ? null
+                : name;
     }
 
-    private static int nz(Integer x) {
-        return x == null ? 0 : x;
+    private static Point point(
+            double longitude,
+            double latitude
+    ) {
+
+        Point point =
+                GF.createPoint(
+                        new Coordinate(
+                                longitude,
+                                latitude
+                        )
+                );
+
+        point.setSRID(
+                4326
+        );
+
+        return point;
     }
 
+    private static int nz(
+            Integer value
+    ) {
 
-
-
-
+        return value == null
+                ? 0
+                : value;
+    }
 }

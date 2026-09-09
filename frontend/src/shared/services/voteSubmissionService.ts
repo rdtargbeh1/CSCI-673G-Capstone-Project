@@ -1,6 +1,3 @@
-
-
-
 // ✅ FILE: src/shared/services/voteSubmissionService.ts
 //
 // ✅ Multi-tenant client selection:
@@ -35,37 +32,49 @@ export type VoteSubmissionDto = {
   electionName?: string;
   year?: number;
 
+  // Location convenience fields where available
   countyId?: string | null;
   countyName?: string | null;
 
   districtId?: string | null;
   districtName?: string | null;
 
+  // Polling center
   centerId?: string;
   centerCode?: string | null;
   centerName?: string;
 
+  // Polling place
   placeId?: string;
   placeCode?: string | null;
   placeNumber?: number | null;
   placeLabel?: string | null;
 
+  // Contest
   contestId: string;
   contestName?: string;
   contestCategory?: string;
   contestScopeType?: string;
 
+  // Submitter
   agentId?: string;
   agentName?: string;
 
+  // Verification
   verifiedBy?: string;
   verifiedByName?: string;
-  dateVerified?: string;
+  dateVerified?: string | null;
 
+  // Flagging
+  flaggedBy?: string | null;
+  flaggedByName?: string | null;
+  dateFlagged?: string | null;
+
+  // Submission
   submissionTime?: string;
-
   candidateVotes?: Record<string, number>;
 
+  // Ballots
   ballotsInBox?: number;
   ballotsReceived?: number;
   invalidBallots?: number;
@@ -74,26 +83,57 @@ export type VoteSubmissionDto = {
   rejectedBallots?: number;
   unusedBallots?: number;
 
+  // Calculated totals
   validVotes?: number;
   invalidTotal?: number;
+
   turnoutPct?: number;
+  validPct?: number;
   invalidPct?: number;
 
+  // Allocation
   registeredVoters?: number;
   ballotsIssued?: number;
+  expectedBallotsInBox?: number;
+  ballotDelta?: number;
   allocationSource?: "PLACE" | "CENTER" | "NONE" | string;
 
+  // Workflow
   status?: VoteStatus | string;
   comments?: string;
 
+  // GPS
   latitude?: number;
   longitude?: number;
 
+  // Evidence
   tallySheetUrl?: string | null;
   tallySheetCount?: number | null;
+  hasTallySheet?: boolean | null;
 
-  // Optional if backend exposes it
+  // Audit dates
+  dateCreated?: string | null;
+  dateUpdated?: string | null;
   dateDeleted?: string | null;
+
+  // Request provenance
+  clientIp?: string | null;
+  userAgent?: string | null;
+
+  // Integrity
+  submissionHash?: string | null;
+  chainHash?: string | null;
+  submissionSignature?: string | null;
+  submissionSignerKeyId?: string | null;
+  idempotencyKey?: string | null;
+
+  // Versioning
+  version?: number | null;
+  optimisticLock?: number | null;
+
+  // Discrepancies
+  hasDiscrepancy?: boolean | null;
+  discrepancies?: unknown[] | null;
 };
 
 export type VoteSubmissionCreateRequest = {
@@ -291,7 +331,7 @@ export async function searchSubmissions(params: {
 }
 
 export async function createSubmissionJson(
-  req: VoteSubmissionCreateRequest
+  req: VoteSubmissionCreateRequest,
 ): Promise<VoteSubmissionDto> {
   const client = pickClient();
   const res = await client.post("/vote-submissions", req, {
@@ -309,7 +349,7 @@ export async function createSubmissionMultipart(params: {
   const fd = new FormData();
   fd.append(
     "payload",
-    new Blob([JSON.stringify(params.payload)], { type: "application/json" })
+    new Blob([JSON.stringify(params.payload)], { type: "application/json" }),
   );
   params.files.forEach((f) => fd.append("files", f));
 
@@ -333,7 +373,7 @@ export async function getSubmission(id: string): Promise<VoteSubmissionDto> {
 
 export async function updateSubmissionJson(
   id: string,
-  req: VoteSubmissionUpdateRequest
+  req: VoteSubmissionUpdateRequest,
 ): Promise<VoteSubmissionDto> {
   const client = pickClient();
   const payload = normalizeUpdatePayload(req);
@@ -356,7 +396,7 @@ export async function updateSubmissionMultipart(params: {
   const fd = new FormData();
   fd.append(
     "payload",
-    new Blob([JSON.stringify(payload)], { type: "application/json" })
+    new Blob([JSON.stringify(payload)], { type: "application/json" }),
   );
   (params.files ?? []).forEach((f) => fd.append("files", f));
 
@@ -373,7 +413,7 @@ export async function updateSubmissionMultipart(params: {
 /** ✅ DELETE WITH REASON (DELETE /vote-submissions/{id}) */
 export async function deleteSubmission(
   id: string,
-  req: VoteSubmissionDeleteRequest
+  req: VoteSubmissionDeleteRequest,
 ): Promise<void> {
   const client = pickClient();
 
@@ -392,7 +432,7 @@ export async function deleteSubmission(
 
 export async function verifySubmission(
   id: string,
-  req: VoteSubmissionVerifyRequest
+  req: VoteSubmissionVerifyRequest,
 ): Promise<VoteSubmissionDto> {
   const client = pickClient();
   const res = await client.post(`/vote-submissions/${id}/verify`, req, {
@@ -403,7 +443,7 @@ export async function verifySubmission(
 
 export async function flagSubmission(
   id: string,
-  req: VoteSubmissionFlagRequest
+  req: VoteSubmissionFlagRequest,
 ): Promise<VoteSubmissionDto> {
   if (!req?.actorUserId) throw new Error("actorUserId is required");
   if (typeof req.flagged !== "boolean") throw new Error("flagged is required");
@@ -419,7 +459,7 @@ export async function flagSubmission(
       flagged: req.flagged,
       comments: req.comments,
     },
-    { headers: tenantHeaders(null) }
+    { headers: tenantHeaders(null) },
   );
 
   return res.data as VoteSubmissionDto;
@@ -427,7 +467,7 @@ export async function flagSubmission(
 
 export async function amendSubmission(
   id: string,
-  req: VoteSubmissionAmendRequest
+  req: VoteSubmissionAmendRequest,
 ): Promise<VoteSubmissionDto> {
   if (!req?.actorUserId) throw new Error("actorUserId is required");
   if (!(req?.reason ?? "").trim()) throw new Error("reason is required");
@@ -450,7 +490,7 @@ function sumCandidateVotes(v?: Record<string, number>) {
 }
 
 function normalizeUpdatePayload(
-  p: VoteSubmissionUpdateRequest
+  p: VoteSubmissionUpdateRequest,
 ): VoteSubmissionUpdateRequest {
   const hasVotes =
     !!p.candidateVotes && Object.keys(p.candidateVotes).length > 0;
@@ -463,7 +503,8 @@ function normalizeUpdatePayload(
       (Number(p.unmarkedBallots) || 0) +
       (Number(p.rejectedBallots) || 0);
 
-    const computedInBox = sumCandidateVotes(p.candidateVotes) + invalidTotalInBox;
+    const computedInBox =
+      sumCandidateVotes(p.candidateVotes) + invalidTotalInBox;
 
     return {
       ...p,
@@ -475,7 +516,7 @@ function normalizeUpdatePayload(
 }
 
 function normalizeAmendPayload(
-  p: VoteSubmissionAmendRequest
+  p: VoteSubmissionAmendRequest,
 ): VoteSubmissionAmendRequest {
   const hasVotes =
     !!p.candidateVotes && Object.keys(p.candidateVotes).length > 0;
@@ -488,7 +529,8 @@ function normalizeAmendPayload(
       (Number(p.unmarkedBallots) || 0) +
       (Number(p.rejectedBallots) || 0);
 
-    const computedInBox = sumCandidateVotes(p.candidateVotes) + invalidTotalInBox;
+    const computedInBox =
+      sumCandidateVotes(p.candidateVotes) + invalidTotalInBox;
 
     return {
       ...p,
@@ -498,4 +540,3 @@ function normalizeAmendPayload(
 
   return p;
 }
-

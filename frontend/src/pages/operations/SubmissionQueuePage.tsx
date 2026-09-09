@@ -1,5 +1,3 @@
-
-
 import React, { useEffect, useMemo, useState } from "react";
 import {
   useMutation,
@@ -65,7 +63,7 @@ import {
 
 import { listOptionsByContest } from "../../shared/services/contestOptionService";
 
-import SubmissionFormModal from "../elections/workspace/tabs/submissions/SubmissionFormModal";
+import SubmissionFormModal from "../elections/workspace/tabs/submissions/SubmissionFormPage";
 
 /** ============ HELPERS ============ */
 function safeStr(v: any) {
@@ -100,7 +98,7 @@ function computeValidVotes(s: any) {
   const map = s?.candidateVotes ?? {};
   return Object.values(map).reduce(
     (a: number, b: any) => a + (Number(b) || 0),
-    0
+    0,
   );
 }
 
@@ -134,7 +132,7 @@ type TallySheetDto = {
 
 async function fetchTallySheetsBySubmission(submissionId: string) {
   const { data } = await apiClient.get(
-    `/tally-sheets/submission/${submissionId}`
+    `/tally-sheets/submission/${submissionId}`,
   );
   return (data ?? []) as TallySheetDto[];
 }
@@ -185,7 +183,7 @@ export default function SubmissionQueuePage() {
   useEffect(() => {
     if (!electionId && elections.length) {
       const sorted = [...elections].sort(
-        (a, b) => (b.year ?? 0) - (a.year ?? 0)
+        (a, b) => (b.year ?? 0) - (a.year ?? 0),
       );
       setElectionId(sorted[0].electionId);
     }
@@ -355,7 +353,7 @@ export default function SubmissionQueuePage() {
       (rawItems as any[])
         .map((s) => String(s?.submissionId ?? ""))
         .filter(Boolean),
-    [rawItems]
+    [rawItems],
   );
 
   const tallySheetQueries = useQueries({
@@ -463,7 +461,11 @@ export default function SubmissionQueuePage() {
   const [flagReason, setFlagReason] = useState<string>("");
 
   const flagM = useMutation({
-    mutationFn: async (p: { id: string; flagged: boolean; comments?: string }) => {
+    mutationFn: async (p: {
+      id: string;
+      flagged: boolean;
+      comments?: string;
+    }) => {
       return flagSubmission(p.id, {
         actorUserId,
         flagged: p.flagged,
@@ -479,7 +481,7 @@ export default function SubmissionQueuePage() {
   const [openVerify, setOpenVerify] = useState(false);
   const [verifyId, setVerifyId] = useState<string>("");
   const [verifyDecision, setVerifyDecision] = useState<"ACCEPT" | "REJECT">(
-    "ACCEPT"
+    "ACCEPT",
   );
   const [verifyComment, setVerifyComment] = useState<string>("");
 
@@ -495,10 +497,13 @@ export default function SubmissionQueuePage() {
   const verifierName = fullName(verifierUser) || "—";
 
   const verifyM = useMutation({
-    mutationFn: async (p: { id: string; accept: boolean; comment?: string }) => {
+    mutationFn: async (p: {
+      id: string;
+      accept: boolean;
+      comment?: string;
+    }) => {
       return verifySubmission(p.id, {
-        verifierUserId:
-          (verifierUser as any)?.userId ?? (user as any)?.userId,
+        verifierUserId: (verifierUser as any)?.userId ?? (user as any)?.userId,
         accept: p.accept,
         comment: p.comment,
       } as any);
@@ -545,8 +550,10 @@ export default function SubmissionQueuePage() {
   }, [contestOptionsQ.data]);
 
   const drawerVotes = useMemo(() => {
-    const cv = ((drawerRow as any)?.candidateVotes ??
-      {}) as Record<string, number>;
+    const cv = ((drawerRow as any)?.candidateVotes ?? {}) as Record<
+      string,
+      number
+    >;
     const entries = Object.entries(cv).map(([k, v]) => ({
       key: k,
       name: candidateNameByKey.get(k) ?? k,
@@ -779,8 +786,9 @@ export default function SubmissionQueuePage() {
                     type="button"
                     onClick={() => submissionsQ.refetch()}
                     disabled={submissionsQ.isFetching || !enabled}
-                    className={`h-9 rounded-lg border bg-white px-3 text-lg font-bold inline-flex items-center gap-2 ${submissionsQ.isFetching || !enabled ? "opacity-60" : ""
-                      }`}
+                    className={`h-9 rounded-lg border bg-white px-3 text-lg font-bold inline-flex items-center gap-2 ${
+                      submissionsQ.isFetching || !enabled ? "opacity-60" : ""
+                    }`}
                   >
                     <RefreshCw size={14} />
                     Refresh
@@ -803,7 +811,8 @@ export default function SubmissionQueuePage() {
 
               {dashboardMode === "SYSTEM" && !effectiveOrgId ? (
                 <div className="text-xs font-bold text-red-700 text-right">
-                  Select a tenant (organization) to view submissions in Operations.
+                  Select a tenant (organization) to view submissions in
+                  Operations.
                 </div>
               ) : null}
             </div>
@@ -865,7 +874,7 @@ export default function SubmissionQueuePage() {
                     s?.placeLabel ??
                     (s?.placeNumber != null
                       ? `Place ${s.placeNumber}`
-                      : s?.placeCode ?? "—");
+                      : (s?.placeCode ?? "—"));
 
                   const flagged = isFlaggedRow(s);
 
@@ -876,7 +885,10 @@ export default function SubmissionQueuePage() {
 
                   return (
                     <tr key={s.submissionId} className="border-t">
-                      <Td title={s.centerName ?? ""} className="truncate max-w-220px">
+                      <Td
+                        title={s.centerName ?? ""}
+                        className="truncate max-w-220px"
+                      >
                         {s.centerName ?? "—"}
                       </Td>
                       <Td title={place} className="truncate max-w-160px">
@@ -890,10 +902,11 @@ export default function SubmissionQueuePage() {
                           </span>
                         ) : (
                           <span
-                            className={`inline-flex rounded-full px-2 py-0.5 text-sm font-extrabold ${evidenceOk
-                              ? "bg-green-50 text-green-700 border border-green-200"
-                              : "bg-red-50 text-red-700 border border-red-200"
-                              }`}
+                            className={`inline-flex rounded-full px-2 py-0.5 text-sm font-extrabold ${
+                              evidenceOk
+                                ? "bg-green-50 text-green-700 border border-green-200"
+                                : "bg-red-50 text-red-700 border border-red-200"
+                            }`}
                             title={
                               evidenceOk
                                 ? `Tally sheet attached (${evidenceCount})`
@@ -921,22 +934,36 @@ export default function SubmissionQueuePage() {
                         )}
                       </Td>
 
-                      <Td className="text-right font-semibold">{fmtNum(s.registeredVoters)}</Td>
-                      <Td className="text-right font-semibold">{fmtNum(s.ballotsIssued)}</Td>
-                      <Td className="text-right font-semibold">{fmtNum(s.ballotsReceived)}</Td>
+                      <Td className="text-right font-semibold">
+                        {fmtNum(s.registeredVoters)}
+                      </Td>
+                      <Td className="text-right font-semibold">
+                        {fmtNum(s.ballotsIssued)}
+                      </Td>
+                      <Td className="text-right font-semibold">
+                        {fmtNum(s.ballotsReceived)}
+                      </Td>
 
                       <Td className="text-right font-semibold">{valid}</Td>
                       <Td className="text-right font-semibold">{invalid}</Td>
                       <Td className="text-right font-semibold">{spoiled}</Td>
                       <Td className="text-right font-semibold">{cast}</Td>
 
-                      <Td className="text-right font-semibold">{fmtNum(unused)}</Td>
+                      <Td className="text-right font-semibold">
+                        {fmtNum(unused)}
+                      </Td>
 
-                      <Td className="truncate max-w-170px">{s.agentName ?? "—"}</Td>
-                      <Td className="truncate max-w-220px">{s.contestName ?? "—"}</Td>
+                      <Td className="truncate max-w-170px">
+                        {s.agentName ?? "—"}
+                      </Td>
+                      <Td className="truncate max-w-220px">
+                        {s.contestName ?? "—"}
+                      </Td>
                       <Td>{s.status ?? "—"}</Td>
                       <Td className="whitespace-nowrap">
-                        {s.submissionTime ? new Date(s.submissionTime).toLocaleString() : "—"}
+                        {s.submissionTime
+                          ? new Date(s.submissionTime).toLocaleString()
+                          : "—"}
                       </Td>
 
                       <Td>
@@ -955,8 +982,9 @@ export default function SubmissionQueuePage() {
 
                           <button
                             type="button"
-                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border bg-white hover:bg-slate-50 ${!canEditRow(s) ? "opacity-50" : ""
-                              }`}
+                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border bg-white hover:bg-slate-50 ${
+                              !canEditRow(s) ? "opacity-50" : ""
+                            }`}
                             disabled={!canEditRow(s)}
                             onClick={() => {
                               setEditId(s.submissionId);
@@ -973,8 +1001,11 @@ export default function SubmissionQueuePage() {
 
                           <button
                             type="button"
-                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border bg-white hover:bg-slate-50 ${!canVerify || verifyM.isPending ? "opacity-50" : ""
-                              }`}
+                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border bg-white hover:bg-slate-50 ${
+                              !canVerify || verifyM.isPending
+                                ? "opacity-50"
+                                : ""
+                            }`}
                             disabled={!canVerify || verifyM.isPending}
                             onClick={() => {
                               setVerifyId(String(s.submissionId ?? ""));
@@ -989,33 +1020,46 @@ export default function SubmissionQueuePage() {
 
                           <button
                             type="button"
-                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border bg-white hover:bg-slate-50 ${!canFlag || flagM.isPending ? "opacity-50" : ""
-                              }`}
+                            className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border bg-white hover:bg-slate-50 ${
+                              !canFlag || flagM.isPending ? "opacity-50" : ""
+                            }`}
                             disabled={!canFlag || flagM.isPending}
                             onClick={() => {
                               const id = String(s.submissionId ?? "");
                               if (!id) return;
 
                               if (!actorUserId) {
-                                alert("actorUserId missing. Ensure /users/me loads.");
+                                alert(
+                                  "actorUserId missing. Ensure /users/me loads.",
+                                );
                                 return;
                               }
 
-                              const centerName = String(s?.centerName ?? "").trim();
+                              const centerName = String(
+                                s?.centerName ?? "",
+                              ).trim();
                               const placeLabel = String(
                                 s?.placeLabel ??
-                                (s?.placeNumber != null
-                                  ? `Place ${s.placeNumber}`
-                                  : s?.placeCode ?? "")
+                                  (s?.placeNumber != null
+                                    ? `Place ${s.placeNumber}`
+                                    : (s?.placeCode ?? "")),
                               ).trim();
-                              const lbl = [centerName, placeLabel].filter(Boolean).join(" • ");
+                              const lbl = [centerName, placeLabel]
+                                .filter(Boolean)
+                                .join(" • ");
 
                               if (flagged) {
                                 if (!confirm("Unflag this submission?")) return;
-                                flagM.mutate({ id, flagged: false, comments: undefined });
+                                flagM.mutate({
+                                  id,
+                                  flagged: false,
+                                  comments: undefined,
+                                });
                               } else {
                                 setFlagTargetId(id);
-                                setFlagTargetLabel(lbl || "Selected submission");
+                                setFlagTargetLabel(
+                                  lbl || "Selected submission",
+                                );
                                 setFlagReason("");
                                 setOpenFlagReason(true);
                               }
@@ -1046,7 +1090,9 @@ export default function SubmissionQueuePage() {
             <button
               type="button"
               onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={!submissionsQ.data || page <= 0 || submissionsQ.isFetching}
+              disabled={
+                !submissionsQ.data || page <= 0 || submissionsQ.isFetching
+              }
               className="h-9 rounded-lg border bg-white px-3 text-sm font-bold"
             >
               Prev
@@ -1056,13 +1102,17 @@ export default function SubmissionQueuePage() {
               type="button"
               onClick={() =>
                 setPage((p) =>
-                  submissionsQ.data && p + 1 < (submissionsQ.data as any).totalPages ? p + 1 : p
+                  submissionsQ.data &&
+                  p + 1 < (submissionsQ.data as any).totalPages
+                    ? p + 1
+                    : p,
                 )
               }
               disabled={
                 !submissionsQ.data ||
                 submissionsQ.isFetching ||
-                (submissionsQ.data as any).page + 1 >= ((submissionsQ.data as any).totalPages ?? 0)
+                (submissionsQ.data as any).page + 1 >=
+                  ((submissionsQ.data as any).totalPages ?? 0)
               }
               className="h-9 rounded-lg border bg-white px-3 text-sm font-bold"
             >
@@ -1071,8 +1121,9 @@ export default function SubmissionQueuePage() {
           </div>
 
           <div className="text-sm text-slate-600 sm:text-right">
-            Page {submissionsQ.data ? (submissionsQ.data as any).page + 1 : page + 1} /{" "}
-            {submissionsQ.data ? (submissionsQ.data as any).totalPages : "?"}
+            Page{" "}
+            {submissionsQ.data ? (submissionsQ.data as any).page + 1 : page + 1}{" "}
+            / {submissionsQ.data ? (submissionsQ.data as any).totalPages : "?"}
           </div>
         </div>
 
@@ -1135,7 +1186,7 @@ export default function SubmissionQueuePage() {
                   setFlagTargetLabel("");
                   setFlagReason("");
                 },
-              }
+              },
             );
           }}
         />
@@ -1200,7 +1251,10 @@ export default function SubmissionQueuePage() {
 
             {verifyM.isError ? (
               <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-4">
-                <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                <AlertCircle
+                  className="text-red-600 flex-shrink-0 mt-0.5"
+                  size={20}
+                />
                 <div className="text-sm text-red-700 font-semibold">
                   {friendlyError(verifyM.error)}
                 </div>
@@ -1231,13 +1285,14 @@ export default function SubmissionQueuePage() {
                       ? verifyComment.trim()
                       : undefined,
                   },
-                  { onSuccess: () => setOpenVerify(false) }
+                  { onSuccess: () => setOpenVerify(false) },
                 );
               }}
-              className={`px-6 h-10 rounded-lg text-base font-semibold text-white transition flex items-center gap-2 ${verifyM.isPending
-                ? "bg-slate-300 cursor-not-allowed opacity-60"
-                : "bg-blue-600 hover:bg-blue-700"
-                }`}
+              className={`px-6 h-10 rounded-lg text-base font-semibold text-white transition flex items-center gap-2 ${
+                verifyM.isPending
+                  ? "bg-slate-300 cursor-not-allowed opacity-60"
+                  : "bg-blue-600 hover:bg-blue-700"
+              }`}
             >
               <CheckCircle2 size={16} />
               Submit Review
@@ -1275,9 +1330,9 @@ export default function SubmissionQueuePage() {
                   label="Place"
                   value={String(
                     (drawerRow as any).placeLabel ??
-                    ((drawerRow as any).placeNumber != null
-                      ? `Place ${(drawerRow as any).placeNumber}`
-                      : (drawerRow as any).placeCode ?? "—")
+                      ((drawerRow as any).placeNumber != null
+                        ? `Place ${(drawerRow as any).placeNumber}`
+                        : ((drawerRow as any).placeCode ?? "—")),
                   )}
                 />
               </div>
@@ -1301,11 +1356,14 @@ export default function SubmissionQueuePage() {
                   value={
                     evidenceLoading
                       ? "Checking…"
-                      : hasEvidence(String((drawerRow as any)?.submissionId ?? ""))
-                        ? `Attached (${evidenceMap.get(
-                          String((drawerRow as any)?.submissionId ?? "")
-                        )?.count ?? 0
-                        })`
+                      : hasEvidence(
+                            String((drawerRow as any)?.submissionId ?? ""),
+                          )
+                        ? `Attached (${
+                            evidenceMap.get(
+                              String((drawerRow as any)?.submissionId ?? ""),
+                            )?.count ?? 0
+                          })`
                         : "Missing evidence"
                   }
                 />
@@ -1314,8 +1372,8 @@ export default function SubmissionQueuePage() {
                   value={
                     (drawerRow as any).submissionTime
                       ? new Date(
-                        (drawerRow as any).submissionTime
-                      ).toLocaleString()
+                          (drawerRow as any).submissionTime,
+                        ).toLocaleString()
                       : "—"
                   }
                 />
@@ -1360,8 +1418,14 @@ export default function SubmissionQueuePage() {
                       </thead>
                       <tbody>
                         {drawerVotes.map((r, idx) => {
-                          const totalVotes = drawerVotes.reduce((a, b) => a + b.votes, 0);
-                          const pct = totalVotes > 0 ? ((r.votes / totalVotes) * 100).toFixed(1) : "0.0";
+                          const totalVotes = drawerVotes.reduce(
+                            (a, b) => a + b.votes,
+                            0,
+                          );
+                          const pct =
+                            totalVotes > 0
+                              ? ((r.votes / totalVotes) * 100).toFixed(1)
+                              : "0.0";
                           return (
                             <tr
                               key={r.key}
@@ -1531,10 +1595,11 @@ function StatusPill(props: {
     <button
       type="button"
       onClick={props.onClick}
-      className={`relative h-9 px-3 rounded-xl border text-base font-extrabold transition ${props.active
-        ? `bg-white border-slate-300 shadow-sm`
-        : `bg-white border-slate-200 hover:bg-slate-50`
-        }`}
+      className={`relative h-9 px-3 rounded-xl border text-base font-extrabold transition ${
+        props.active
+          ? `bg-white border-slate-300 shadow-sm`
+          : `bg-white border-slate-200 hover:bg-slate-50`
+      }`}
       title={props.label}
     >
       <span className="inline-flex items-center gap-2">
@@ -1552,8 +1617,9 @@ function Th(props: React.ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
       {...props}
-      className={`p-2 text-[10px] sm:text-base font-extrabold ${props.className ?? ""
-        }`}
+      className={`p-2 text-[10px] sm:text-base font-extrabold ${
+        props.className ?? ""
+      }`}
     />
   );
 }
@@ -1623,8 +1689,9 @@ function ModalShell(props: {
       onClick={() => !props.busy && props.onClose()}
     >
       <div
-        className={`w-full ${props.maxWidth ?? "max-w-2xl"
-          } bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]`}
+        className={`w-full ${
+          props.maxWidth ?? "max-w-2xl"
+        } bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="bg-gradient-to-r from-blue-50 to-white px-8 py-6 border-b border-slate-200 flex items-start justify-between gap-4">
@@ -1752,8 +1819,9 @@ function FlagReasonModal(props: {
               className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:bg-slate-50 resize-none"
             />
             <div
-              className={`mt-2 text-sm font-semibold ${tooLong ? "text-red-600" : "text-slate-500"
-                }`}
+              className={`mt-2 text-sm font-semibold ${
+                tooLong ? "text-red-600" : "text-slate-500"
+              }`}
             >
               {trimmed.length}/500 characters
               {tooLong ? " — Too long!" : ""}
@@ -1762,17 +1830,25 @@ function FlagReasonModal(props: {
 
           {!trimmed && (
             <div className="flex gap-3 rounded-lg bg-amber-50 border border-amber-200 p-4">
-              <AlertCircle className="text-amber-600 flex-shrink-0 mt-0.5" size={20} />
+              <AlertCircle
+                className="text-amber-600 flex-shrink-0 mt-0.5"
+                size={20}
+              />
               <div className="text-sm text-amber-800">
                 <div className="font-semibold">Reason required</div>
-                <div className="mt-0.5">A reason is required to flag a submission.</div>
+                <div className="mt-0.5">
+                  A reason is required to flag a submission.
+                </div>
               </div>
             </div>
           )}
 
           {props.error && (
             <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-4">
-              <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+              <AlertCircle
+                className="text-red-600 flex-shrink-0 mt-0.5"
+                size={20}
+              />
               <div className="text-sm text-red-700 font-semibold">
                 {props.error}
               </div>
@@ -1794,10 +1870,11 @@ function FlagReasonModal(props: {
             type="button"
             onClick={props.onSubmit}
             disabled={!canSubmit}
-            className={`px-6 h-10 rounded-lg text-base font-semibold text-white transition flex items-center gap-2 ${canSubmit
-              ? "bg-orange-600 hover:bg-orange-700"
-              : "bg-slate-300 cursor-not-allowed opacity-60"
-              }`}
+            className={`px-6 h-10 rounded-lg text-base font-semibold text-white transition flex items-center gap-2 ${
+              canSubmit
+                ? "bg-orange-600 hover:bg-orange-700"
+                : "bg-slate-300 cursor-not-allowed opacity-60"
+            }`}
             title={
               !trimmed
                 ? "Reason is required"
@@ -1814,4 +1891,3 @@ function FlagReasonModal(props: {
     </div>
   );
 }
-

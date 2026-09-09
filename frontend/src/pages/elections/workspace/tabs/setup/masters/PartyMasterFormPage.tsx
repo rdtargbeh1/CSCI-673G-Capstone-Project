@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
 import {
   AlertCircle,
   ArrowLeft,
@@ -13,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { apiClient } from "../../../../../../shared/lib/apiClient";
+
 import { useAuthStore } from "../../../../../../shared/store/authStore";
 
 import {
@@ -29,6 +33,10 @@ import {
   uploadPartyLogo,
 } from "../../../../../../shared/services/fileUploadService";
 
+// ============================================================================
+// TYPES
+// ============================================================================
+
 type MeDto = {
   userId: string;
 };
@@ -36,6 +44,10 @@ type MeDto = {
 type LocationState = {
   party?: PartyDto;
 };
+
+// ============================================================================
+// HELPERS
+// ============================================================================
 
 function safeStr(value: unknown) {
   return typeof value === "string" ? value : value == null ? "" : String(value);
@@ -64,10 +76,15 @@ function friendlySaveError(error: any) {
 }
 
 function formatDate(value: string | null | undefined) {
-  if (!value) return "—";
+  if (!value) {
+    return "—";
+  }
 
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
 
   return date.toLocaleString();
 }
@@ -88,53 +105,125 @@ function validateLogo(file: File): string | null {
   return null;
 }
 
+// ============================================================================
+// COMPONENT
+// ============================================================================
+
 export default function PartyMasterFormPage() {
-  const { electionId, partyId } = useParams<{
+  const { electionId } = useParams<{
     electionId: string;
-    partyId?: string;
   }>();
 
   const navigate = useNavigate();
+
   const location = useLocation();
+
   const queryClient = useQueryClient();
 
+  // ==========================================================================
+  // PARTY ID
+  //
+  // SetupTab owns /setup/* internally.
+  //
+  // Therefore partyId is not available from useParams().
+  //
+  // Detect it directly from:
+  //
+  // /setup/master-parties/{partyId}/edit
+  // ==========================================================================
+
+  const partyId = useMemo(() => {
+    const match = location.pathname.match(
+      /\/setup\/master-parties\/([^/]+)\/edit\/?$/,
+    );
+
+    if (!match?.[1]) {
+      return null;
+    }
+
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return match[1];
+    }
+  }, [location.pathname]);
+
+  // ==========================================================================
+  // MODE
+  // ==========================================================================
+
+  const isEdit = Boolean(partyId);
+
+  // ==========================================================================
+  // ROUTE STATE
+  // ==========================================================================
+
   const routeState = (location.state as LocationState | null) ?? null;
+
   const routeParty = routeState?.party ?? null;
 
-  const isEdit = Boolean(partyId && partyId !== "new");
+  // ==========================================================================
+  // ACCESS
+  // ==========================================================================
 
   const dashboardMode = useAuthStore((state) => state.dashboardMode);
+
   const currentOrgId = useAuthStore((state) => state.currentOrgId);
+
   const isSystemAdmin = useAuthStore((state) => state.isSystemAdmin());
 
   const canEdit =
     dashboardMode === "SYSTEM" || dashboardMode === "NEC" || isSystemAdmin;
 
+  // ==========================================================================
+  // CURRENT USER
+  // ==========================================================================
+
   const meQuery = useQuery({
     queryKey: ["me"],
+
     queryFn: async () => {
       const { data } = await apiClient.get<MeDto>("/users/me");
+
       return data;
     },
+
     staleTime: 30_000,
+
     retry: 1,
   });
 
   const currentUserId = meQuery.data?.userId ?? null;
 
+  // ==========================================================================
+  // FORM STATE
+  // ==========================================================================
+
   const [partyName, setPartyName] = useState("");
+
   const [abbreviation, setAbbreviation] = useState("");
+
   const [logoFile, setLogoFile] = useState<File | null>(null);
+
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+
   const [logoError, setLogoError] = useState<string | null>(null);
+
   const [touched, setTouched] = useState(false);
+
+  // ==========================================================================
+  // LOAD PARTY FOR EDIT
+  // ==========================================================================
 
   const partyQuery = useQuery({
     enabled: Boolean(isEdit && partyId && !routeParty),
+
     queryKey: ["party-master", "detail", partyId],
+
     queryFn: async () => {
       const page = await searchParties({
         page: 0,
+
         size: 500,
       });
 
@@ -148,28 +237,47 @@ export default function PartyMasterFormPage() {
 
       return found;
     },
+
     staleTime: 10_000,
+
     retry: 1,
   });
 
   const party = partyQuery.data ?? routeParty ?? null;
+
   const effectivePartyId = party?.partyId ?? partyId ?? null;
+
+  // ==========================================================================
+  // FILEUPLOAD RECORDS
+  // ==========================================================================
 
   const filesQuery = useQuery({
     enabled: Boolean(isEdit && effectivePartyId && currentOrgId),
+
     queryKey: ["file-uploads", "party", effectivePartyId, currentOrgId],
+
     queryFn: () =>
       listEntityFiles({
         orgId: currentOrgId!,
+
         relatedTable: "party",
+
         relatedId: effectivePartyId!,
       }),
+
     staleTime: 10_000,
+
     retry: 1,
   });
 
   const existingPhoto = useMemo(
-    () => findCurrentPhoto(filesQuery.data, party?.logoUrl ?? null),
+    () =>
+      findCurrentPhoto(
+        filesQuery.data,
+
+        party?.logoUrl ?? null,
+      ),
+
     [filesQuery.data, party?.logoUrl],
   );
 
@@ -177,20 +285,35 @@ export default function PartyMasterFormPage() {
     ? getFileContentUrl(existingPhoto.fileId)
     : party?.logoUrl || null;
 
+  // ==========================================================================
+  // PREFILL EDIT FORM
+  // ==========================================================================
+
   useEffect(() => {
-    if (!party) return;
+    if (!party) {
+      return;
+    }
 
     setPartyName(safeStr(party.partyName));
+
     setAbbreviation(safeStr(party.abbreviation));
+
+    setTouched(false);
   }, [party]);
+
+  // ==========================================================================
+  // LOCAL LOGO PREVIEW
+  // ==========================================================================
 
   useEffect(() => {
     if (!logoFile) {
       setLogoPreview(null);
+
       return;
     }
 
     const objectUrl = URL.createObjectURL(logoFile);
+
     setLogoPreview(objectUrl);
 
     return () => {
@@ -198,10 +321,19 @@ export default function PartyMasterFormPage() {
     };
   }, [logoFile]);
 
-  const normalizedName = useMemo(() => normalizeName(partyName), [partyName]);
+  // ==========================================================================
+  // VALIDATION
+  // ==========================================================================
+
+  const normalizedName = useMemo(
+    () => normalizeName(partyName),
+
+    [partyName],
+  );
 
   const normalizedAbbreviation = useMemo(
     () => normalizeAbbreviation(abbreviation),
+
     [abbreviation],
   );
 
@@ -209,11 +341,16 @@ export default function PartyMasterFormPage() {
     normalizedName && normalizedAbbreviation && !logoError,
   );
 
+  // ==========================================================================
+  // LOGO
+  // ==========================================================================
+
   const selectLogo = (file: File | null) => {
     setLogoError(null);
 
     if (!file) {
       setLogoFile(null);
+
       return;
     }
 
@@ -221,12 +358,18 @@ export default function PartyMasterFormPage() {
 
     if (error) {
       setLogoError(error);
+
       setLogoFile(null);
+
       return;
     }
 
     setLogoFile(file);
   };
+
+  // ==========================================================================
+  // SAVE / UPDATE
+  // ==========================================================================
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -248,40 +391,71 @@ export default function PartyMasterFormPage() {
 
       let savedParty: PartyDto;
 
+      // ==================================================================
+      // UPDATE
+      // ==================================================================
+
       if (isEdit) {
         if (!effectivePartyId) {
           throw new Error("Missing party ID.");
         }
 
-        savedParty = await updateParty(effectivePartyId, {
-          partyName: normalizedName,
-          abbreviation: normalizedAbbreviation,
-          logoUrl: party?.logoUrl ?? null,
-        });
+        savedParty = await updateParty(
+          effectivePartyId,
+
+          {
+            partyName: normalizedName,
+
+            abbreviation: normalizedAbbreviation,
+
+            /*
+             * Preserve existing logo storage reference.
+             *
+             * FileUpload updates it when a replacement logo
+             * is uploaded.
+             */
+            logoUrl: party?.logoUrl ?? null,
+          },
+        );
       } else {
+        // =================================================================
+        // CREATE
+        // =================================================================
+
         savedParty = await createParty({
           partyName: normalizedName,
+
           abbreviation: normalizedAbbreviation,
+
           logoUrl: null,
         });
       }
 
+      // ==================================================================
+      // LOGO UPLOAD
+      // ==================================================================
+
       if (logoFile && currentOrgId && currentUserId) {
         await uploadPartyLogo({
           orgId: currentOrgId,
+
           uploadedBy: currentUserId,
+
           partyId: savedParty.partyId,
+
           file: logoFile,
         });
       }
 
       return savedParty;
     },
+
     onSuccess: async (savedParty) => {
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ["party-master"],
         }),
+
         queryClient.invalidateQueries({
           queryKey: ["file-uploads", "party", savedParty.partyId],
         }),
@@ -292,10 +466,17 @@ export default function PartyMasterFormPage() {
   });
 
   const saving = saveMutation.isPending;
+
   const error = saveMutation.error;
 
+  // ==========================================================================
+  // NAVIGATION
+  // ==========================================================================
+
   function goBack() {
-    if (!electionId) return;
+    if (!electionId) {
+      return;
+    }
 
     navigate(`/elections/${electionId}/setup/master-parties`);
   }
@@ -310,6 +491,10 @@ export default function PartyMasterFormPage() {
     saveMutation.mutate();
   };
 
+  // ==========================================================================
+  // GUARD
+  // ==========================================================================
+
   if (!electionId) {
     return (
       <div className="app-form">
@@ -320,16 +505,25 @@ export default function PartyMasterFormPage() {
     );
   }
 
+  // ==========================================================================
+  // LOADING
+  // ==========================================================================
+
   if (isEdit && partyQuery.isLoading && !routeParty) {
     return (
       <div className="app-form">
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">
           <RefreshCw size={20} className="mx-auto animate-spin text-blue-600" />
+
           <div className="mt-2">Loading party...</div>
         </div>
       </div>
     );
   }
+
+  // ==========================================================================
+  // LOAD ERROR
+  // ==========================================================================
 
   if (isEdit && partyQuery.isError && !routeParty) {
     return (
@@ -341,10 +535,17 @@ export default function PartyMasterFormPage() {
     );
   }
 
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
+
   return (
     <div className="w-full">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-3">
-        {/* HEADER */}
+        {/* ==================================================================
+            HEADER
+        ================================================================== */}
+
         <section className="rounded-2xl border border-slate-200 bg-white px-3 py-3 sm:px-4">
           <div className="flex items-start gap-3">
             <button
@@ -370,8 +571,15 @@ export default function PartyMasterFormPage() {
           </div>
         </section>
 
+        {/* ==================================================================
+            CONTENT
+        ================================================================== */}
+
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
-          {/* MAIN FORM */}
+          {/* ================================================================
+              MAIN FORM
+          ================================================================ */}
+
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
             <div className="border-b border-slate-200 px-3 py-3 sm:px-4">
               <div className="text-sm font-bold text-slate-900 sm:text-base">
@@ -379,6 +587,8 @@ export default function PartyMasterFormPage() {
               </div>
 
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {/* PARTY NAME */}
+
                 <div className="sm:col-span-2">
                   <label className="mb-1 block text-xs font-bold text-slate-700">
                     Party Name <span className="text-red-600">*</span>
@@ -388,6 +598,7 @@ export default function PartyMasterFormPage() {
                     value={partyName}
                     onChange={(event) => {
                       setPartyName(event.target.value);
+
                       setTouched(true);
                     }}
                     placeholder="e.g., Unity Party"
@@ -402,6 +613,8 @@ export default function PartyMasterFormPage() {
                   )}
                 </div>
 
+                {/* ABBREVIATION */}
+
                 <div>
                   <label className="mb-1 block text-xs font-bold text-slate-700">
                     Abbreviation <span className="text-red-600">*</span>
@@ -411,6 +624,7 @@ export default function PartyMasterFormPage() {
                     value={abbreviation}
                     onChange={(event) => {
                       setAbbreviation(event.target.value);
+
                       setTouched(true);
                     }}
                     maxLength={10}
@@ -418,6 +632,8 @@ export default function PartyMasterFormPage() {
                     className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold uppercase outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
                 </div>
+
+                {/* ORGANIZATION */}
 
                 <div>
                   <label className="mb-1 block text-xs font-bold text-slate-700">
@@ -433,10 +649,14 @@ export default function PartyMasterFormPage() {
               </div>
             </div>
 
-            {/* MOBILE LOGO CARD */}
+            {/* ================================================================
+                MOBILE LOGO CARD
+            ================================================================ */}
+
             <div className="border-b border-slate-200 px-3 py-3 sm:px-4 xl:hidden">
               <div className="flex items-center gap-2">
                 <ImagePlus size={16} className="text-violet-600" />
+
                 <div className="text-sm font-bold text-slate-900">
                   Party Logo
                 </div>
@@ -470,6 +690,7 @@ export default function PartyMasterFormPage() {
                 <div className="min-w-0 flex-1">
                   <label className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 text-sm font-bold text-violet-700 hover:bg-violet-100">
                     <Upload size={15} />
+
                     {existingPhoto || logoFile ? "Replace Logo" : "Choose Logo"}
 
                     <input
@@ -505,6 +726,7 @@ export default function PartyMasterFormPage() {
                   {logoError && (
                     <div className="mt-2 flex items-center gap-1 text-xs font-semibold text-red-600">
                       <AlertCircle size={13} />
+
                       {logoError}
                     </div>
                   )}
@@ -512,14 +734,23 @@ export default function PartyMasterFormPage() {
               </div>
             </div>
 
+            {/* ================================================================
+                SAVE ERROR
+            ================================================================ */}
+
             {error && (
               <div className="border-b border-slate-200 px-3 py-3 sm:px-4">
                 <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700">
                   <AlertCircle size={16} className="mt-0.5 shrink-0" />
+
                   {friendlySaveError(error)}
                 </div>
               </div>
             )}
+
+            {/* ================================================================
+                ACTIONS
+            ================================================================ */}
 
             <div className="flex flex-col-reverse gap-2 bg-slate-50 px-3 py-3 sm:flex-row sm:justify-end sm:px-4">
               <button
@@ -544,23 +775,31 @@ export default function PartyMasterFormPage() {
                 )}
 
                 {saving
-                  ? logoFile
-                    ? "Saving & Uploading..."
-                    : "Saving..."
+                  ? isEdit
+                    ? logoFile
+                      ? "Updating & Uploading..."
+                      : "Updating..."
+                    : logoFile
+                      ? "Creating & Uploading..."
+                      : "Creating..."
                   : isEdit
-                    ? "Save Changes"
+                    ? "Update Party"
                     : "Create Party"}
               </button>
             </div>
           </section>
 
-          {/* DESKTOP SIDE PANEL */}
+          {/* ================================================================
+              DESKTOP SIDE PANEL
+          ================================================================ */}
+
           <aside className="hidden xl:block">
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
               <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                 <div className="text-sm font-bold text-slate-900">
                   Party Logo
                 </div>
+
                 <p className="mt-0.5 text-xs text-slate-500">
                   Upload or replace the party logo.
                 </p>
@@ -587,6 +826,7 @@ export default function PartyMasterFormPage() {
                   ) : (
                     <div className="text-center text-slate-400">
                       <ImagePlus size={28} className="mx-auto" />
+
                       <div className="mt-2 text-xs font-semibold">
                         No logo uploaded
                       </div>
@@ -597,6 +837,7 @@ export default function PartyMasterFormPage() {
                 <div className="mt-4">
                   <label className="inline-flex min-h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 text-sm font-bold text-violet-700 hover:bg-violet-100">
                     <Upload size={15} />
+
                     {existingPhoto || logoFile ? "Replace Logo" : "Choose Logo"}
 
                     <input
@@ -632,10 +873,13 @@ export default function PartyMasterFormPage() {
                   {logoError && (
                     <div className="mt-2 flex items-center gap-1 text-xs font-semibold text-red-600">
                       <AlertCircle size={13} />
+
                       {logoError}
                     </div>
                   )}
                 </div>
+
+                {/* RECORD INFO */}
 
                 {isEdit && party && (
                   <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -648,6 +892,7 @@ export default function PartyMasterFormPage() {
                         label="Date Created"
                         value={formatDate(party.dateCreated)}
                       />
+
                       <RecordValue
                         label="Date Updated"
                         value={formatDate(party.dateUpdated)}
@@ -659,6 +904,10 @@ export default function PartyMasterFormPage() {
             </section>
           </aside>
         </div>
+
+        {/* ==================================================================
+            MOBILE RECORD DETAILS
+        ================================================================== */}
 
         {isEdit && party && (
           <details className="rounded-2xl border border-slate-200 bg-white xl:hidden">
@@ -682,6 +931,10 @@ export default function PartyMasterFormPage() {
           </details>
         )}
 
+        {/* ==================================================================
+            VALID
+        ================================================================== */}
+
         {formValid && (
           <div className="flex items-center gap-1.5 px-1 text-xs font-medium text-emerald-700">
             <CheckCircle2 size={13} />
@@ -693,7 +946,18 @@ export default function PartyMasterFormPage() {
   );
 }
 
-function RecordValue({ label, value }: { label: string; value: string }) {
+// ============================================================================
+// RECORD VALUE
+// ============================================================================
+
+function RecordValue({
+  label,
+  value,
+}: {
+  label: string;
+
+  value: string;
+}) {
   return (
     <div className="min-w-0">
       <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">

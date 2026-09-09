@@ -1,6 +1,6 @@
 // src/pages/elections/workspace/tabs/setup/election/ContestsTab.tsx
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -98,6 +98,12 @@ export default function ContestsTab({ onOpenOptions }: Props) {
     dashboardMode === "NEC" || dashboardMode === "SYSTEM" || isSystemAdmin;
 
   // ==========================================================================
+  // SEARCH
+  // ==========================================================================
+
+  const [search, setSearch] = useState("");
+
+  // ==========================================================================
   // QUERY
   // ==========================================================================
 
@@ -120,10 +126,8 @@ export default function ContestsTab({ onOpenOptions }: Props) {
   );
 
   // ==========================================================================
-  // SEARCH
+  // FILTERED CONTESTS
   // ==========================================================================
-
-  const [search, setSearch] = React.useState("");
 
   const filteredContests = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -255,8 +259,8 @@ export default function ContestsTab({ onOpenOptions }: Props) {
 
       <section className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="text-base font-bold text-slate-900 sm:text-lg">
+          <div className="min-w-0">
+            <div className="text-xl font-bold text-slate-900 sm:text-lg">
               Contests
             </div>
 
@@ -270,7 +274,20 @@ export default function ContestsTab({ onOpenOptions }: Props) {
               <button
                 type="button"
                 onClick={openCreate}
-                className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white hover:bg-blue-700"
+                className="
+                  inline-flex
+                  min-h-9
+                  items-center
+                  justify-center
+                  gap-1.5
+                  rounded-lg
+                  bg-blue-600
+                  px-3
+                  text-xs
+                  font-bold
+                  text-white
+                  hover:bg-blue-700
+                "
               >
                 <Plus size={15} />
                 Create Contest
@@ -283,7 +300,22 @@ export default function ContestsTab({ onOpenOptions }: Props) {
               type="button"
               onClick={refreshNow}
               disabled={contestsQuery.isFetching}
-              className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 disabled:opacity-50"
+              className="
+                inline-flex
+                min-h-9
+                items-center
+                justify-center
+                gap-1.5
+                rounded-lg
+                border
+                border-slate-300
+                bg-white
+                px-3
+                text-base
+                font-semibold
+                text-slate-700
+                disabled:opacity-50
+              "
             >
               <RefreshCw
                 size={15}
@@ -304,14 +336,35 @@ export default function ContestsTab({ onOpenOptions }: Props) {
           <div className="relative min-w-0 flex-1">
             <Search
               size={15}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              className="
+                pointer-events-none
+                absolute
+                left-3
+                top-1/2
+                -translate-y-1/2
+                text-slate-400
+              "
             />
 
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search contests..."
-              className="min-h-9 w-full rounded-lg border border-slate-300 py-1.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              className="
+                min-h-9
+                w-full
+                rounded-lg
+                border
+                border-slate-300
+                py-1.5
+                pl-9
+                pr-3
+                text-base
+                outline-none
+                focus:border-blue-500
+                focus:ring-2
+                focus:ring-blue-100
+              "
             />
           </div>
 
@@ -319,7 +372,18 @@ export default function ContestsTab({ onOpenOptions }: Props) {
             <button
               type="button"
               onClick={() => setSearch("")}
-              className="min-h-9 shrink-0 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700"
+              className="
+                min-h-9
+                shrink-0
+                rounded-lg
+                border
+                border-slate-300
+                bg-white
+                px-3
+                text-sm
+                font-semibold
+                text-slate-700
+              "
             >
               Clear
             </button>
@@ -343,11 +407,35 @@ export default function ContestsTab({ onOpenOptions }: Props) {
           LIST
       ==================================================================== */}
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        {/* DESKTOP HEADER */}
+      <section className="rounded-2xl border border-slate-200 bg-white">
+        {/* ==================================================================
+            DESKTOP HEADER
+        ================================================================== */}
 
-        <div className="hidden grid-cols-[minmax(190px,1.3fr)_120px_90px_90px_110px_100px_135px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500 md:grid">
+        <div
+          className="
+            hidden
+            grid-cols-[minmax(180px,1.4fr)_110px_110px_135px_60px_60px_100px_90px_165px_150px]
+            gap-3
+            rounded-t-2xl
+            border-b
+            border-slate-200
+            bg-slate-50
+            px-3
+            py-2
+            text-[13px]
+            font-bold
+            uppercase
+            tracking-wide
+            text-slate-500
+            lg:grid
+          "
+        >
           <div>Contest</div>
+
+          <div>Category</div>
+
+          <div>Scope</div>
 
           <div>Vote</div>
 
@@ -359,10 +447,14 @@ export default function ContestsTab({ onOpenOptions }: Props) {
 
           <div>Active</div>
 
+          <div>Created</div>
+
           <div className="text-right">Actions</div>
         </div>
 
-        {/* LOADING */}
+        {/* ==================================================================
+            LOADING
+        ================================================================== */}
 
         {contestsQuery.isLoading ? (
           <div className="px-4 py-10 text-center text-sm text-slate-500">
@@ -378,7 +470,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
             No contests found.
           </div>
         ) : (
-          filteredContests.map((contest) => {
+          filteredContests.map((contest, index) => {
             const active = boolVal(contest.isActive, true);
 
             const toggling =
@@ -389,26 +481,44 @@ export default function ContestsTab({ onOpenOptions }: Props) {
               deleteMutation.isPending &&
               deleteMutation.variables === contest.contestId;
 
+            const description = contest.description?.trim() || "";
+
+            // ==============================================================
+            // Last rows open tooltip upward so it is not clipped
+            // ==============================================================
+
+            const showTooltipAbove =
+              index >= Math.max(0, filteredContests.length - 2);
+
             return (
               <div
                 key={contest.contestId}
-                className="border-b border-slate-100 px-3 py-2.5 last:border-b-0 hover:bg-slate-50 sm:px-4"
+                className="
+                    relative
+                    border-b
+                    border-slate-100
+                    px-3
+                    py-2.5
+                    last:border-b-0
+                    last:rounded-b-2xl
+                    hover:bg-slate-50
+                  "
               >
                 {/* ========================================================
-                      MOBILE
+                      MOBILE / TABLET
                   ======================================================== */}
 
-                <div className="flex items-center gap-2 md:hidden">
+                <div className="flex items-center gap-2 lg:hidden">
                   <button
                     type="button"
                     onClick={() => onOpenOptions(contest.contestId)}
                     className="min-w-0 flex-1 text-left"
                   >
-                    <div className="truncate text-sm font-bold text-slate-900">
+                    <div className="truncate text-base font-bold text-slate-900">
                       {contest.contestName}
                     </div>
 
-                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-500">
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-slate-500">
                       <span className="font-semibold text-slate-600">
                         {contest.category}
                       </span>
@@ -421,6 +531,10 @@ export default function ContestsTab({ onOpenOptions }: Props) {
 
                       <span>{contest.voteMethod}</span>
 
+                      <span>•</span>
+
+                      <span>Seats {contest.seats}</span>
+
                       <span
                         className={
                           active
@@ -431,15 +545,36 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                         {active ? "Active" : "Inactive"}
                       </span>
                     </div>
+
+                    {/* MOBILE DESCRIPTION */}
+
+                    {description && (
+                      <div className="mt-1 line-clamp-2 max-w-xl text-[10px] leading-4 text-slate-400">
+                        {description}
+                      </div>
+                    )}
                   </button>
 
-                  {/* MOBILE ACTIONS */}
+                  {/* ======================================================
+                        MOBILE ACTIONS
+                    ====================================================== */}
 
                   <div className="flex shrink-0 gap-1">
                     <button
                       type="button"
                       onClick={() => onOpenOptions(contest.contestId)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600"
+                      className="
+                          flex
+                          h-8
+                          w-8
+                          items-center
+                          justify-center
+                          rounded-lg
+                          border
+                          border-slate-200
+                          bg-white
+                          text-slate-600
+                        "
                       aria-label="Contest options"
                     >
                       <List size={14} />
@@ -450,7 +585,18 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                         <button
                           type="button"
                           onClick={() => openEdit(contest)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700"
+                          className="
+                              flex
+                              h-8
+                              w-8
+                              items-center
+                              justify-center
+                              rounded-lg
+                              border
+                              border-blue-200
+                              bg-blue-50
+                              text-blue-700
+                            "
                           aria-label="Edit contest"
                         >
                           <Pencil size={14} />
@@ -460,7 +606,19 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                           type="button"
                           disabled={toggling}
                           onClick={() => toggleActiveMutation.mutate(contest)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 disabled:opacity-50"
+                          className="
+                              flex
+                              h-8
+                              w-8
+                              items-center
+                              justify-center
+                              rounded-lg
+                              border
+                              border-amber-200
+                              bg-amber-50
+                              text-amber-700
+                              disabled:opacity-50
+                            "
                           aria-label={
                             active ? "Deactivate contest" : "Activate contest"
                           }
@@ -476,7 +634,19 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                           type="button"
                           disabled={deleting}
                           onClick={() => removeContest(contest)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 disabled:opacity-50"
+                          className="
+                              flex
+                              h-8
+                              w-8
+                              items-center
+                              justify-center
+                              rounded-lg
+                              border
+                              border-red-200
+                              bg-red-50
+                              text-red-600
+                              disabled:opacity-50
+                            "
                           aria-label="Delete contest"
                         >
                           {deleting ? (
@@ -496,37 +666,176 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                       DESKTOP
                   ======================================================== */}
 
-                <div className="hidden grid-cols-[minmax(190px,1.3fr)_120px_90px_90px_110px_100px_135px] items-center gap-3 md:grid">
-                  <button
-                    type="button"
-                    onClick={() => onOpenOptions(contest.contestId)}
-                    className="min-w-0 text-left"
+                <div
+                  className="
+                      hidden
+                      grid-cols-[minmax(180px,1.4fr)_110px_110px_135px_60px_60px_100px_90px_165px_150px]
+                      items-center
+                      gap-3
+                      lg:grid
+                    "
+                >
+                  {/* ======================================================
+                        CONTEST + DESCRIPTION HOVER
+                    ====================================================== */}
+
+                  <div className="group relative min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => onOpenOptions(contest.contestId)}
+                      className="
+                          min-w-0
+                          max-w-full
+                          text-left
+                          focus:outline-none
+                        "
+                    >
+                      <div className="truncate text-base font-bold text-slate-900 group-hover:text-blue-700">
+                        {contest.contestName}
+                      </div>
+
+                      {description && (
+                        <div className="mt-0.5 text-[9px] font-medium text-slate-400">
+                          Hover for description
+                        </div>
+                      )}
+                    </button>
+
+                    {/* ====================================================
+                          DESKTOP DESCRIPTION CARD
+                      ==================================================== */}
+
+                    {description && (
+                      <div
+                        className={[
+                          `
+                              pointer-events-none
+                              absolute
+                              left-0
+                              z-[100]
+                              hidden
+                              w-[440px]
+                              max-w-[72vw]
+                              rounded-xl
+                              border
+                              border-slate-200
+                              bg-white
+                              p-3.5
+                              text-left
+                              shadow-2xl
+                              group-hover:block
+                              group-focus-within:block
+                            `,
+
+                          showTooltipAbove
+                            ? `
+                                  bottom-[calc(100%+8px)]
+                                `
+                            : `
+                                  top-[calc(100%+8px)]
+                                `,
+                        ].join(" ")}
+                      >
+                        {/* ARROW */}
+
+                        <div
+                          className={[
+                            `
+                                absolute
+                                left-5
+                                h-3
+                                w-3
+                                rotate-45
+                                border-slate-200
+                                bg-white
+                              `,
+
+                            showTooltipAbove
+                              ? `
+                                    -bottom-1.5
+                                    border-b
+                                    border-r
+                                  `
+                              : `
+                                    -top-1.5
+                                    border-l
+                                    border-t
+                                  `,
+                          ].join(" ")}
+                        />
+
+                        <div className="relative">
+                          {/* NAME + LABEL SAME LINE */}
+
+                          <div className="flex flex-wrap items-baseline gap-1.5">
+                            <span className="text-sm font-bold text-slate-900">
+                              {contest.contestName}
+                            </span>
+
+                            <span className="text-xs font-semibold text-slate-400">
+                              — Description
+                            </span>
+                          </div>
+
+                          {/* DESCRIPTION TEXT */}
+
+                          <div className="mt-2 whitespace-pre-wrap text-sm leading-5 text-slate-700">
+                            {description}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* CATEGORY */}
+
+                  <div
+                    className="truncate text-[12px] font-semibold text-slate-700"
+                    title={safeStr(contest.category)}
                   >
-                    <div className="truncate text-sm font-bold text-slate-900">
-                      {contest.contestName}
-                    </div>
-
-                    <div className="mt-0.5 truncate text-[10px] text-slate-500">
-                      {contest.category} • {contest.scopeType} •{" "}
-                      {formatDate((contest as any).dateCreated)}
-                    </div>
-                  </button>
-
-                  <div className="truncate text-xs text-slate-700">
-                    {contest.voteMethod}
+                    {contest.category ?? "—"}
                   </div>
 
-                  <div className="text-xs font-semibold text-slate-700">
-                    {contest.seats}
+                  {/* SCOPE */}
+
+                  <div
+                    className="truncate text-[12px] font-semibold text-slate-700"
+                    title={safeStr(contest.scopeType)}
+                  >
+                    {contest.scopeType ?? "—"}
                   </div>
 
-                  <div className="text-xs font-semibold text-slate-700">
-                    {contest.maxSelections}
+                  {/* VOTE */}
+
+                  <div
+                    className="truncate text-[12px] text-slate-700"
+                    title={safeStr(contest.voteMethod)}
+                  >
+                    {contest.voteMethod ?? "—"}
                   </div>
 
-                  <div className="text-xs font-semibold text-slate-700">
-                    {contest.status}
+                  {/* SEATS */}
+
+                  <div className="text-[12px] font-semibold text-slate-700">
+                    {contest.seats ?? "—"}
                   </div>
+
+                  {/* MAX */}
+
+                  <div className="text-[12px] font-semibold text-slate-700">
+                    {contest.maxSelections ?? "—"}
+                  </div>
+
+                  {/* STATUS */}
+
+                  <div
+                    className="truncate text-[12px] font-semibold text-slate-700"
+                    title={safeStr(contest.status)}
+                  >
+                    {contest.status ?? "—"}
+                  </div>
+
+                  {/* ACTIVE */}
 
                   <div>
                     <span
@@ -534,11 +843,11 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                         `
                             inline-flex
                             items-center
-                            gap-1.5
+                            gap-1
                             rounded-full
-                            px-2
-                            py-1
-                            text-[10px]
+                            px-1.5
+                            py-0.5
+                            text-[9px]
                             font-bold
                           `,
 
@@ -555,21 +864,41 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                     >
                       <span
                         className={[
-                          "h-2 w-2 rounded-full",
+                          "h-1.5 w-1.5 rounded-full",
 
                           active ? "bg-emerald-500" : "bg-slate-300",
                         ].join(" ")}
                       />
 
-                      {active ? "ACTIVE" : "INACTIVE"}
+                      {active ? "ACTIVE" : "OFF"}
                     </span>
                   </div>
+
+                  {/* CREATED */}
+
+                  <div className="text-[12px] leading-4 text-slate-500">
+                    {formatDate((contest as any).dateCreated)}
+                  </div>
+
+                  {/* ACTIONS */}
 
                   <div className="flex justify-end gap-1">
                     <button
                       type="button"
                       onClick={() => onOpenOptions(contest.contestId)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600"
+                      className="
+                          flex
+                          h-8
+                          w-8
+                          items-center
+                          justify-center
+                          rounded-lg
+                          border
+                          border-slate-200
+                          bg-white
+                          text-slate-600
+                          hover:bg-slate-50
+                        "
                       title="Options"
                     >
                       <List size={13} />
@@ -580,7 +909,19 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                         <button
                           type="button"
                           onClick={() => openEdit(contest)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700"
+                          className="
+                              flex
+                              h-8
+                              w-8
+                              items-center
+                              justify-center
+                              rounded-lg
+                              border
+                              border-blue-200
+                              bg-blue-50
+                              text-blue-700
+                              hover:bg-blue-100
+                            "
                           title="Edit"
                         >
                           <Pencil size={13} />
@@ -590,20 +931,54 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                           type="button"
                           disabled={toggling}
                           onClick={() => toggleActiveMutation.mutate(contest)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 disabled:opacity-50"
+                          className="
+                              flex
+                              h-8
+                              w-8
+                              items-center
+                              justify-center
+                              rounded-lg
+                              border
+                              border-amber-200
+                              bg-amber-50
+                              text-amber-700
+                              hover:bg-amber-100
+                              disabled:opacity-50
+                            "
                           title={active ? "Deactivate" : "Activate"}
                         >
-                          <Power size={13} />
+                          {toggling ? (
+                            <RefreshCw size={12} className="animate-spin" />
+                          ) : (
+                            <Power size={13} />
+                          )}
                         </button>
 
                         <button
                           type="button"
                           disabled={deleting}
                           onClick={() => removeContest(contest)}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 disabled:opacity-50"
+                          className="
+                              flex
+                              h-8
+                              w-8
+                              items-center
+                              justify-center
+                              rounded-lg
+                              border
+                              border-red-200
+                              bg-red-50
+                              text-red-600
+                              hover:bg-red-100
+                              disabled:opacity-50
+                            "
                           title="Delete"
                         >
-                          <Trash2 size={13} />
+                          {deleting ? (
+                            <RefreshCw size={12} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={13} />
+                          )}
                         </button>
                       </>
                     )}
@@ -617,9 +992,3 @@ export default function ContestsTab({ onOpenOptions }: Props) {
     </div>
   );
 }
-
-// ============================================================================
-// REACT IMPORT FOR LOCAL STATE
-// ============================================================================
-
-import React from "react";

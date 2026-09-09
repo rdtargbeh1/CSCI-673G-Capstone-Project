@@ -1,37 +1,34 @@
+// src/pages/elections/workspace/tabs/setup/election/ContestOptionsPage.tsx
 
- // src/pages/elections/workspace/tabs/setup/election/ContestOptionsPage.tsx
+import { useMemo, useState } from "react";
 
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
-import React, { useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
 import {
-  ArrowLeft,
-  RefreshCw,
-  Plus,
-  Trash2,
-  Pencil,
-  Users,
-  Search,
-  X,
   AlertCircle,
+  ArrowLeft,
+  Check,
+  ChevronRight,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  Users,
+  X,
 } from "lucide-react";
 
 import { useAuthStore } from "../../../../../../shared/store/authStore";
-import {
-  Panel,
-  Badge,
-  ReadOnlyBanner,
-} from "../../../../shared/elections-ui";
+
+import { Badge, ReadOnlyBanner } from "../../../../shared/elections-ui";
 
 import {
-  createOption,
+  bulkAssignCandidates,
   deleteOption,
   listOptionsByContest,
-  updateOption,
-  bulkAssignCandidates,
   type ContestOptionDto,
-  type ContestOptionType,
 } from "../../../../../../shared/services/contestOptionService";
 
 import {
@@ -39,958 +36,959 @@ import {
   type ElectionCandidateDto,
 } from "../../../../../../shared/services/electionCandidateService";
 
-/** ============ HELPERS ============ */
-function safeStr(v: any) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
+import { listContestsByElection } from "../../../../../../shared/services/contestService";
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+function safeStr(value: unknown) {
+  return typeof value === "string" ? value : value == null ? "" : String(value);
 }
 
-function normalizeName(v: string) {
-  return v.trim().replace(/\s+/g, " ");
+function boolVal(value: unknown, fallback = false) {
+  return value == null ? fallback : Boolean(value);
 }
 
-function friendlySaveError(err: any): string {
-  const msg =
-    safeStr(err?.response?.data?.message) ||
-    safeStr(err?.response?.data?.error) ||
-    safeStr(err?.message) ||
-    "Failed to save.";
-  return msg;
-}
-
-function boolVal(v: any, fallback = false) {
-  return v == null ? fallback : Boolean(v);
-}
-
-/** Compact table (reduced row padding) */
-function CompactTable(props: { columns: string[]; rows: React.ReactNode[][] }) {
-  const { columns, rows } = props;
+function friendlyError(error: any) {
   return (
-    <div className="w-full overflow-auto rounded-xl border border-slate-200 bg-white">
-      <table className="w-full border-collapse text-base">
-        <thead>
-          <tr className="bg-slate-50">
-            {columns.map((c) => (
-              <th
-                key={c}
-                className="text-left px-3 py-1.5 text-base font-extrabold text-slate-600 border-b border-slate-200"
-              >
-                {c}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, idx) => (
-            <tr key={idx} className="border-b border-slate-100 last:border-b-0">
-              {r.map((cell, j) => (
-                <td key={j} className="px-3 py-1.5 align-top text-slate-800">
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    error?.response?.data?.message ??
+    error?.response?.data?.error ??
+    error?.message ??
+    "Something went wrong."
   );
 }
 
-const OPTION_TYPES: ContestOptionType[] = ["CANDIDATE", "LABEL"];
+// ============================================================================
+// COMPONENT
+// ============================================================================
 
-type Props = {
-  contestId: string | null;
-  onBack: () => void;
-};
+export default function ContestOptionsPage() {
+  const { electionId } = useParams<{
+    electionId: string;
+  }>();
 
-/** ============ MAIN COMPONENT ============ */
-export default function ContestOptionsPage({ contestId, onBack }: Props) {
-  const qc = useQueryClient();
-  const { electionId } = useParams<{ electionId: string }>();
+  const location = useLocation();
 
-  const dashboardMode = useAuthStore((s) => s.dashboardMode);
-  const canEdit = dashboardMode === "NEC" || dashboardMode === "SYSTEM";
+  const navigate = useNavigate();
 
-  const [onlyActiveOptions, setOnlyActiveOptions] = useState(true);
+  const queryClient = useQueryClient();
 
-  // option modal
-  const [optionOpen, setOptionOpen] = useState(false);
-  const [optionEditing, setOptionEditing] = useState<ContestOptionDto | null>(
-    null
-  );
-  const [optionTouched, setOptionTouched] = useState(false);
+  // ==========================================================================
+  // CONTEST ID
+  //
+  // SetupTab owns /setup/* manually, so contestId is read from pathname.
+  //
+  // /setup/contests/{contestId}/options
+  // ==========================================================================
 
-  // option fields
-  const [optionType, setOptionType] = useState<ContestOptionType>("CANDIDATE");
-  const [optionLabel, setOptionLabel] = useState("");
-  const [optionOrder, setOptionOrder] = useState<number>(1);
-  const [optionElectId, setOptionElectId] = useState("");
-  const [optionActive, setOptionActive] = useState(true);
+  const contestId = useMemo(() => {
+    const match = location.pathname.match(
+      /\/setup\/contests\/([^/]+)\/options\/?$/,
+    );
 
-  // bulk assign modal
+    if (!match?.[1]) {
+      return null;
+    }
+
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return match[1];
+    }
+  }, [location.pathname]);
+
+  // ==========================================================================
+  // ACCESS
+  // ==========================================================================
+
+  const dashboardMode = useAuthStore((state) => state.dashboardMode);
+
+  const isSystemAdmin = useAuthStore((state) => state.isSystemAdmin());
+
+  const canEdit =
+    dashboardMode === "NEC" || dashboardMode === "SYSTEM" || isSystemAdmin;
+
+  // ==========================================================================
+  // STATE
+  // ==========================================================================
+
+  const [search, setSearch] = useState("");
+
+  const [onlyActive, setOnlyActive] = useState(true);
+
   const [bulkOpen, setBulkOpen] = useState(false);
+
   const [bulkMode, setBulkMode] = useState<"ALL" | "MANUAL">("MANUAL");
+
   const [bulkReplace, setBulkReplace] = useState(false);
+
   const [bulkSearch, setBulkSearch] = useState("");
+
   const [bulkSelected, setBulkSelected] = useState<string[]>([]);
 
-  /** ============ QUERIES ============ */
-  const electionCandidatesQ = useQuery({
+  // ==========================================================================
+  // CONTEST
+  // ==========================================================================
+
+  const contestsQuery = useQuery({
     enabled: Boolean(electionId),
-    queryKey: ["election-candidates", electionId],
-    queryFn: () => fetchElectionCandidates(electionId!),
+
+    queryKey: ["contests-by-election", electionId],
+
+    queryFn: () => listContestsByElection(electionId!),
+
     staleTime: 30_000,
+
     retry: 1,
   });
 
-  const electionCandidatesAll: ElectionCandidateDto[] = useMemo(
-    () => electionCandidatesQ.data ?? [],
-    [electionCandidatesQ.data]
+  const contest = useMemo(
+    () =>
+      contestsQuery.data?.find((item) => item.contestId === contestId) ?? null,
+
+    [contestsQuery.data, contestId],
   );
 
-  const electionCandidatesFiltered = useMemo(() => {
-    const term = bulkSearch.trim().toLowerCase();
-    if (!term) return electionCandidatesAll;
-    return electionCandidatesAll.filter((c) => {
-      const n = safeStr(c.fullName).toLowerCase();
-      const ab = safeStr(
-        (c as any).partyAbbrev ?? (c as any).partyAbbr ?? c.partyAbbrev
-      ).toLowerCase();
-      const center = safeStr(c.centerName).toLowerCase();
-      return n.includes(term) || ab.includes(term) || center.includes(term);
-    });
-  }, [electionCandidatesAll, bulkSearch]);
+  // ==========================================================================
+  // ELECTION CANDIDATES
+  // ==========================================================================
+
+  const electionCandidatesQuery = useQuery({
+    enabled: Boolean(electionId),
+
+    queryKey: ["election-candidates", electionId],
+
+    queryFn: () => fetchElectionCandidates(electionId!),
+
+    staleTime: 30_000,
+
+    retry: 1,
+  });
+
+  const electionCandidates = useMemo<ElectionCandidateDto[]>(
+    () =>
+      [...(electionCandidatesQuery.data ?? [])].sort((a, b) =>
+        safeStr(a.fullName).localeCompare(
+          safeStr(b.fullName),
+
+          undefined,
+
+          {
+            sensitivity: "base",
+          },
+        ),
+      ),
+
+    [electionCandidatesQuery.data],
+  );
+
+  // ==========================================================================
+  // CANDIDATE LABEL MAP
+  // ==========================================================================
 
   const electIdToLabel = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const ec of electionCandidatesAll) {
-      const meta = [ec.partyAbbrev, ec.centerName].filter(Boolean).join(" · ");
-      m.set(ec.electId, meta ? `${ec.fullName} (${meta})` : ec.fullName);
-    }
-    return m;
-  }, [electionCandidatesAll]);
+    const map = new Map<string, string>();
 
-  const optionsQ = useQuery({
+    for (const candidate of electionCandidates) {
+      const meta = [candidate.partyAbbrev, candidate.centerName]
+        .filter(Boolean)
+        .join(" · ");
+
+      map.set(
+        candidate.electId,
+
+        meta ? `${candidate.fullName} (${meta})` : candidate.fullName,
+      );
+    }
+
+    return map;
+  }, [electionCandidates]);
+
+  // ==========================================================================
+  // OPTIONS
+  //
+  // IMPORTANT:
+  // Do NOT sort by optionOrder here.
+  //
+  // Backend now returns candidate options alphabetically.
+  // ==========================================================================
+
+  const optionsQuery = useQuery({
     enabled: Boolean(contestId),
-    queryKey: ["contest-options", contestId, onlyActiveOptions],
+
+    queryKey: ["contest-options", contestId, onlyActive],
+
     queryFn: () =>
       listOptionsByContest({
         contestId: contestId!,
-        onlyActive: onlyActiveOptions,
+
+        onlyActive,
       }),
+
     staleTime: 5_000,
+
     retry: 1,
   });
 
-  const options = useMemo(() => optionsQ.data ?? [], [optionsQ.data]);
+  const options = useMemo<ContestOptionDto[]>(
+    () => optionsQuery.data ?? [],
 
-  /** ============ HANDLERS (BEFORE MUTATIONS) ============ */
+    [optionsQuery.data],
+  );
+
+  // ==========================================================================
+  // SEARCH OPTIONS
+  // ==========================================================================
+
+  const visibleOptions = useMemo(() => {
+    const term = search.trim().toLowerCase();
+
+    if (!term) {
+      return options;
+    }
+
+    return options.filter((option) => {
+      const value =
+        option.optionType === "CANDIDATE"
+          ? option.electId
+            ? (electIdToLabel.get(option.electId) ?? option.electId)
+            : ""
+          : safeStr(option.optionLabel);
+
+      const searchable = [
+        option.optionType,
+        value,
+        option.optionOrder,
+        boolVal(option.isActive, true) ? "active" : "inactive",
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return searchable.includes(term);
+    });
+  }, [options, search, electIdToLabel]);
+
+  // ==========================================================================
+  // BULK CANDIDATES
+  // ==========================================================================
+
+  const bulkCandidates = useMemo(() => {
+    const term = bulkSearch.trim().toLowerCase();
+
+    if (!term) {
+      return electionCandidates;
+    }
+
+    return electionCandidates.filter((candidate) => {
+      const searchable = [
+        candidate.fullName,
+        candidate.partyAbbrev,
+        candidate.centerName,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return searchable.includes(term);
+    });
+  }, [electionCandidates, bulkSearch]);
+
+  // ==========================================================================
+  // REFRESH
+  // ==========================================================================
+
   const refreshNow = async () => {
-    if (!contestId) return;
-    await qc.invalidateQueries({ queryKey: ["contest-options", contestId] });
-    await optionsQ.refetch();
+    if (!contestId) {
+      return;
+    }
+
+    await queryClient.invalidateQueries({
+      queryKey: ["contest-options", contestId],
+    });
+
+    await optionsQuery.refetch();
   };
 
-  const openCreateOption = () => {
-    if (!contestId) return;
-    setOptionEditing(null);
-    setOptionType("CANDIDATE");
-    setOptionLabel("");
-    setOptionOrder(Math.max(1, (options?.length ?? 0) + 1));
-    setOptionElectId("");
-    setOptionActive(true);
-    setOptionTouched(false);
-    setOptionOpen(true);
-  };
+  // ==========================================================================
+  // DELETE
+  // ==========================================================================
 
-  const openEditOption = (o: ContestOptionDto) => {
-    setOptionEditing(o);
-    setOptionType(o.optionType ?? "CANDIDATE");
-    setOptionLabel(safeStr(o.optionLabel));
-    setOptionOrder(Number(o.optionOrder ?? 1));
-    setOptionElectId(safeStr(o.electId));
-    setOptionActive(boolVal(o.isActive, true));
-    setOptionTouched(false);
-    setOptionOpen(true);
-  };
+  const deleteMutation = useMutation({
+    mutationFn: (option: ContestOptionDto) => deleteOption(option.optionId),
 
-  const openBulkAssign = () => {
-    if (!contestId) return;
-    setBulkMode("MANUAL");
-    setBulkReplace(false);
-    setBulkSearch("");
-    setBulkSelected([]);
-    setBulkOpen(true);
-  };
-
-  /** ============ MUTATIONS ============ */
-  const optionCreateM = useMutation({
-    mutationFn: async () => {
-      if (!contestId) throw new Error("Missing contestId.");
-
-      if (optionType === "CANDIDATE") {
-        if (!optionElectId.trim())
-          throw new Error("electId is required for CANDIDATE option.");
-      } else {
-        const label = normalizeName(optionLabel);
-        if (!label)
-          throw new Error("optionLabel is required for LABEL option.");
-      }
-
-      return createOption({
-        contestId,
-        optionType,
-        optionOrder: Number(optionOrder || 1),
-        isActive: optionActive,
-        electId:
-          optionType === "CANDIDATE" ? optionElectId.trim() || null : null,
-        optionLabel:
-          optionType === "LABEL" ? normalizeName(optionLabel) || null : null,
-      });
-    },
-    onSuccess: async () => {
-      setOptionOpen(false);
-      setOptionEditing(null);
-      await refreshNow();
-    },
-  });
-
-  const optionUpdateM = useMutation({
-    mutationFn: async () => {
-      if (!optionEditing) throw new Error("No option selected.");
-
-      if (optionType === "CANDIDATE") {
-        if (!optionElectId.trim())
-          throw new Error("electId is required for CANDIDATE option.");
-      } else {
-        const label = normalizeName(optionLabel);
-        if (!label)
-          throw new Error("optionLabel is required for LABEL option.");
-      }
-
-      return updateOption(optionEditing.optionId, {
-        optionType,
-        optionOrder: Number(optionOrder || 1),
-        isActive: optionActive,
-        electId:
-          optionType === "CANDIDATE" ? optionElectId.trim() || null : null,
-        optionLabel:
-          optionType === "LABEL" ? normalizeName(optionLabel) || null : null,
-      });
-    },
-    onSuccess: async () => {
-      setOptionOpen(false);
-      setOptionEditing(null);
-      await refreshNow();
-    },
-  });
-
-  const optionDeleteM = useMutation({
-    mutationFn: async (optionId: string) => deleteOption(optionId),
     onSuccess: refreshNow,
   });
 
-  const bulkAssignM = useMutation({
-    mutationFn: async () => {
-      if (!contestId) throw new Error("Missing contestId.");
+  // ==========================================================================
+  // BULK ASSIGN
+  // ==========================================================================
 
-      let electIds: string[] = [];
+  const bulkAssignMutation = useMutation({
+    mutationFn: async () => {
+      if (!contestId) {
+        throw new Error("Missing contest ID.");
+      }
+
+      let electIds: string[];
+
       if (bulkMode === "ALL") {
-        electIds = electionCandidatesFiltered.map((x) => x.electId);
+        electIds = bulkCandidates.map((candidate) => candidate.electId);
       } else {
         electIds = bulkSelected;
       }
 
       electIds = Array.from(new Set(electIds.filter(Boolean)));
-      if (!electIds.length) throw new Error("No election candidates selected.");
+
+      if (electIds.length === 0) {
+        throw new Error("No election candidates selected.");
+      }
 
       return bulkAssignCandidates({
         contestId,
+
         electIds,
+
         replace: bulkReplace,
       });
     },
+
     onSuccess: async () => {
       setBulkOpen(false);
+
+      setBulkSelected([]);
+
       await refreshNow();
     },
   });
 
-  /** ============ STATE ============ */
-  const savingOption = optionCreateM.isPending || optionUpdateM.isPending;
+  // ==========================================================================
+  // NAVIGATION
+  // ==========================================================================
 
-  /** ============ TABLE ROWS ============ */
-  const optionRows = useMemo(() => {
-    const sorted = [...options].sort(
-      (a, b) => (a.optionOrder ?? 0) - (b.optionOrder ?? 0)
+  const goBack = () => {
+    if (!electionId) {
+      return;
+    }
+
+    navigate(`/elections/${electionId}/setup/contests`);
+  };
+
+  const openCreate = () => {
+    if (!electionId || !contestId) {
+      return;
+    }
+
+    navigate(
+      `/elections/${electionId}/setup/contests/${contestId}/options/new`,
     );
+  };
 
-    return sorted.map((o) => {
-      const activeVal = boolVal(o.isActive, true);
-      const displayValue =
-        o.optionType === "CANDIDATE"
-          ? o.electId
-            ? electIdToLabel.get(o.electId) ?? o.electId
-            : "—"
-          : o.optionLabel ?? "—";
+  const openEdit = (option: ContestOptionDto) => {
+    if (!electionId || !contestId) {
+      return;
+    }
 
-      const actions = (
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={!canEdit}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-green-600 hover:bg-green-50 transition ${
-              !canEdit ? "opacity-60" : ""
-            }`}
-            onClick={() => openEditOption(o)}
-            title={canEdit ? "Edit option" : "Read-only"}
-          >
-            <Pencil size={20} />
-          </button>
+    navigate(
+      `/elections/${electionId}/setup/contests/${contestId}/options/${option.optionId}/edit`,
 
-          <button
-            type="button"
-            disabled={!canEdit || optionDeleteM.isPending}
-            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-red-700 hover:bg-red-50 transition ${
-              !canEdit || optionDeleteM.isPending ? "opacity-60" : ""
-            }`}
-            title={canEdit ? "Delete option" : "Read-only"}
-            onClick={() => {
-              const ok = window.confirm(
-                `Delete option "${displayValue}"?\nThis is permanent.`
-              );
-              if (ok) optionDeleteM.mutate(o.optionId);
-            }}
-          >
-            <Trash2 size={20} className="text-red-600" />
-          </button>
-        </div>
-      );
+      {
+        state: {
+          option,
+        },
+      },
+    );
+  };
 
-      return [
-        <span key="order" className="text-slate-700">
-          {o.optionOrder ?? "—"}
-        </span>,
-        <span key="type" className="text-slate-700">
-          {o.optionType}
-        </span>,
-        <span key="val" className="text-base text-slate-700 break-words">
-          {displayValue}
-        </span>,
-        <span
-          key="act"
-          className={`text-base font-bold ${
-            activeVal ? "text-emerald-700" : "text-slate-500"
-          }`}
-        >
-          {activeVal ? "✅ ACTIVE" : "⚪ INACTIVE"}
-        </span>,
-        actions,
-      ];
-    });
-  }, [options, canEdit, optionDeleteM.isPending, electIdToLabel]);
+  const openBulk = () => {
+    setBulkMode("MANUAL");
 
-  if (!contestId) {
+    setBulkReplace(false);
+
+    setBulkSearch("");
+
+    setBulkSelected([]);
+
+    setBulkOpen(true);
+  };
+
+  // ==========================================================================
+  // GUARD
+  // ==========================================================================
+
+  if (!electionId || !contestId) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-3">
-        <div className="font-extrabold text-slate-800">Contest Options</div>
-        <div className="text-sm text-slate-600 mt-1">No contest selected.</div>
+      <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
+        Missing election or contest ID.
       </div>
     );
   }
 
-  /** ============ RENDER ============ */
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
+
   return (
-    <div className="flex flex-col gap-3">
-      {!canEdit ? (
+    <div className="flex min-w-0 flex-col gap-3">
+      {!canEdit && (
         <ReadOnlyBanner
           reason="Contest options are managed by NEC/System Admin. You can view options read-only."
           sources={["contest_option"]}
         />
-      ) : null}
+      )}
 
-      {/* ============ HEADER ACTIONS ============ */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-red-200 hover:bg-red-300 transition"
-        >
-          <ArrowLeft size={18} /> Back to Contests
-        </button>
+      {/* ====================================================================
+          HEADER
+      ==================================================================== */}
 
-        <Badge text={`Contest: ${contestId}`} />
+      <section className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
+        <div className="flex items-start gap-3">
+          <button
+            type="button"
+            onClick={goBack}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+          >
+            <ArrowLeft size={17} />
+          </button>
 
-        <button
-          type="button"
-          onClick={refreshNow}
-          disabled={optionsQ.isFetching}
-          className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition ${
-            optionsQ.isFetching ? "opacity-60" : ""
-          }`}
-        >
-          <RefreshCw size={16} /> Refresh
-        </button>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-lg font-bold text-slate-900 sm:text-xl">
+                Contest Options
+              </h1>
 
-        <div className="ml-auto flex items-center gap-2">
-          <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+              {contest && <Badge text={contest.contestName} />}
+            </div>
+
+            <p className="mt-1 text-xs text-slate-500">
+              Manage candidates and label options assigned to this contest.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2 sm:justify-end">
+          <button
+            type="button"
+            onClick={refreshNow}
+            disabled={optionsQuery.isFetching}
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 disabled:opacity-50"
+          >
+            <RefreshCw
+              size={14}
+              className={optionsQuery.isFetching ? "animate-spin" : ""}
+            />
+            Refresh
+          </button>
+
+          {canEdit && (
+            <>
+              <button
+                type="button"
+                onClick={openCreate}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white hover:bg-blue-700"
+              >
+                <Plus size={14} />
+                Add Option
+              </button>
+
+              <button
+                type="button"
+                onClick={openBulk}
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-xs font-bold text-white hover:bg-violet-700"
+              >
+                <Users size={14} />
+                Bulk Assign
+              </button>
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* ====================================================================
+          SEARCH + ACTIVE FILTER
+      ==================================================================== */}
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-2.5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search
+              size={15}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            />
+
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search options..."
+              className="min-h-9 w-full rounded-lg border border-slate-300 py-1.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+
+          <label className="inline-flex min-h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700">
             <input
               type="checkbox"
-              checked={onlyActiveOptions}
-              onChange={(e) => setOnlyActiveOptions(e.target.checked)}
+              checked={onlyActive}
+              onChange={(event) => setOnlyActive(event.target.checked)}
               className="h-4 w-4 accent-emerald-600"
             />
             Only active
           </label>
-
-          <button
-            type="button"
-            disabled={!canEdit}
-            onClick={openCreateOption}
-            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition shadow-sm ${
-              !canEdit ? "opacity-60" : ""
-            }`}
-          >
-            <Plus size={16} className="text-red-500" />
-            Add Option
-          </button>
-
-          <button
-            type="button"
-            disabled={!canEdit}
-            onClick={openBulkAssign}
-            className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-red-900 text-white font-bold hover:bg-red-800 transition shadow-sm ${
-              !canEdit ? "opacity-60" : ""
-            }`}
-          >
-            <Users size={16} />
-            Bulk Assign
-          </button>
         </div>
-      </div>
+      </section>
 
-      {/* ============ PANEL ============ */}
-      <Panel title="Contest Options">
-        {optionsQ.isLoading ? (
-          <div className="p-2 text-slate-600">Loading options…</div>
-        ) : optionsQ.isError ? (
-          <div className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-700">
-            {(optionsQ.error as any)?.message ?? "Failed to load options."}
+      {/* ====================================================================
+          ERROR
+      ==================================================================== */}
+
+      {optionsQuery.isError && (
+        <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
+          <AlertCircle size={16} />
+
+          {friendlyError(optionsQuery.error)}
+        </div>
+      )}
+
+      {/* ====================================================================
+          OPTIONS LIST
+      ==================================================================== */}
+
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        {/* DESKTOP HEADER */}
+
+        <div className="hidden grid-cols-[70px_110px_minmax(260px,1fr)_110px_130px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 md:grid">
+          <div>Order</div>
+
+          <div>Type</div>
+
+          <div>Value</div>
+
+          <div>Status</div>
+
+          <div className="text-right">Actions</div>
+        </div>
+
+        {optionsQuery.isLoading ? (
+          <div className="px-4 py-10 text-center text-sm text-slate-500">
+            <RefreshCw
+              size={20}
+              className="mx-auto animate-spin text-blue-600"
+            />
+
+            <div className="mt-2">Loading options...</div>
+          </div>
+        ) : visibleOptions.length === 0 ? (
+          <div className="px-4 py-10 text-center text-sm text-slate-500">
+            No contest options found.
           </div>
         ) : (
-          <CompactTable
-            columns={["Order", "Type", "Value", "Active", "Actions"]}
-            rows={
-              optionRows.length
-                ? optionRows
-                : [
-                    [
-                      <span key="empty2" className="text-slate-500">
-                        No options found.
-                      </span>,
-                      "",
-                      "",
-                      "",
-                      "",
-                    ],
-                  ]
-            }
-          />
-        )}
-      </Panel>
+          visibleOptions.map((option) => {
+            const active = boolVal(option.isActive, true);
 
-      {/* ============ OPTION MODAL ============ */}
-      {optionOpen ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm"
-          onClick={() => {
-            if (savingOption) return;
-            setOptionOpen(false);
-          }}
-        >
-          <div
-            className="w-full max-w-2xl bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* HEADER */}
-            <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-blue-400 px-4 sm:px-8 py-6 sm:py-8 border-b border-blue-600 flex items-start justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <h2 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-2">
-                  {optionEditing ? (
-                    <>
-                      <Pencil size={28} className="text-white" />
-                      Edit Option
-                    </>
-                  ) : (
-                    <>
-                      <Plus size={28} className="text-red-500" />
-                      Add Option
-                    </>
-                  )}
-                </h2>
-                <p className="text-sm sm:text-base font-semibold text-blue-100 mt-2">
-                  {optionEditing
-                    ? "Update contest option settings."
-                    : "Create a new option for this contest."}
-                </p>
-              </div>
+            const value =
+              option.optionType === "CANDIDATE"
+                ? option.electId
+                  ? (electIdToLabel.get(option.electId) ?? option.electId)
+                  : "—"
+                : (option.optionLabel ?? "—");
 
-              <button
-                type="button"
-                onClick={() => {
-                  if (savingOption) return;
-                  setOptionOpen(false);
-                }}
-                disabled={savingOption}
-                className="flex-shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border-2 border-blue-300 hover:bg-blue-700 bg-blue-600 transition text-white disabled:opacity-50"
+            const deleting =
+              deleteMutation.isPending &&
+              deleteMutation.variables?.optionId === option.optionId;
+
+            return (
+              <div
+                key={option.optionId}
+                className="border-b border-slate-100 px-3 py-2.5 last:border-b-0 hover:bg-slate-50 sm:px-4"
               >
-                <X size={20} />
-              </button>
-            </div>
+                {/* MOBILE */}
 
-            {/* CONTENT */}
-            <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 sm:py-7 space-y-5 sm:space-y-6">
-              {/* Type + Order */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                <div>
-                  <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
-                    Option Type
-                  </label>
-                  <select
-                    value={optionType}
-                    onChange={(e) => {
-                      const t = e.target.value as ContestOptionType;
-                      setOptionType(t);
-                      setOptionTouched(true);
-                      if (t === "CANDIDATE") setOptionLabel("");
-                      else setOptionElectId("");
-                    }}
-                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                  >
-                    {OPTION_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <div className="flex items-center gap-2 md:hidden">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-bold text-slate-900">
+                      {value}
+                    </div>
 
-                <div>
-                  <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
-                    Option Order
-                  </label>
-                  <input
-                    type="number"
-                    value={optionOrder}
-                    onChange={(e) =>
-                      setOptionOrder(Number(e.target.value || 1))
-                    }
-                    min={1}
-                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                  />
-                </div>
-              </div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
+                      <span className="font-bold text-slate-600">
+                        {option.optionType}
+                      </span>
 
-              {/* LABEL or CANDIDATE */}
-              {optionType === "LABEL" ? (
-                <div>
-                  <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
-                    Option Label <span className="text-red-600">*</span>
-                  </label>
-                  <input
-                    value={optionLabel}
-                    onChange={(e) => {
-                      setOptionLabel(e.target.value);
-                      setOptionTouched(true);
-                    }}
-                    placeholder="e.g., Abstain, Write-in, etc."
-                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-                  />
-                  {optionTouched && !normalizeName(optionLabel) && (
-                    <div className="flex items-center gap-2 mt-2 text-sm text-red-600 font-semibold">
-                      <AlertCircle size={16} /> Required for LABEL
+                      <span>•</span>
+
+                      <span>Order {option.optionOrder ?? "—"}</span>
+
+                      <span
+                        className={
+                          active
+                            ? "font-bold text-emerald-600"
+                            : "font-bold text-slate-400"
+                        }
+                      >
+                        {active ? "Active" : "Inactive"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {canEdit && (
+                    <div className="flex shrink-0 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => openEdit(option)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700"
+                      >
+                        <Pencil size={14} />
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={deleting}
+                        onClick={() => {
+                          const confirmed = window.confirm(
+                            `Delete option "${value}"?\n\nThis action is permanent.`,
+                          );
+
+                          if (confirmed) {
+                            deleteMutation.mutate(option);
+                          }
+                        }}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 disabled:opacity-50"
+                      >
+                        {deleting ? (
+                          <RefreshCw size={13} className="animate-spin" />
+                        ) : (
+                          <Trash2 size={14} />
+                        )}
+                      </button>
                     </div>
                   )}
+
+                  <ChevronRight size={15} className="shrink-0 text-slate-400" />
                 </div>
-              ) : (
-                <div>
-                  <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
-                    Election Candidate <span className="text-red-600">*</span>
-                  </label>
 
-                  <select
-                    value={optionElectId}
-                    onChange={(e) => {
-                      setOptionElectId(e.target.value);
-                      setOptionTouched(true);
-                    }}
-                    disabled={
-                      electionCandidatesQ.isLoading ||
-                      electionCandidatesQ.isError
-                    }
-                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 transition disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    <option value="">
-                      {electionCandidatesQ.isLoading
-                        ? "Loading election candidates…"
-                        : electionCandidatesQ.isError
-                        ? "Failed to load candidates"
-                        : "Select election candidate…"}
-                    </option>
+                {/* DESKTOP */}
 
-                    {electionCandidatesAll.map((ec) => {
-                      const meta = [ec.partyAbbrev, ec.centerName]
-                        .filter(Boolean)
-                        .join(" · ");
-                      return (
-                        <option key={ec.electId} value={ec.electId}>
-                          {meta ? `${ec.fullName} (${meta})` : ec.fullName}
-                        </option>
-                      );
-                    })}
-                  </select>
+                <div className="hidden grid-cols-[70px_110px_minmax(260px,1fr)_110px_130px] items-center gap-3 md:grid">
+                  <div className="text-xs font-semibold text-slate-600">
+                    {option.optionOrder ?? "—"}
+                  </div>
 
-                  {optionTouched && !optionElectId.trim() && (
-                    <div className="flex items-center gap-2 mt-2 text-sm text-red-600 font-semibold">
-                      <AlertCircle size={16} /> Required for CANDIDATE
-                    </div>
-                  )}
-                </div>
-              )}
+                  <div>
+                    <span
+                      className={[
+                        "rounded-full px-2 py-1 text-[10px] font-bold",
 
-              {/* Active */}
-              <div>
-                <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
-                  Status
-                </label>
-                <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer transition">
-                  <input
-                    type="checkbox"
-                    checked={optionActive}
-                    onChange={(e) => setOptionActive(e.target.checked)}
-                    className="h-5 w-5 accent-blue-600 cursor-pointer"
-                  />
-                  <span className="text-base font-semibold text-slate-900">
-                    Active
-                  </span>
-                </label>
-              </div>
+                        option.optionType === "CANDIDATE"
+                          ? "bg-blue-50 text-blue-700"
+                          : "bg-violet-50 text-violet-700",
+                      ].join(" ")}
+                    >
+                      {option.optionType}
+                    </span>
+                  </div>
 
-              {/* Error */}
-              {optionCreateM.isError || optionUpdateM.isError ? (
-                <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-3 sm:p-4">
-                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
-                  <div className="text-sm text-red-700 font-semibold">
-                    {optionCreateM.isError
-                      ? friendlySaveError(optionCreateM.error)
-                      : friendlySaveError(optionUpdateM.error)}
+                  <div className="truncate text-sm font-semibold text-slate-800">
+                    {value}
+                  </div>
+
+                  <div>
+                    <span
+                      className={[
+                        "inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold",
+
+                        active
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-slate-100 text-slate-500",
+                      ].join(" ")}
+                    >
+                      <span
+                        className={[
+                          "h-1.5 w-1.5 rounded-full",
+
+                          active ? "bg-emerald-500" : "bg-slate-300",
+                        ].join(" ")}
+                      />
+
+                      {active ? "ACTIVE" : "INACTIVE"}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-end gap-1">
+                    {canEdit && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => openEdit(option)}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                          title="Edit"
+                        >
+                          <Pencil size={13} />
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={deleting}
+                          onClick={() => {
+                            const confirmed = window.confirm(
+                              `Delete option "${value}"?\n\nThis action is permanent.`,
+                            );
+
+                            if (confirmed) {
+                              deleteMutation.mutate(option);
+                            }
+                          }}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50"
+                          title="Delete"
+                        >
+                          {deleting ? (
+                            <RefreshCw size={12} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={13} />
+                          )}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
-              ) : null}
-            </div>
+              </div>
+            );
+          })
+        )}
+      </section>
 
-            {/* FOOTER */}
-            <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-8 py-4 sm:py-5 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  if (savingOption) return;
-                  setOptionOpen(false);
-                }}
-                disabled={savingOption}
-                className="px-4 sm:px-6 h-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-base font-semibold hover:bg-slate-50 transition disabled:opacity-50 sm:min-w-fit"
-              >
-                Cancel
-              </button>
+      {/* ====================================================================
+          BULK ASSIGN MODAL
+      ==================================================================== */}
 
-              <button
-                type="button"
-                disabled={!canEdit || savingOption}
-                onClick={() => {
-                  setOptionTouched(true);
-                  if (!canEdit) return;
-                  if (optionEditing) optionUpdateM.mutate();
-                  else optionCreateM.mutate();
-                }}
-                className={`px-4 sm:px-6 h-10 rounded-lg text-base font-semibold text-white transition flex items-center justify-center gap-2 sm:min-w-fit ${
-                  !canEdit || savingOption
-                    ? "bg-slate-300 cursor-not-allowed opacity-60"
-                    : "bg-blue-600 hover:bg-blue-700 shadow-sm"
-                }`}
-              >
-                {savingOption ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span className="hidden sm:inline">Saving…</span>
-                  </>
-                ) : (
-                  <>
-                    <Plus size={18} className="text-red-500" />
-                    <span className="hidden sm:inline">
-                      {optionEditing ? "Update" : "Save"}
-                    </span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {/* ============ BULK ASSIGN MODAL ============ */}
-      {bulkOpen ? (
+      {bulkOpen && (
         <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-3 backdrop-blur-sm"
           onClick={() => {
-            if (bulkAssignM.isPending) return;
-            setBulkOpen(false);
+            if (!bulkAssignMutation.isPending) {
+              setBulkOpen(false);
+            }
           }}
         >
           <div
-            className="w-full max-w-3xl bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[95vh] sm:max-h-[90vh]"
-            onClick={(e) => e.stopPropagation()}
+            className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
           >
             {/* HEADER */}
-            <div className="bg-gradient-to-r from-red-600 via-red-500 to-red-400 px-4 sm:px-8 py-6 sm:py-8 border-b border-red-600 flex items-start justify-between gap-4">
+
+            <div className="flex items-start gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+                <Users size={17} />
+              </div>
+
               <div className="min-w-0 flex-1">
-                <h2 className="text-2xl sm:text-3xl font-bold text-white flex items-center gap-2">
-                  <Users size={28} className="text-white" />
+                <div className="text-base font-bold text-slate-900">
                   Bulk Assign Candidates
-                </h2>
-                <p className="text-sm sm:text-base font-semibold text-red-100 mt-2">
-                  Assign election candidates to this contest in bulk.
+                </div>
+
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Assign election candidates to this contest.
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => {
-                  if (bulkAssignM.isPending) return;
-                  setBulkOpen(false);
-                }}
-                disabled={bulkAssignM.isPending}
-                className="flex-shrink-0 h-10 w-10 flex items-center justify-center rounded-lg border-2 border-red-300 hover:bg-red-700 bg-red-600 transition text-white disabled:opacity-50"
+                disabled={bulkAssignMutation.isPending}
+                onClick={() => setBulkOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600"
               >
-                <X size={20} />
+                <X size={15} />
               </button>
             </div>
 
             {/* CONTENT */}
-            <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 sm:py-7 space-y-5 sm:space-y-6">
-              {/* Mode Selection */}
-              <div className="space-y-3">
-                <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer transition">
-                  <input
-                    type="radio"
-                    name="bulkMode"
-                    checked={bulkMode === "ALL"}
-                    onChange={() => setBulkMode("ALL")}
-                    className="h-5 w-5 accent-red-600 cursor-pointer"
-                  />
-                  <span className="text-base font-semibold text-slate-900">
-                    Assign ALL (filtered list)
-                  </span>
-                </label>
 
-                <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer transition">
+            <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 p-3">
                   <input
                     type="radio"
-                    name="bulkMode"
                     checked={bulkMode === "MANUAL"}
                     onChange={() => setBulkMode("MANUAL")}
-                    className="h-5 w-5 accent-red-600 cursor-pointer"
+                    className="h-4 w-4 accent-violet-600"
                   />
-                  <span className="text-base font-semibold text-slate-900">
+
+                  <span className="text-sm font-semibold text-slate-700">
                     Select manually
                   </span>
                 </label>
+
+                <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 p-3">
+                  <input
+                    type="radio"
+                    checked={bulkMode === "ALL"}
+                    onChange={() => setBulkMode("ALL")}
+                    className="h-4 w-4 accent-violet-600"
+                  />
+
+                  <span className="text-sm font-semibold text-slate-700">
+                    Assign all filtered
+                  </span>
+                </label>
               </div>
 
-              {/* Replace Mode */}
-              <label className="flex items-center gap-3 p-3 rounded-lg border border-slate-300 bg-slate-50 cursor-pointer transition">
+              <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
                 <input
                   type="checkbox"
                   checked={bulkReplace}
-                  onChange={(e) => setBulkReplace(e.target.checked)}
-                  className="h-5 w-5 accent-red-600 cursor-pointer"
+                  onChange={(event) => setBulkReplace(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-amber-600"
                 />
-                <div className="flex-1">
-                  <span className="text-base font-semibold text-slate-900">
+
+                <div>
+                  <div className="text-sm font-bold text-amber-900">
                     Replace mode
-                  </span>
-                  <p className="text-sm text-slate-600">
-                    Deactivate all candidates not selected
-                  </p>
+                  </div>
+
+                  <div className="mt-0.5 text-xs text-amber-700">
+                    Candidates not selected will be deactivated from this
+                    contest.
+                  </div>
                 </div>
               </label>
 
-              {/* Search */}
-              <div>
-                <label className="block text-base font-bold text-slate-900 mb-2 sm:mb-3">
-                  Search & Filter
-                </label>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <Search
-                      size={16}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                    />
-                    <input
-                      value={bulkSearch}
-                      onChange={(e) => setBulkSearch(e.target.value)}
-                      placeholder="Search name / party abbrev / center…"
-                      className="w-full pl-9 pr-4 py-2.5 sm:py-3 rounded-lg border border-slate-300 bg-white text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500 transition"
-                    />
-                  </div>
+              {/* SEARCH */}
 
-                  <button
-                    type="button"
-                    onClick={() => setBulkSearch("")}
-                    className="px-4 h-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-base font-semibold hover:bg-slate-50 transition"
-                  >
-                    Clear
-                  </button>
-                </div>
+              <div className="relative mt-3">
+                <Search
+                  size={15}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+
+                <input
+                  value={bulkSearch}
+                  onChange={(event) => setBulkSearch(event.target.value)}
+                  placeholder="Search candidate / party / center..."
+                  className="min-h-10 w-full rounded-xl border border-slate-300 pl-9 pr-3 text-sm outline-none focus:border-violet-500"
+                />
               </div>
 
-              {/* Candidates List */}
-              <div className="rounded-xl border border-slate-200 overflow-hidden">
-                <div className="bg-slate-50 px-4 py-3 text-base font-bold text-slate-600 flex items-center justify-between border-b border-slate-200">
-                  <span>
-                    Candidates: <b className="text-slate-900">{electionCandidatesFiltered.length}</b>
+              {/* CANDIDATES */}
+
+              <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
+                <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
+                  <span className="text-xs font-bold text-slate-600">
+                    Candidates:{" "}
+                    <strong className="text-slate-900">
+                      {bulkCandidates.length}
+                    </strong>
                   </span>
-                  {bulkMode === "MANUAL" && electionCandidatesFiltered.length > 0 ? (
+
+                  {bulkMode === "MANUAL" && bulkCandidates.length > 0 && (
                     <button
                       type="button"
-                      className="text-sm font-bold text-blue-600 hover:text-blue-700 underline"
-                      onClick={() => {
-                        const all = electionCandidatesFiltered.map(
-                          (x) => x.electId
-                        );
-                        setBulkSelected(all);
-                      }}
+                      onClick={() =>
+                        setBulkSelected(
+                          bulkCandidates.map((candidate) => candidate.electId),
+                        )
+                      }
+                      className="text-xs font-bold text-blue-600"
                     >
-                      Select all (filtered)
+                      Select all
                     </button>
-                  ) : null}
+                  )}
                 </div>
 
-                <div className="max-h-[380px] overflow-auto">
-                  {electionCandidatesQ.isLoading ? (
-                    <div className="p-4 text-slate-600 text-base">
-                      Loading election candidates…
-                    </div>
-                  ) : electionCandidatesQ.isError ? (
-                    <div className="p-4 text-red-700 text-base">
-                      Failed to load election candidates.
-                    </div>
-                  ) : electionCandidatesFiltered.length ? (
-                    <div className="divide-y divide-slate-100">
-                      {electionCandidatesFiltered.map((ec) => {
-                        const meta = [ec.partyAbbrev, ec.centerName]
-                          .filter(Boolean)
-                          .join(" · ");
-                        const checked = bulkSelected.includes(ec.electId);
+                <div className="max-h-[330px] overflow-y-auto">
+                  {bulkCandidates.map((candidate) => {
+                    const checked = bulkSelected.includes(candidate.electId);
 
-                        return (
-                          <label
-                            key={ec.electId}
-                            className="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition"
-                          >
-                            <input
-                              type="checkbox"
-                              disabled={bulkMode === "ALL"}
-                              checked={bulkMode === "ALL" ? true : checked}
-                              onChange={(e) => {
-                                if (bulkMode === "ALL") return;
-                                const on = e.target.checked;
-                                setBulkSelected((prev) => {
-                                  if (on)
-                                    return Array.from(
-                                      new Set([...prev, ec.electId])
-                                    );
-                                  return prev.filter((x) => x !== ec.electId);
-                                });
-                              }}
-                              className="mt-1 h-5 w-5 accent-red-600 cursor-pointer"
-                            />
-                            <div className="grid">
-                              <span className="text-base font-bold text-slate-900">
-                                {ec.fullName}
-                              </span>
-                              {meta && (
-                                <span className="text-base text-slate-600">
-                                  {meta}
-                                </span>
-                              )}
+                    const meta = [candidate.partyAbbrev, candidate.centerName]
+                      .filter(Boolean)
+                      .join(" · ");
+
+                    return (
+                      <label
+                        key={candidate.electId}
+                        className="flex cursor-pointer items-start gap-3 border-b border-slate-100 px-3 py-2.5 last:border-b-0 hover:bg-slate-50"
+                      >
+                        <input
+                          type="checkbox"
+                          disabled={bulkMode === "ALL"}
+                          checked={bulkMode === "ALL" ? true : checked}
+                          onChange={(event) => {
+                            if (bulkMode === "ALL") {
+                              return;
+                            }
+
+                            if (event.target.checked) {
+                              setBulkSelected((current) =>
+                                Array.from(
+                                  new Set([...current, candidate.electId]),
+                                ),
+                              );
+                            } else {
+                              setBulkSelected((current) =>
+                                current.filter(
+                                  (id) => id !== candidate.electId,
+                                ),
+                              );
+                            }
+                          }}
+                          className="mt-0.5 h-4 w-4 accent-violet-600"
+                        />
+
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-slate-900">
+                            {candidate.fullName}
+                          </div>
+
+                          {meta && (
+                            <div className="mt-0.5 text-xs text-slate-500">
+                              {meta}
                             </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="p-4 text-slate-600 text-base">
-                      No candidates match your search.
-                    </div>
-                  )}
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Error */}
-              {bulkAssignM.isError ? (
-                <div className="flex gap-3 rounded-lg bg-red-50 border border-red-200 p-3 sm:p-4">
-                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
-                  <div className="text-sm text-red-700 font-semibold">
-                    {friendlySaveError(bulkAssignM.error)}
-                  </div>
+              {bulkAssignMutation.isError && (
+                <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700">
+                  <AlertCircle size={15} />
+
+                  {friendlyError(bulkAssignMutation.error)}
                 </div>
-              ) : null}
+              )}
             </div>
 
             {/* FOOTER */}
-            <div className="border-t border-slate-200 bg-slate-50 px-4 sm:px-8 py-4 sm:py-5 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
+
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 p-3 sm:flex-row sm:justify-end">
               <button
                 type="button"
-                onClick={() => {
-                  if (bulkAssignM.isPending) return;
-                  setBulkOpen(false);
-                }}
-                disabled={bulkAssignM.isPending}
-                className="px-4 sm:px-6 h-10 rounded-lg border border-slate-300 bg-white text-slate-900 text-base font-semibold hover:bg-slate-50 transition disabled:opacity-50 sm:min-w-fit"
+                disabled={bulkAssignMutation.isPending}
+                onClick={() => setBulkOpen(false)}
+                className="min-h-10 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700"
               >
                 Cancel
               </button>
 
               <button
                 type="button"
-                disabled={!canEdit || bulkAssignM.isPending}
-                onClick={() => bulkAssignM.mutate()}
-                className={`px-4 sm:px-6 h-10 rounded-lg text-base font-semibold text-white transition flex items-center justify-center gap-2 sm:min-w-fit ${
-                  !canEdit || bulkAssignM.isPending
-                    ? "bg-slate-300 cursor-not-allowed opacity-60"
-                    : "bg-red-600 hover:bg-red-700 shadow-sm"
-                }`}
+                disabled={bulkAssignMutation.isPending}
+                onClick={() => bulkAssignMutation.mutate()}
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-bold text-white disabled:bg-slate-300"
               >
-                {bulkAssignM.isPending ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span className="hidden sm:inline">Assigning…</span>
-                  </>
+                {bulkAssignMutation.isPending ? (
+                  <RefreshCw size={14} className="animate-spin" />
                 ) : (
-                  <>
-                    <Users size={18} />
-                    <span className="hidden sm:inline">Assign</span>
-                  </>
+                  <Check size={14} />
                 )}
+
+                {bulkAssignMutation.isPending
+                  ? "Assigning..."
+                  : "Assign Candidates"}
               </button>
             </div>
           </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
- 

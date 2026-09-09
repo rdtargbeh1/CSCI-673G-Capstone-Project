@@ -13,24 +13,41 @@ import java.util.UUID;
 @Repository
 public interface TallySheetRepository extends JpaRepository<TallySheet, UUID> {
 
-    List<TallySheet> findBySubmission_SubmissionIdOrderByDateUploadedDesc(UUID submissionId);
+    List<TallySheet> findBySubmission_SubmissionIdOrderByDateUploadedDesc(
+            UUID submissionId
+    );
 
-    @Query("select count(t) > 0 from TallySheet t " +
-            "where t.submission.submissionId = :submissionId and t.fileSha256 = :sha")
-    boolean existsBySubmissionAndSha(@Param("submissionId") UUID submissionId,
-                                     @Param("sha") String sha);
+    // Used by submission list/search so evidence can be loaded
+    // for the entire page with one database query.
+    List<TallySheet> findBySubmission_SubmissionIdIn(
+            List<UUID> submissionIds
+    );
 
-
+    @Query("""
+            select count(t) > 0
+            from TallySheet t
+            where t.submission.submissionId = :submissionId
+              and t.fileSha256 = :sha
+            """)
+    boolean existsBySubmissionAndSha(
+            @Param("submissionId") UUID submissionId,
+            @Param("sha") String sha
+    );
 
     /**
-     * Evidence policy: Check if a tally sheet exists for a submission (org-scoped).
-     * ✅ Used by verify workflow (server-side enforcement)
+     * Evidence policy: Check if a tally sheet exists for a submission
+     * within an organization.
      */
-    boolean existsByOrganization_OrgIdAndSubmission_SubmissionId(UUID orgId, UUID submissionId);
+    boolean existsByOrganization_OrgIdAndSubmission_SubmissionId(
+            UUID orgId,
+            UUID submissionId
+    );
 
     /**
-     * Optional: Fetch tally sheet by org + submission.
+     * Fetch tally sheet by organization + submission.
      */
-    Optional<TallySheet> findByOrganization_OrgIdAndSubmission_SubmissionId(UUID orgId, UUID submissionId);
-
+    Optional<TallySheet> findByOrganization_OrgIdAndSubmission_SubmissionId(
+            UUID orgId,
+            UUID submissionId
+    );
 }

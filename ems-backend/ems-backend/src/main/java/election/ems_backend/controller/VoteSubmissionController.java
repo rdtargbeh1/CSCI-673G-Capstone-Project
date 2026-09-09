@@ -18,6 +18,7 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -70,16 +71,41 @@ public class VoteSubmissionController {
         return voteSubmissionService.update(id, req, null);
     }
 
-    // Verify
+    // ============================================================================
+        // VERIFY / REJECT
+        //
+        // Same review operation:
+        // accept=true  -> VERIFIED
+        // accept=false -> REJECTED
+    // ============================================================================
     @PostMapping("/{id}/verify")
     public VoteSubmissionDto verify(@PathVariable UUID id, @Valid @RequestBody VoteSubmissionVerifyRequest req) {
+
+        authz.requireAny(
+                "TENANT_ADMIN",
+                "NEC_ADMIN",
+                "NEC_VERIFIER"
+        );
+
         return voteSubmissionService.verify(id, req);
     }
 
 
+    // ============================================================================
+        // AMEND
+        //
+        // Only top administrators.
+        // Service must additionally allow VERIFIED status only.
+    // ============================================================================
+
     @PostMapping("/{id}/amend")
     public VoteSubmissionDto amend(@PathVariable UUID id, @Valid @RequestBody VoteSubmissionAmendRequest req) {
-        authz.requireAnyInTenantOrPlatformAdmin();
+
+        authz.requireAny(
+                "TENANT_ADMIN",
+                "NEC_ADMIN"
+        );
+
         return voteSubmissionService.amend(id, req);
     }
 
@@ -106,8 +132,7 @@ public class VoteSubmissionController {
 
         authz.requireAny(
                 "NEC_ADMIN",
-                "NEC_VERIFIER",
-                "SYSTEM_ADMIN"
+                "TENANT_ADMIN"
         );
 
         voteSubmissionService.delete(submissionId, req);
@@ -124,14 +149,81 @@ public class VoteSubmissionController {
         return voteSubmissionService.submitDraft(id, request);
     }
 
+
+    // ============================================================================
+        // FLAG / UNFLAG
+        // Review-side operation.
+    // ============================================================================
+
     @PostMapping("/{id}/flag")
     public VoteSubmissionDto flag(
             @PathVariable UUID id,
             @Valid @RequestBody VoteSubmissionFlagRequest req
     ) {
+
+        authz.requireAny(
+                "NEC_ADMIN",
+                "NEC_VERIFIER",
+                "TENANT_ADMIN"
+        );
+
         return voteSubmissionService.flag(id, req);
     }
 
+
+// ============================================================================
+// RESUBMIT REJECTED
+//
+// Agent recovery path.
+// Controller establishes authenticated tenant membership.
+// Service MUST verify that the authenticated user is the submission's
+// original agent before allowing REJECTED -> PENDING.
+// ============================================================================
+
+    @PostMapping("/{submissionId}/resubmit")
+    public ResponseEntity<VoteSubmissionDto> resubmitRejected(
+            @PathVariable UUID submissionId,
+            @Valid @RequestBody VoteSubmissionResubmitRequest request
+    ) {
+
+        authz.requireMembership();
+
+        return ResponseEntity.ok(
+                voteSubmissionService.resubmitRejected(
+                        submissionId,
+                        request
+                )
+        );
+    }
+
+
+// ============================================================================
+// REOPEN REJECTED
+//
+// Administrative review/reversal.
+// Does not change vote data.
+// REJECTED -> PENDING only.
+// ============================================================================
+
+    @PostMapping("/{submissionId}/reopen")
+    public ResponseEntity<VoteSubmissionDto> reopenRejected(
+            @PathVariable UUID submissionId,
+            @Valid @RequestBody VoteSubmissionReopenRequest request
+    ) {
+
+        authz.requireAny(
+                "TENANT_ADMIN",
+                "NEC_ADMIN"
+        );
+
+
+        return ResponseEntity.ok(
+                voteSubmissionService.reopenRejected(
+                        submissionId,
+                        request
+                )
+        );
+    }
 
     /**
      * Search submissions with contest-aware filters.
