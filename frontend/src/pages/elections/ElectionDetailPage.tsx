@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   CalendarDays,
   CheckCircle2,
+  Clock3,
   ChevronDown,
   ChevronUp,
   Edit3,
@@ -30,6 +31,7 @@ import {
   fetchElectionById,
   setElectionActive,
   updateElection,
+  type ElectionAccessStatus,
   type ElectionType,
 } from "../../shared/services/electionService";
 
@@ -139,6 +141,36 @@ function friendlySaveError(error: any) {
   return message;
 }
 
+function lifecycleLabel(status: ElectionAccessStatus | null | undefined) {
+  switch (status) {
+    case "DRAFT":
+      return "Draft";
+    case "AVAILABLE":
+      return "Available";
+    case "ARCHIVED":
+      return "Archived";
+    case "CANCELLED":
+      return "Cancelled";
+    default:
+      return "—";
+  }
+}
+
+function lifecycleBadgeClass(status: ElectionAccessStatus | null | undefined) {
+  switch (status) {
+    case "DRAFT":
+      return "border-amber-200 bg-amber-50 text-amber-800";
+    case "AVAILABLE":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "ARCHIVED":
+      return "border-slate-300 bg-slate-100 text-slate-700";
+    case "CANCELLED":
+      return "border-red-200 bg-red-50 text-red-700";
+    default:
+      return "border-slate-200 bg-white text-slate-600";
+  }
+}
+
 // ============================================================================
 // PAGE
 // ============================================================================
@@ -158,7 +190,12 @@ export default function ElectionDetailPage() {
 
   const dashboardMode = useAuthStore((state) => state.dashboardMode);
 
-  const canEdit = dashboardMode === "NEC" || dashboardMode === "SYSTEM";
+  /*
+   * UI/domain hint only. The backend remains authoritative and enforces
+   * SYSTEM_ADMIN or NEC tenant NEC_ADMIN for election governance.
+   */
+  const canManageElection =
+    dashboardMode === "NEC" || dashboardMode === "SYSTEM";
 
   // ==========================================================================
   // PAGE STATE
@@ -357,7 +394,7 @@ export default function ElectionDetailPage() {
   // ==========================================================================
 
   const beginEdit = () => {
-    if (!canEdit || !election) {
+    if (!canManageElection || !election) {
       return;
     }
 
@@ -423,7 +460,7 @@ export default function ElectionDetailPage() {
   const saveChanges = () => {
     setTouched(true);
 
-    if (!canEdit) {
+    if (!canManageElection) {
       return;
     }
 
@@ -451,7 +488,7 @@ export default function ElectionDetailPage() {
   // ==========================================================================
 
   const deleteCurrentElection = () => {
-    if (!canEdit || !election) {
+    if (!canManageElection || !election) {
       return;
     }
 
@@ -523,6 +560,15 @@ export default function ElectionDetailPage() {
       ? "Not set"
       : `${election.ballotSparePercent}%`;
 
+  const lifecycle = election.accessStatus ?? "DRAFT";
+
+  const normalUpdateAllowed =
+    lifecycle === "DRAFT" || lifecycle === "AVAILABLE";
+
+  const deleteAllowed = lifecycle === "DRAFT";
+
+  const activateAllowed = lifecycle !== "ARCHIVED" && lifecycle !== "CANCELLED";
+
   // ==========================================================================
   // VALIDATION
   // ==========================================================================
@@ -575,6 +621,14 @@ export default function ElectionDetailPage() {
                   {election.isActive && <CheckCircle2 size={13} />}
 
                   {election.isActive ? "Active" : "Inactive"}
+                </span>
+
+                <span
+                  className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-xs font-bold ${lifecycleBadgeClass(
+                    lifecycle,
+                  )}`}
+                >
+                  {lifecycleLabel(lifecycle)}
                 </span>
               </div>
 
@@ -636,11 +690,16 @@ export default function ElectionDetailPage() {
 
               {/* EDIT */}
 
-              {canEdit && (
+              {canManageElection && (
                 <button
                   type="button"
                   onClick={beginEdit}
-                  disabled={editing}
+                  disabled={editing || !normalUpdateAllowed}
+                  title={
+                    normalUpdateAllowed
+                      ? "Edit election information"
+                      : "Archived or cancelled elections cannot be changed through normal edit"
+                  }
                   className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Edit3 size={16} />
@@ -650,11 +709,15 @@ export default function ElectionDetailPage() {
 
               {/* ACTIVATE / DEACTIVATE */}
 
-              {canEdit && (
+              {canManageElection && (
                 <button
                   type="button"
                   onClick={() => activeMutation.mutate()}
-                  disabled={activeMutation.isPending || editing}
+                  disabled={
+                    activeMutation.isPending ||
+                    editing ||
+                    (!election.isActive && !activateAllowed)
+                  }
                   className={
                     election.isActive
                       ? "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
@@ -675,11 +738,18 @@ export default function ElectionDetailPage() {
 
               {/* DELETE */}
 
-              {canEdit && (
+              {canManageElection && (
                 <button
                   type="button"
                   onClick={deleteCurrentElection}
-                  disabled={deleteMutation.isPending || editing}
+                  disabled={
+                    deleteMutation.isPending || editing || !deleteAllowed
+                  }
+                  title={
+                    deleteAllowed
+                      ? "Delete Draft election"
+                      : "Only Draft elections may be physically deleted"
+                  }
                   className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {deleteMutation.isPending ? (
@@ -704,6 +774,99 @@ export default function ElectionDetailPage() {
               {friendlyError(deleteMutation.error)}
             </div>
           )}
+        </section>
+
+        {/* ================================================================
+            ELECTION LIFECYCLE
+        ================================================================ */}
+
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="flex min-w-0 flex-col gap-2 border-b border-slate-200 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-base font-bold text-slate-900 sm:text-lg">
+                  Election Lifecycle
+                </h2>
+
+                <span
+                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-bold ${lifecycleBadgeClass(
+                    lifecycle,
+                  )}`}
+                >
+                  {lifecycleLabel(lifecycle)}
+                </span>
+
+                {election.archiveDue && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-800">
+                    <Clock3 size={13} />
+                    Archive Due
+                  </span>
+                )}
+              </div>
+
+              <p className="mt-1 text-xs leading-5 text-slate-500 sm:text-sm">
+                Lifecycle controls when the election is released to eligible
+                tenant organizations. Official NEC result publication remains
+                separate.
+              </p>
+            </div>
+
+            {canManageElection && (
+              <button
+                type="button"
+                onClick={() => navigate(`/elections/${electionId}/lifecycle`)}
+                disabled={editing}
+                className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Clock3 size={16} />
+                {lifecycle === "ARCHIVED"
+                  ? "View Lifecycle"
+                  : "Manage Lifecycle"}
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4 p-3 sm:p-4 lg:grid-cols-4">
+            <LifecycleValue
+              label="Available At"
+              value={formatDateTime(election.availableAt)}
+            />
+
+            <LifecycleValue
+              label="Operational Start"
+              value={formatDateTime(election.startAt)}
+            />
+
+            <LifecycleValue
+              label="Operational End"
+              value={formatDateTime(election.endAt)}
+            />
+
+            <LifecycleValue
+              label="Available Until"
+              value={formatDateTime(election.availableUntil)}
+            />
+
+            {election.archivedAt && (
+              <LifecycleValue
+                label="Archived At"
+                value={formatDateTime(election.archivedAt)}
+              />
+            )}
+
+            {election.archivedReason && (
+              <div className="col-span-2 lg:col-span-3">
+                <LifecycleValue
+                  label={
+                    lifecycle === "CANCELLED"
+                      ? "Cancellation Reason"
+                      : "Archive Reason"
+                  }
+                  value={election.archivedReason}
+                />
+              </div>
+            )}
+          </div>
         </section>
 
         {/* ================================================================
@@ -1265,6 +1428,27 @@ export default function ElectionDetailPage() {
 }
 
 // ============================================================================
+// LIFECYCLE VALUE
+// ============================================================================
+
+function LifecycleValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[10px] font-bold uppercase tracking-[0.07em] text-slate-400 lg:text-[11px]">
+        {label}
+      </div>
+
+      <div
+        className="mt-1 break-words text-sm font-bold leading-5 text-slate-900 lg:text-base lg:leading-6"
+        title={value}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // FIELD LABEL
 // ============================================================================
 
@@ -1319,7 +1503,7 @@ function ActiveEditRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-bold text-slate-900">
-            Active Election
+            Technical Active State
           </span>
 
           {active && (
@@ -1332,7 +1516,8 @@ function ActiveEditRow({
 
         {!compact && (
           <div className="mt-0.5 text-xs text-slate-500">
-            Controls the election's active status.
+            Technical enable/disable state only. Election lifecycle and tenant
+            release are managed separately.
           </div>
         )}
       </div>

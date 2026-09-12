@@ -1,16 +1,16 @@
-// src/pages/elections/workspace/tabs/submissions/SubmissionFlagPage.tsx
+// src/pages/elections/workspace/tabs/submissions/SubmissionReopenPage.tsx
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowLeft, Flag, FlagOff, MapPin } from "lucide-react";
+import { AlertTriangle, ArrowLeft, MapPin, RotateCcw } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { useAuthStore } from "../../../../../shared/store/authStore";
 import { Panel } from "../../../shared/elections-ui";
 
 import {
-  flagSubmission,
   getSubmission,
+  reopenRejectedSubmission,
 } from "../../../../../shared/services/voteSubmissionService";
 
 import { fetchMe } from "../../../../../shared/services/userService";
@@ -18,15 +18,6 @@ import { fetchMe } from "../../../../../shared/services/userService";
 import SubmissionCertification, {
   certificationReady,
 } from "./shared/SubmissionCertification";
-
-// ============================================================================
-// TYPES
-// ============================================================================
-
-type Props = {
-  submissionId: string;
-  mode: "flag" | "unflag";
-};
 
 // ============================================================================
 // HELPERS
@@ -46,7 +37,15 @@ function errorText(error: any) {
     error?.response?.data?.message ??
     error?.response?.data?.error ??
     error?.message ??
-    "The action could not be completed."
+    "The submission could not be reopened."
+  );
+}
+
+function signerName(user: any) {
+  return (
+    [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() ||
+    user?.userName ||
+    ""
   );
 }
 
@@ -54,7 +53,11 @@ function errorText(error: any) {
 // COMPONENT
 // ============================================================================
 
-export default function SubmissionFlagPage({ submissionId, mode }: Props) {
+export default function SubmissionReopenPage({
+  submissionId,
+}: {
+  submissionId: string;
+}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { electionId } = useParams();
@@ -62,15 +65,13 @@ export default function SubmissionFlagPage({ submissionId, mode }: Props) {
   const currentOrgId = useAuthStore((state: any) => state.currentOrgId);
   const user = useAuthStore((state: any) => state.user);
 
-  const isFlag = mode === "flag";
-
   const [reason, setReason] = useState("");
   const [signature, setSignature] = useState("");
   const [certified, setCertified] = useState(false);
 
   const submissionQ = useQuery({
     enabled: Boolean(submissionId),
-    queryKey: ["vote-submission", mode, submissionId],
+    queryKey: ["vote-submission", "reopen", submissionId],
     queryFn: () => getSubmission(submissionId),
     staleTime: 0,
     retry: 1,
@@ -80,7 +81,7 @@ export default function SubmissionFlagPage({ submissionId, mode }: Props) {
 
   const meQ = useQuery({
     enabled: Boolean(currentOrgId),
-    queryKey: ["users", "me", mode, currentOrgId],
+    queryKey: ["users", "me", "reopen", currentOrgId],
     queryFn: () => fetchMe(String(currentOrgId)),
     staleTime: 60_000,
   });
@@ -88,20 +89,10 @@ export default function SubmissionFlagPage({ submissionId, mode }: Props) {
   const actor: any = meQ.data ?? user;
 
   const actorId = String(actor?.userId ?? "");
+  const actorName = signerName(actor);
 
-  const actorName =
-    [actor?.firstName, actor?.lastName]
-      .filter(Boolean)
-      .map((value) => String(value).trim())
-      .filter(Boolean)
-      .join(" ")
-      .trim() || String(actor?.userName ?? "").trim();
-
-  const certificationStatement = isFlag
-    ? "I reviewed this submission and certify that the issue described above requires further review."
-    : "I reviewed the flagged issue and certify that the resolution above accurately reflects the outcome.";
-
-  const reasonReady = reason.trim().length > 0;
+  const certificationStatement =
+    "I reviewed this rejected submission and certify that reopening it for another review is authorized.";
 
   const certificationComplete = certificationReady(
     actorName,
@@ -109,12 +100,13 @@ export default function SubmissionFlagPage({ submissionId, mode }: Props) {
     certified,
   );
 
+  const status = String(submission?.status ?? "").toUpperCase();
+
   const mutation = useMutation({
     mutationFn: () =>
-      flagSubmission(submissionId, {
+      reopenRejectedSubmission(submissionId, {
         actorUserId: actorId,
-        flagged: isFlag,
-        comments: reason.trim(),
+        reason: reason.trim(),
         typedSignature: signature.trim(),
         certificationStatement,
         certificationConfirmed: certified,
@@ -129,14 +121,19 @@ export default function SubmissionFlagPage({ submissionId, mode }: Props) {
         queryKey: ["vote-submissions"],
       });
 
+      await queryClient.invalidateQueries({
+        queryKey: ["vote-submission-actions", submissionId],
+      });
+
       navigate(`/elections/${electionId}/submissions/${submissionId}`);
     },
   });
 
   const canSubmit =
-    reasonReady &&
-    certificationComplete &&
+    status === "REJECTED" &&
     Boolean(actorId) &&
+    reason.trim().length > 0 &&
+    certificationComplete &&
     !mutation.isPending;
 
   const back = () =>
@@ -146,6 +143,7 @@ export default function SubmissionFlagPage({ submissionId, mode }: Props) {
     return (
       <div className="app-form py-10 text-center">
         <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-amber-600" />
+
         <div className="mt-2 text-xs font-semibold text-slate-500">
           Loading submission...
         </div>
@@ -156,12 +154,8 @@ export default function SubmissionFlagPage({ submissionId, mode }: Props) {
   if (submissionQ.isError || !submission) {
     return (
       <div className="app-form">
-        <Panel
-          title={
-            isFlag ? "Flag Vote Submission" : "Resolve / Unflag Submission"
-          }
-        >
-          <div className="border-l-4 border-red-500 bg-red-50 px-3 py-3">
+        <Panel title="Reopen Rejected Submission">
+          <div className="border-l-4 border-red-500 bg-red-50 px-3 py-3 text-xs font-bold text-red-700">
             {errorText(submissionQ.error)}
           </div>
         </Panel>
@@ -171,21 +165,18 @@ export default function SubmissionFlagPage({ submissionId, mode }: Props) {
 
   return (
     <div className="app-form">
-      <Panel
-        title={isFlag ? "Flag Vote Submission" : "Resolve / Unflag Submission"}
-      >
+      <Panel title="Reopen Rejected Submission">
         <main className="mx-auto w-full max-w-[900px] pb-14">
           <button
             type="button"
             onClick={back}
-            className="inline-flex h-8 w-fit items-center justify-center gap-1 rounded-md bg-[#00095f] px-2.5 text-[11px] font-bold leading-none text-white hover:bg-[#000b73] hover:text-[#cb3242] sm:h-9 sm:px-3 sm:text-xs"
+            className="inline-flex h-8 items-center gap-1 rounded-md bg-[#00095f] px-2.5 text-[11px] font-bold text-white hover:bg-[#000b73] hover:text-[#cb3242] sm:h-9 sm:px-3 sm:text-xs"
           >
-            <ArrowLeft size={13} className="shrink-0" />
-            <span>Back</span>
+            <ArrowLeft size={13} />
+            Back
           </button>
 
-          {/* Submission */}
-          <section className="mt-2 flex items-start gap-2 border-b border-slate-200 pb-2">
+          <section className="mt-2 flex items-start gap-2 border-b border-slate-200 pb-3">
             <MapPin size={15} className="mt-0.5 shrink-0 text-blue-600" />
 
             <div className="min-w-0 flex-1">
@@ -193,26 +184,23 @@ export default function SubmissionFlagPage({ submissionId, mode }: Props) {
                 {submission.centerName ?? "Unknown Polling Center"}
               </div>
 
-              <div className="mt-0.5 text-[10px] font-semibold text-slate-500 sm:text-xs">
+              <div className="mt-0.5 text-xs font-semibold text-slate-500">
                 {placeLabel(submission)} • {submission.contestName ?? "—"}
               </div>
             </div>
 
-            {isFlag ? (
-              <Flag size={15} className="shrink-0 text-amber-600" />
-            ) : (
-              <FlagOff size={15} className="shrink-0 text-emerald-600" />
-            )}
+            <span className="rounded-full border border-red-200 bg-red-50 px-2 py-1 text-[9px] font-bold text-red-700">
+              {status}
+            </span>
           </section>
 
-          {/* Reason */}
-          <section className="border-b border-slate-200 py-2.5">
+          <section className="border-b border-slate-200 py-3">
             <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-[12px] font-extrabold text-slate-900 sm:text-sm">
-                {isFlag ? "Reason for Flag" : "Resolution Explanation"}
+              <h2 className="text-sm font-extrabold text-slate-900">
+                Reopen Reason
               </h2>
 
-              <span className="text-[8px] font-bold uppercase text-amber-600">
+              <span className="text-[8px] font-bold uppercase text-red-600">
                 Required
               </span>
             </div>
@@ -220,27 +208,14 @@ export default function SubmissionFlagPage({ submissionId, mode }: Props) {
             <textarea
               value={reason}
               onChange={(event) => setReason(event.target.value)}
-              rows={3}
-              placeholder={
-                isFlag
-                  ? "Describe the issue or discrepancy requiring review..."
-                  : "Explain how the flagged issue was resolved..."
-              }
-              className="w-full resize-y rounded-md border border-slate-300 px-2.5 py-2 text-[11px] outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 sm:text-sm"
+              rows={4}
+              placeholder="Explain why this rejected submission should be returned to review..."
+              className="w-full resize-y rounded-md border border-slate-300 px-2.5 py-2 text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 sm:text-sm"
             />
-
-            {!reasonReady ? (
-              <div className="mt-1 text-[9px] font-semibold text-amber-700">
-                {isFlag
-                  ? "A reason is required."
-                  : "A resolution explanation is required."}
-              </div>
-            ) : null}
           </section>
 
-          {/* Shared certification */}
           <SubmissionCertification
-            title={isFlag ? "Flag Certification" : "Resolution Certification"}
+            title="Reopen Certification"
             signerName={actorName}
             value={signature}
             confirmed={certified}
@@ -252,15 +227,20 @@ export default function SubmissionFlagPage({ submissionId, mode }: Props) {
             statement={certificationStatement}
           />
 
+          {status !== "REJECTED" ? (
+            <div className="mt-3 border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+              Only REJECTED submissions can be reopened.
+            </div>
+          ) : null}
+
           {mutation.isError ? (
-            <div className="mt-2 flex items-start gap-2 border-l-4 border-red-500 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+            <div className="mt-3 flex items-start gap-2 border-l-4 border-red-500 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
               <AlertTriangle size={14} className="shrink-0" />
               {errorText(mutation.error)}
             </div>
           ) : null}
         </main>
 
-        {/* Actions */}
         <div className="sticky bottom-0 z-20 border-t border-slate-200 bg-white/95">
           <div className="mx-auto grid w-full max-w-[900px] grid-cols-[.8fr_1.2fr] gap-2 py-2 sm:flex sm:justify-end">
             <button
@@ -276,20 +256,11 @@ export default function SubmissionFlagPage({ submissionId, mode }: Props) {
               type="button"
               disabled={!canSubmit}
               onClick={() => mutation.mutate()}
-              className={[
-                "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-extrabold text-white disabled:bg-slate-400 sm:min-w-[155px]",
-                isFlag
-                  ? "bg-amber-600 hover:bg-amber-700"
-                  : "bg-emerald-700 hover:bg-emerald-800",
-              ].join(" ")}
+              className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md bg-amber-600 px-3 text-xs font-extrabold text-white hover:bg-amber-700 disabled:bg-slate-400 sm:min-w-[170px]"
             >
-              {isFlag ? <Flag size={13} /> : <FlagOff size={13} />}
+              <RotateCcw size={13} />
 
-              {mutation.isPending
-                ? "Saving..."
-                : isFlag
-                  ? "Flag Submission"
-                  : "Resolve Flag"}
+              {mutation.isPending ? "Reopening..." : "Reopen Submission"}
             </button>
           </div>
         </div>

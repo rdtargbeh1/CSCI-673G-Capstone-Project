@@ -93,7 +93,17 @@ export default function ElectionCreatePage() {
 
   const dashboardMode = useAuthStore((state) => state.dashboardMode);
 
-  const canEdit = dashboardMode === "NEC" || dashboardMode === "SYSTEM";
+  /*
+   * UI convenience only.
+   *
+   * The backend remains authoritative and verifies:
+   * - PLATFORM SYSTEM_ADMIN
+   * - NEC tenant NEC_ADMIN
+   *
+   * dashboardMode identifies the workspace/domain, not the final permission.
+   */
+  const canCreateElection =
+    dashboardMode === "NEC" || dashboardMode === "SYSTEM";
 
   // ==========================================================================
   // FORM STATE
@@ -177,7 +187,7 @@ export default function ElectionCreatePage() {
         ballotSparePercent: spare,
 
         enforceBallotsGteRegistered,
-      } as any);
+      });
     },
 
     onSuccess: async (created) => {
@@ -206,7 +216,7 @@ export default function ElectionCreatePage() {
   const saveElection = () => {
     setTouched(true);
 
-    if (!canEdit) {
+    if (!canCreateElection) {
       return;
     }
 
@@ -221,7 +231,7 @@ export default function ElectionCreatePage() {
   // READ-ONLY GUARD
   // ==========================================================================
 
-  if (!canEdit) {
+  if (!canCreateElection) {
     return (
       <div className="app-form">
         <div className="flex flex-col gap-3">
@@ -238,7 +248,8 @@ export default function ElectionCreatePage() {
                 </div>
 
                 <div className="mt-1 text-sm leading-6 text-amber-800">
-                  Only NEC or SYSTEM users can create elections.
+                  Election creation is restricted to authorized NEC or SYSTEM
+                  administrators.
                 </div>
               </div>
             </div>
@@ -301,8 +312,10 @@ export default function ElectionCreatePage() {
             {/* MOBILE/HEADER SUMMARY */}
 
             <div className="flex flex-wrap items-center gap-1.5">
+              <SummaryChip label="Lifecycle" value="Draft" tone="amber" />
+
               <SummaryChip
-                label="Status"
+                label="Technical"
                 value={active ? "Active" : "Inactive"}
                 tone={active ? "green" : "slate"}
               />
@@ -408,6 +421,13 @@ export default function ElectionCreatePage() {
               </div>
 
               <ActiveElectionRow active={active} setActive={setActive} />
+
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-800 sm:text-sm">
+                <strong>Lifecycle: Draft.</strong> Creating this record does not
+                release it to political parties or other regular tenants.
+                Release is managed separately from the election detail lifecycle
+                controls.
+              </div>
             </div>
           </section>
 
@@ -539,6 +559,12 @@ export default function ElectionCreatePage() {
             </div>
 
             <ActiveElectionRow active={active} setActive={setActive} compact />
+
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+              <strong>Draft lifecycle.</strong> This election is not released to
+              regular tenant organizations until its lifecycle is changed
+              separately.
+            </div>
           </div>
 
           {/* DIVIDER */}
@@ -644,7 +670,7 @@ export default function ElectionCreatePage() {
 
         <section className="hidden rounded-xl border border-slate-200 bg-white p-3 xl:flex xl:items-center xl:justify-between">
           <div className="text-sm text-slate-500">
-            Review the information above, then create the election.
+            Review the information above, then create the Draft election record.
           </div>
 
           <div className="flex items-center gap-2">
@@ -743,7 +769,7 @@ function ActiveElectionRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-bold text-slate-900">
-            Active Election
+            Technical Active State
           </span>
 
           {active && (
@@ -756,7 +782,8 @@ function ActiveElectionRow({
 
         {!compact && (
           <p className="mt-0.5 text-xs leading-5 text-slate-500 sm:text-sm">
-            Controls whether the election is immediately active in the system.
+            Technical enable/disable state only. It does not release the
+            election to tenants; lifecycle remains Draft.
           </p>
         )}
       </div>
@@ -923,6 +950,12 @@ function PolicyPreview({
         <span className="text-slate-300">•</span>
 
         <span>{active ? "Active" : "Inactive"}</span>
+
+        <span className="text-slate-300">•</span>
+
+        <span>
+          Lifecycle: <strong className="text-amber-700">Draft</strong>
+        </span>
       </div>
     );
   }
@@ -946,10 +979,12 @@ function PolicyPreview({
         />
 
         <SummaryBlock
-          label="Status"
+          label="Technical"
           value={active ? "Active" : "Inactive"}
           positive={active}
         />
+
+        <SummaryBlock label="Lifecycle" value="Draft" />
 
         <SummaryBlock label="Type" value={type} />
       </div>
@@ -968,14 +1003,16 @@ function SummaryChip({
 }: {
   label: string;
   value: string;
-  tone?: "slate" | "blue" | "green";
+  tone?: "slate" | "blue" | "green" | "amber";
 }) {
   const style =
     tone === "green"
       ? "border-emerald-200 bg-emerald-50 text-emerald-700"
       : tone === "blue"
         ? "border-blue-200 bg-blue-50 text-blue-700"
-        : "border-slate-200 bg-slate-50 text-slate-700";
+        : tone === "amber"
+          ? "border-amber-200 bg-amber-50 text-amber-800"
+          : "border-slate-200 bg-slate-50 text-slate-700";
 
   return (
     <span

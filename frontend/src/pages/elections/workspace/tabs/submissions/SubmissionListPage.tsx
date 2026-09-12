@@ -11,6 +11,7 @@ import {
   FileCheck2,
   FilterX,
   Plus,
+  Pencil,
   ShieldAlert,
 } from "lucide-react";
 
@@ -465,8 +466,22 @@ export default function SubmissionListPage() {
     navigate(`/elections/${electionId}/submissions/new`);
   }
 
-  function openSubmission(submissionId: string) {
-    if (!electionId || !submissionId) {
+  function openSubmission(row: VoteSubmissionDto) {
+    if (!electionId) {
+      return;
+    }
+
+    const submissionId = String(row?.submissionId ?? "");
+
+    if (!submissionId) {
+      return;
+    }
+
+    const submissionStatus = status(row);
+
+    if (submissionStatus === "DRAFT") {
+      navigate(`/elections/${electionId}/submissions/${submissionId}/edit`);
+
       return;
     }
 
@@ -779,7 +794,7 @@ export default function SubmissionListPage() {
                   key={id}
                   type="button"
                   disabled={!id}
-                  onClick={() => openSubmission(id)}
+                  onClick={() => openSubmission(row)}
                   className="block w-full border-b border-slate-100 text-left transition last:border-b-0 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {/* ====================================================== */}
@@ -859,7 +874,11 @@ export default function SubmissionListPage() {
                           {formatDate(row.submissionTime)}
                         </span>
 
-                        <Eye size={15} className="text-slate-400" />
+                        {rowStatus === "DRAFT" ? (
+                          <Pencil size={15} className="text-blue-500" />
+                        ) : (
+                          <Eye size={15} className="text-slate-400" />
+                        )}
                       </div>
                     </div>
                   </div>

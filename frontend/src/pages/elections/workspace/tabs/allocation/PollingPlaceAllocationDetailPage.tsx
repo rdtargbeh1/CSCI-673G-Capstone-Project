@@ -543,8 +543,13 @@ export default function PollingPlaceAllocationDetailPage() {
                 />
 
                 <EditContext
-                  label="Center Code"
-                  value={allocation.centerCode ?? "—"}
+                  label="County"
+                  value={allocation.countyName ?? "—"}
+                />
+
+                <EditContext
+                  label="District"
+                  value={allocation.districtName ?? "—"}
                 />
               </div>
             </div>
@@ -690,9 +695,19 @@ export default function PollingPlaceAllocationDetailPage() {
                   {allocation.centerName ?? "—"}
                 </div>
 
-                {allocation.centerCode && (
-                  <div className="mt-1 text-xs font-medium text-slate-500 lg:text-sm">
-                    {allocation.centerCode}
+                {(allocation.countyName || allocation.districtName) && (
+                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500 lg:text-sm">
+                    {allocation.countyName && (
+                      <span>{allocation.countyName}</span>
+                    )}
+
+                    {allocation.countyName && allocation.districtName && (
+                      <span className="text-slate-300">•</span>
+                    )}
+
+                    {allocation.districtName && (
+                      <span>{allocation.districtName}</span>
+                    )}
                   </div>
                 )}
               </div>
@@ -775,6 +790,16 @@ export default function PollingPlaceAllocationDetailPage() {
                         value={allocation.centerCode ?? "—"}
                       />
 
+                      <CompactField
+                        label="County"
+                        value={allocation.countyName ?? "—"}
+                      />
+
+                      <CompactField
+                        label="District"
+                        value={allocation.districtName ?? "—"}
+                      />
+
                       <CompactField label="Polling Place" value={placeName} />
 
                       <CompactField
@@ -850,6 +875,16 @@ export default function PollingPlaceAllocationDetailPage() {
                   <DetailField
                     label="Center Code"
                     value={allocation.centerCode ?? "—"}
+                  />
+
+                  <DetailField
+                    label="County"
+                    value={allocation.countyName ?? "—"}
+                  />
+
+                  <DetailField
+                    label="District"
+                    value={allocation.districtName ?? "—"}
                   />
 
                   <DetailField label="Polling Place" value={placeName} />

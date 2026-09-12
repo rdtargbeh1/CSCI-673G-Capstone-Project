@@ -291,7 +291,8 @@ export default function PollingPlaceAllocationsPage() {
         allocation.placeCode,
         allocation.placeNumber,
         allocation.centerName,
-        allocation.centerCode,
+        allocation.countyName,
+        allocation.districtName,
       ]
         .filter((value) => value != null && value !== "")
         .join(" ")
@@ -1066,56 +1067,57 @@ export default function PollingPlaceAllocationsPage() {
 
                       {/* =================================================
                             LINE 3
-                            Center name • Center code
+                            Center name
                         ================================================= */}
 
                       <div
                         className="
                             mt-1.5
-                            flex
                             min-w-0
-                            items-center
-                            gap-1.5
+                            truncate
                             text-xs
-                            text-slate-500
+                            font-medium
+                            text-slate-600
                           "
+                        title={allocation.centerName ?? ""}
                       >
-                        <span
-                          className="
-                              min-w-0
-                              truncate
-                              font-medium
-                              text-slate-600
-                            "
-                          title={allocation.centerName ?? ""}
-                        >
-                          {allocation.centerName ?? "No polling center"}
-                        </span>
-
-                        {allocation.centerCode && (
-                          <>
-                            <span
-                              className="
-                                  shrink-0
-                                  text-slate-300
-                                "
-                            >
-                              •
-                            </span>
-
-                            <span
-                              className="
-                                  min-w-0
-                                  truncate
-                                  text-slate-500
-                                "
-                              title={allocation.centerCode}
-                            >
-                              {allocation.centerCode}
-                            </span>
-                          </>
-                        )}
+                        {allocation.centerName ?? "No polling center"}
                       </div>
+
+                      {/* =================================================
+                            LINE 4
+                            County • District
+                        ================================================= */}
+
+                      {(allocation.countyName || allocation.districtName) && (
+                        <div
+                          className="
+                              mt-0.5
+                              flex
+                              min-w-0
+                              items-center
+                              gap-1.5
+                              text-xs
+                              text-slate-500
+                            "
+                        >
+                          {allocation.countyName && (
+                            <span className="min-w-0 truncate">
+                              {allocation.countyName}
+                            </span>
+                          )}
+
+                          {allocation.countyName && allocation.districtName && (
+                            <span className="shrink-0 text-slate-300">•</span>
+                          )}
+
+                          {allocation.districtName && (
+                            <span className="min-w-0 truncate">
+                              {allocation.districtName}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* ==================================================
@@ -1151,37 +1153,41 @@ export default function PollingPlaceAllocationsPage() {
                           {placeName}
                         </div>
 
-                        {allocation.placeLabel && (
+                        {(allocation.placeLabel || allocation.placeCode) && (
                           <div
                             className="
                                 mt-0.5
-                                truncate
-                                text-xs
-                                font-semibold
-                                text-slate-600
-                              "
-                            title={allocation.placeLabel}
-                          >
-                            {allocation.placeLabel}
-                          </div>
-                        )}
-
-                        {allocation.placeCode && (
-                          <div
-                            className="
-                                mt-0.5
-                                truncate
+                                flex
+                                min-w-0
+                                items-center
+                                gap-1.5
                                 text-xs
                                 text-slate-500
                               "
-                            title={allocation.placeCode}
+                            title={[allocation.placeLabel, allocation.placeCode]
+                              .filter(Boolean)
+                              .join(" • ")}
                           >
-                            {allocation.placeCode}
+                            {allocation.placeLabel && (
+                              <span className="min-w-0 truncate font-semibold text-slate-600">
+                                {allocation.placeLabel}
+                              </span>
+                            )}
+
+                            {allocation.placeLabel && allocation.placeCode && (
+                              <span className="shrink-0 text-slate-300">•</span>
+                            )}
+
+                            {allocation.placeCode && (
+                              <span className="min-w-0 truncate">
+                                {allocation.placeCode}
+                              </span>
+                            )}
                           </div>
                         )}
                       </div>
 
-                      {/* CENTER */}
+                      {/* CENTER / LOCATION */}
 
                       <div className="min-w-0">
                         <div
@@ -1197,16 +1203,42 @@ export default function PollingPlaceAllocationsPage() {
                           {allocation.centerName ?? "—"}
                         </div>
 
-                        {allocation.centerCode && (
+                        {(allocation.countyName || allocation.districtName) && (
                           <div
                             className="
                                 mt-0.5
-                                truncate
+                                flex
+                                min-w-0
+                                items-center
+                                gap-1.5
                                 text-xs
                                 text-slate-500
                               "
+                            title={[
+                              allocation.countyName,
+                              allocation.districtName,
+                            ]
+                              .filter(Boolean)
+                              .join(" • ")}
                           >
-                            {allocation.centerCode}
+                            {allocation.countyName && (
+                              <span className="min-w-0 truncate">
+                                {allocation.countyName}
+                              </span>
+                            )}
+
+                            {allocation.countyName &&
+                              allocation.districtName && (
+                                <span className="shrink-0 text-slate-300">
+                                  •
+                                </span>
+                              )}
+
+                            {allocation.districtName && (
+                              <span className="min-w-0 truncate">
+                                {allocation.districtName}
+                              </span>
+                            )}
                           </div>
                         )}
                       </div>

@@ -793,403 +793,171 @@ export default function PollingCenterAllocationPage() {
                             active:bg-slate-100
 
                             sm:px-4
-                            sm:py-4
+                            sm:py-3
 
-                            lg:px-6
-                            lg:py-5
+                            lg:px-4
+                            lg:py-3
 
-                            xl:px-7
+                            xl:px-5
                           "
                       >
                         {/* ==================================================
-                              MOBILE / SMALL TABLET
+                            MOBILE
 
-                              Row 1:
-                              Center name + status + arrow
+                            Keep the center name readable instead of forcing
+                            every value into one narrow row.
+                        ================================================== */}
 
-                              Row 2:
-                              PC code + Registered label + Ballots label
+                        <div className="sm:hidden">
+                          <div className="grid grid-cols-[minmax(0,1fr)_132px] gap-3">
+                            {/* CENTER / LOCATION */}
+                            <div className="min-w-0">
+                              <h3 className="text-[15px] font-bold leading-5 text-slate-900">
+                                {safeText(
+                                  allocation.centerName,
+                                  "Unnamed center",
+                                )}
+                              </h3>
 
-                              Row 3:
-                              County/District + values
-                          ================================================== */}
+                              <p className="mt-1 truncate text-[11px] font-medium text-slate-500">
+                                {safeText(
+                                  allocation.centerCode,
+                                  "No center code",
+                                )}
+                              </p>
 
-                        <div className="md:hidden">
-                          {/* ROW 1 */}
-
-                          <div
-                            className="
-                                flex
-                                min-w-0
-                                items-center
-                                gap-2
-                              "
-                          >
-                            <h3
-                              className="
-                                  min-w-0
-                                  flex-1
-                                  truncate
-                                  text-sm
-                                  font-bold
-                                  text-slate-900
-
-                                  min-[400px]:text-base
-                                "
-                            >
-                              {safeText(
-                                allocation.centerName,
-                                "Unnamed center",
-                              )}
-                            </h3>
-
-                            <span
-                              className="
-                                  inline-flex
-                                  h-7
-                                  w-7
-                                  shrink-0
-                                  items-center
-                                  justify-center
-                                  rounded-full
-                                  bg-green-50
-                                  text-green-700
-                                "
-                              title="Allocated"
-                            >
-                              <Check size={15} strokeWidth={3} />
-                            </span>
-
-                            <ChevronRight
-                              size={18}
-                              className="
-                                  shrink-0
-                                  text-slate-400
-                                  transition
-
-                                  group-hover:text-blue-600
-                                "
-                            />
-                          </div>
-
-                          {/* ROW 2 */}
-
-                          <div
-                            className="
-                                mt-1
-                                grid
-                                min-w-0
-                                grid-cols-[minmax(0,1fr)_64px_64px]
-                                items-end
-                                gap-2
-                              "
-                          >
-                            <p
-                              className="
-                                  min-w-0
-                                  truncate
-                                  text-[10px]
-                                  font-medium
-                                  text-slate-500
-
-                                  min-[400px]:text-xs
-                                "
-                            >
-                              {safeText(
-                                allocation.centerCode,
-                                "No center code",
-                              )}
-                            </p>
-
-                            <p
-                              className="
-                                  text-[9px]
-                                  font-semibold
-                                  uppercase
-                                  tracking-wide
-                                  text-slate-500
-
-                                  min-[400px]:text-[10px]
-                                "
-                            >
-                              Reg.
-                            </p>
-
-                            <p
-                              className="
-                                  text-[9px]
-                                  font-semibold
-                                  uppercase
-                                  tracking-wide
-                                  text-slate-500
-
-                                  min-[400px]:text-[10px]
-                                "
-                            >
-                              Ballots
-                            </p>
-                          </div>
-
-                          {/* ROW 3 */}
-
-                          <div
-                            className="
-                                mt-0.5
-                                grid
-                                min-w-0
-                                grid-cols-[minmax(0,1fr)_64px_64px]
-                                items-start
-                                gap-2
-                              "
-                          >
-                            <div
-                              className="
-                                  flex
-                                  min-w-0
-                                  items-center
-                                  gap-1
-                                  overflow-hidden
-                                  whitespace-nowrap
-                                  text-[10px]
-                                  text-slate-500
-
-                                  min-[400px]:text-xs
-                                "
-                            >
-                              <span className="truncate">
+                              <p className="mt-0.5 truncate text-[11px] text-slate-500">
                                 {safeText(allocation.countyName, "County")}
-                              </span>
-
-                              <span
-                                className="
-                                    shrink-0
-                                    text-slate-300
-                                  "
-                              >
-                                •
-                              </span>
-
-                              <span className="truncate">
+                                {" · "}
                                 {safeText(allocation.districtName, "District")}
-                              </span>
+                              </p>
                             </div>
 
-                            <p
-                              className="
-                                  text-sm
-                                  font-bold
-                                  leading-none
-                                  text-slate-900
+                            {/* VALUES / STATUS */}
+                            <div className="grid grid-cols-[1fr_1fr_28px] items-end gap-2">
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-500">
+                                  Reg.
+                                </p>
+                                <p className="mt-0.5 text-base font-bold leading-none text-slate-900">
+                                  {formatNumber(allocation.registeredVoters)}
+                                </p>
+                              </div>
 
-                                  min-[400px]:text-base
-                                "
-                            >
-                              {formatNumber(allocation.registeredVoters)}
-                            </p>
+                              <div className="min-w-0">
+                                <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-500">
+                                  Ballots
+                                </p>
+                                <p className="mt-0.5 text-base font-bold leading-none text-slate-900">
+                                  {formatNumber(allocation.ballotsIssued)}
+                                </p>
+                              </div>
 
-                            <p
-                              className="
-                                  text-sm
-                                  font-bold
-                                  leading-none
-                                  text-slate-900
+                              <div className="flex flex-col items-center justify-between self-stretch">
+                                <span
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-green-50 text-green-700"
+                                  title="Allocated"
+                                >
+                                  <Check size={15} strokeWidth={3} />
+                                </span>
 
-                                  min-[400px]:text-base
-                                "
-                            >
-                              {formatNumber(allocation.ballotsIssued)}
-                            </p>
+                                <ChevronRight
+                                  size={18}
+                                  className="text-slate-400 transition group-hover:text-blue-600"
+                                />
+                              </div>
+                            </div>
                           </div>
                         </div>
 
                         {/* ==================================================
-                              TABLET / DESKTOP
-                          ================================================== */}
+                            TABLET / DESKTOP
+
+                            Keep location underneath the center name so the
+                            center column remains useful when a sidebar is open.
+                            Use a check icon instead of the Allocated pill.
+                        ================================================== */}
 
                         <div
                           className="
-                              hidden
-                              min-w-0
-                              items-center
+                            hidden
+                            min-w-0
+                            items-center
+                            gap-3
 
-                              md:grid
-                              md:grid-cols-[minmax(0,1fr)_110px_110px_90px_20px]
-                              md:gap-4
+                            sm:grid
+                            sm:grid-cols-[minmax(0,1fr)_76px_88px_34px_18px]
 
-                              lg:grid-cols-[minmax(0,1fr)_150px_150px_130px_24px]
-                              lg:gap-6
+                            md:grid-cols-[minmax(0,1fr)_84px_96px_34px_18px]
+                            md:gap-4
 
-                              xl:grid-cols-[minmax(0,1fr)_170px_170px_140px_24px]
-                              xl:gap-8
-                            "
+                            xl:grid-cols-[minmax(0,1fr)_96px_108px_34px_20px]
+                            xl:gap-5
+
+                            2xl:grid-cols-[minmax(0,1fr)_110px_120px_34px_20px]
+                          "
                         >
                           {/* CENTER */}
-
                           <div className="min-w-0">
-                            <h3
-                              className="
-                                  truncate
-                                  text-base
-                                  font-bold
-                                  text-slate-900
+                            <div className="flex min-w-0 items-center gap-2">
+                              <h3 className="min-w-0 truncate text-sm font-bold text-slate-900 md:text-[15px] xl:text-base">
+                                {safeText(
+                                  allocation.centerName,
+                                  "Unnamed center",
+                                )}
+                              </h3>
 
-                                  lg:text-[17px]
-
-                                  xl:text-lg
-                                "
-                            >
-                              {safeText(
-                                allocation.centerName,
-                                "Unnamed center",
-                              )}
-                            </h3>
-
-                            <p
-                              className="
-                                  mt-1
-                                  truncate
-                                  text-xs
-                                  font-medium
-                                  text-slate-500
-
-                                  lg:text-sm
-                                "
-                            >
-                              {safeText(
-                                allocation.centerCode,
-                                "No center code",
-                              )}
-                            </p>
-
-                            <div
-                              className="
-                                  mt-1.5
-                                  flex
-                                  min-w-0
-                                  items-center
-                                  gap-2
-                                  overflow-hidden
-                                  whitespace-nowrap
-                                  text-xs
-                                  text-slate-500
-
-                                  lg:mt-2
-                                  lg:text-sm
-                                "
-                            >
-                              <span className="truncate">
-                                {safeText(allocation.countyName, "County")}
+                              <span className="hidden shrink-0 text-slate-300 2xl:inline">
+                                •
                               </span>
 
-                              <span className="text-slate-300">•</span>
-
-                              <span className="truncate">
-                                {safeText(allocation.districtName, "District")}
+                              <span className="hidden max-w-[150px] truncate text-xs font-medium text-slate-500 2xl:inline">
+                                {safeText(
+                                  allocation.centerCode,
+                                  "No center code",
+                                )}
                               </span>
                             </div>
+
+                            <p className="mt-1 truncate text-[10px] text-slate-500 md:text-[11px] xl:text-xs">
+                              {safeText(allocation.countyName, "County")}
+                              {" · "}
+                              {safeText(allocation.districtName, "District")}
+                            </p>
                           </div>
 
                           {/* REGISTERED */}
-
-                          <div>
-                            <p
-                              className="
-                                  text-xs
-                                  font-semibold
-                                  uppercase
-                                  tracking-wide
-                                  text-slate-500
-
-                                  xl:text-[13px]
-                                "
-                            >
-                              Registered
-                            </p>
-
-                            <p
-                              className="
-                                  mt-1
-                                  text-base
-                                  font-bold
-                                  text-slate-900
-
-                                  lg:text-lg
-
-                                  xl:text-xl
-                                "
-                            >
+                          <div className="min-w-0 whitespace-nowrap text-right">
+                            <span className="text-[8px] font-semibold uppercase tracking-wide text-slate-500 md:text-[9px]">
+                              Reg.
+                            </span>
+                            <span className="ml-1 text-sm font-bold text-slate-900 md:text-[15px] xl:text-base">
                               {formatNumber(allocation.registeredVoters)}
-                            </p>
-                          </div>
-
-                          {/* BALLOTS */}
-
-                          <div>
-                            <p
-                              className="
-                                  text-xs
-                                  font-semibold
-                                  uppercase
-                                  tracking-wide
-                                  text-slate-500
-
-                                  xl:text-[13px]
-                                "
-                            >
-                              Ballots
-                            </p>
-
-                            <p
-                              className="
-                                  mt-1
-                                  text-base
-                                  font-bold
-                                  text-slate-900
-
-                                  lg:text-lg
-
-                                  xl:text-xl
-                                "
-                            >
-                              {formatNumber(allocation.ballotsIssued)}
-                            </p>
-                          </div>
-
-                          {/* STATUS */}
-
-                          <div className="flex justify-end">
-                            <span
-                              className="
-                                  inline-flex
-                                  items-center
-                                  rounded-full
-                                  bg-green-50
-                                  px-2.5
-                                  py-1
-                                  text-xs
-                                  font-semibold
-                                  text-green-700
-
-                                  lg:px-3
-                                  lg:py-1.5
-                                  lg:text-sm
-                                "
-                            >
-                              Allocated
                             </span>
                           </div>
 
+                          {/* BALLOTS */}
+                          <div className="min-w-0 whitespace-nowrap text-right">
+                            <span className="text-[8px] font-semibold uppercase tracking-wide text-slate-500 md:text-[9px]">
+                              Ballots
+                            </span>
+                            <span className="ml-1 text-sm font-bold text-slate-900 md:text-[15px] xl:text-base">
+                              {formatNumber(allocation.ballotsIssued)}
+                            </span>
+                          </div>
+
+                          {/* STATUS */}
+                          <span
+                            className="inline-flex h-7 w-7 items-center justify-center justify-self-end rounded-full bg-green-50 text-green-700"
+                            title="Allocated"
+                          >
+                            <Check size={15} strokeWidth={3} />
+                          </span>
+
                           {/* CHEVRON */}
-
                           <ChevronRight
-                            size={21}
-                            className="
-                                shrink-0
-                                text-slate-400
-                                transition
-
-                                group-hover:text-blue-600
-                              "
+                            size={18}
+                            className="justify-self-end text-slate-400 transition group-hover:text-blue-600"
                           />
                         </div>
                       </button>

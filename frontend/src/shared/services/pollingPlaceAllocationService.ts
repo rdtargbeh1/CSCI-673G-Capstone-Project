@@ -22,6 +22,14 @@ export type PollingPlaceAllocationDto = {
   centerCode?: string | null;
   centerName?: string | null;
 
+  // District
+  districtId?: string | null;
+  districtName?: string | null;
+
+  // County
+  countyId?: string | null;
+  countyName?: string | null;
+
   // Allocation Values
   registeredVoters: number;
   ballotsIssued?: number | null;

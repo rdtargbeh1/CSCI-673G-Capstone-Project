@@ -6,10 +6,16 @@
 // - Sends X-Org-Id header for TENANT/NEC mode
 // - SYSTEM mode must NOT send X-Org-Id header (orgId goes in query)
 //
-// ✅ Updates:
-// - VoteStatus includes DELETED
+// ✅ Backend-aligned workflow support:
+// - DRAFT -> PENDING via submitDraft()
+// - PENDING/FLAGGED -> VERIFIED or REJECTED via verifySubmission()
+// - PENDING/DRAFT <-> FLAGGED via flagSubmission()
+// - VERIFIED amendment via amendSubmission()
+// - REJECTED -> PENDING via resubmitRejectedSubmission() (agent recovery)
+// - REJECTED -> PENDING via reopenRejectedSubmission() (admin review)
+// - Soft delete via deleteSubmission()
+// - Certification fields are required for workflow actions except DELETE
 // - searchSubmissions supports includeDeleted (default false)
-// - deleteSubmission uses DELETE /vote-submissions/{id} with body { reason, deletedByUserId }
 
 import { apiClient, sysClient } from "../lib/apiClient";
 import { useAuthStore } from "../store/authStore";
@@ -182,21 +188,28 @@ export type VoteSubmissionUpdateRequest = {
   longitude?: number;
 };
 
-export type VoteSubmissionVerifyRequest = {
+export type VoteSubmissionCertification = {
+  typedSignature: string;
+  certificationStatement: string;
+  certificationConfirmed: boolean;
+};
+
+export type VoteSubmissionVerifyRequest = VoteSubmissionCertification & {
   verifierUserId: string;
   accept: boolean;
   comment?: string;
 };
 
-export type VoteSubmissionFlagRequest = {
+export type VoteSubmissionFlagRequest = VoteSubmissionCertification & {
   actorUserId: string;
   flagged: boolean;
   comments?: string;
 };
 
-export type VoteSubmissionAmendRequest = {
+export type VoteSubmissionAmendRequest = VoteSubmissionCertification & {
   actorUserId: string;
   reason: string;
+
   candidateVotes?: Record<string, number>;
   ballotsInBox?: number;
 
@@ -205,6 +218,24 @@ export type VoteSubmissionAmendRequest = {
   rejectedBallots?: number;
   spoiledBallots?: number;
   unusedBallots?: number;
+};
+
+export type VoteSubmissionResubmitRequest = VoteSubmissionCertification & {
+  actorUserId: string;
+  reason: string;
+
+  candidateVotes?: Record<string, number>;
+  ballotsInBox?: number;
+  invalidBallots?: number;
+  unmarkedBallots?: number;
+  rejectedBallots?: number;
+  spoiledBallots?: number;
+  unusedBallots?: number;
+};
+
+export type VoteSubmissionReopenRequest = VoteSubmissionCertification & {
+  actorUserId: string;
+  reason: string;
 };
 
 /** ✅ DELETE request (backend requires BOTH) */
@@ -371,6 +402,25 @@ export async function getSubmission(id: string): Promise<VoteSubmissionDto> {
   return res.data as VoteSubmissionDto;
 }
 
+export async function countVisibleSubmissions(): Promise<number> {
+  const client = pickClient();
+  const res = await client.get("/vote-submissions/count", {
+    headers: tenantHeaders(null),
+  });
+  return Number(res.data ?? 0);
+}
+
+/** Submit an existing DRAFT. Backend performs final validation and moves it to PENDING. */
+export async function submitDraft(id: string): Promise<VoteSubmissionDto> {
+  const client = pickClient();
+  const res = await client.post(
+    `/vote-submissions/${id}/submit-draft`,
+    undefined,
+    { headers: tenantHeaders(null) },
+  );
+  return res.data as VoteSubmissionDto;
+}
+
 export async function updateSubmissionJson(
   id: string,
   req: VoteSubmissionUpdateRequest,
@@ -434,6 +484,9 @@ export async function verifySubmission(
   id: string,
   req: VoteSubmissionVerifyRequest,
 ): Promise<VoteSubmissionDto> {
+  if (!req?.verifierUserId) throw new Error("verifierUserId is required");
+  assertCertification(req);
+
   const client = pickClient();
   const res = await client.post(`/vote-submissions/${id}/verify`, req, {
     headers: tenantHeaders(null),
@@ -450,17 +503,12 @@ export async function flagSubmission(
   if (req.flagged && !(req.comments ?? "").trim()) {
     throw new Error("comments is required when flagged=true");
   }
+  assertCertification(req);
 
   const client = pickClient();
-  const res = await client.post(
-    `/vote-submissions/${id}/flag`,
-    {
-      actorUserId: req.actorUserId,
-      flagged: req.flagged,
-      comments: req.comments,
-    },
-    { headers: tenantHeaders(null) },
-  );
+  const res = await client.post(`/vote-submissions/${id}/flag`, req, {
+    headers: tenantHeaders(null),
+  });
 
   return res.data as VoteSubmissionDto;
 }
@@ -471,6 +519,7 @@ export async function amendSubmission(
 ): Promise<VoteSubmissionDto> {
   if (!req?.actorUserId) throw new Error("actorUserId is required");
   if (!(req?.reason ?? "").trim()) throw new Error("reason is required");
+  assertCertification(req);
 
   const client = pickClient();
   const payload = normalizeAmendPayload(req);
@@ -482,7 +531,63 @@ export async function amendSubmission(
   return res.data as VoteSubmissionDto;
 }
 
+/**
+ * Agent recovery path for a REJECTED submission.
+ * Backend enforces that the actor is the original submitting agent.
+ */
+export async function resubmitRejectedSubmission(
+  id: string,
+  req: VoteSubmissionResubmitRequest,
+): Promise<VoteSubmissionDto> {
+  if (!req?.actorUserId) throw new Error("actorUserId is required");
+  if (!(req?.reason ?? "").trim()) throw new Error("reason is required");
+  assertCertification(req);
+
+  const client = pickClient();
+  const payload = normalizeResubmitPayload(req);
+
+  const res = await client.post(`/vote-submissions/${id}/resubmit`, payload, {
+    headers: tenantHeaders(null),
+  });
+
+  return res.data as VoteSubmissionDto;
+}
+
+/**
+ * Administrative reversal for a REJECTED submission.
+ * This changes workflow state back to PENDING without modifying vote values.
+ */
+export async function reopenRejectedSubmission(
+  id: string,
+  req: VoteSubmissionReopenRequest,
+): Promise<VoteSubmissionDto> {
+  if (!req?.actorUserId) throw new Error("actorUserId is required");
+  if (!(req?.reason ?? "").trim()) throw new Error("reason is required");
+  assertCertification(req);
+
+  const client = pickClient();
+  const res = await client.post(`/vote-submissions/${id}/reopen`, req, {
+    headers: tenantHeaders(null),
+  });
+
+  return res.data as VoteSubmissionDto;
+}
+
 /* ---------------- helpers ---------------- */
+
+function assertCertification(p: VoteSubmissionCertification) {
+  if (!Boolean(p?.certificationConfirmed)) {
+    throw new Error("certificationConfirmed must be true");
+  }
+
+  if (!(p?.typedSignature ?? "").trim()) {
+    throw new Error("typedSignature is required");
+  }
+
+  if (!(p?.certificationStatement ?? "").trim()) {
+    throw new Error("certificationStatement is required");
+  }
+}
 
 function sumCandidateVotes(v?: Record<string, number>) {
   if (!v) return 0;
@@ -539,4 +644,23 @@ function normalizeAmendPayload(
   }
 
   return p;
+}
+
+function normalizeResubmitPayload(
+  p: VoteSubmissionResubmitRequest,
+): VoteSubmissionResubmitRequest {
+  const hasVotes =
+    !!p.candidateVotes && Object.keys(p.candidateVotes).length > 0;
+
+  if (!hasVotes || p.ballotsInBox != null) return p;
+
+  const invalidTotalInBox =
+    (Number(p.invalidBallots) || 0) +
+    (Number(p.unmarkedBallots) || 0) +
+    (Number(p.rejectedBallots) || 0);
+
+  return {
+    ...p,
+    ballotsInBox: sumCandidateVotes(p.candidateVotes) + invalidTotalInBox,
+  };
 }

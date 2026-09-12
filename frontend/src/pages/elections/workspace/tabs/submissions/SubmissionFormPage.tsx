@@ -36,6 +36,7 @@ import { fetchMe } from "../../../../../shared/services/userService";
 import {
   createSubmissionMultipart,
   getSubmission,
+  submitDraft,
   updateSubmissionJson,
   updateSubmissionMultipart,
   type VoteSubmissionCreateRequest,
@@ -147,7 +148,13 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const isCreate = mode === "create";
+  const normalizedSubmissionId = String(submissionId ?? "").trim();
+
+  const hasSubmissionId = Boolean(normalizedSubmissionId);
+
+  // A submission ID is authoritative. Once a DRAFT has been created, this
+  // form must never enter the create flow again for that record.
+  const isCreate = mode === "create" && !hasSubmissionId;
 
   // ==========================================================================
   // AUTH
@@ -186,12 +193,23 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
 
     queryKey: ["vote-submission", "edit", submissionId],
 
-    queryFn: () => getSubmission(String(submissionId)),
+    queryFn: () => getSubmission(normalizedSubmissionId),
 
     staleTime: 0,
   });
 
   const existing: any = submissionQ.data;
+
+  const existingStatus = String(existing?.status ?? "").toUpperCase();
+
+  const isExistingDraft = hasSubmissionId && existingStatus === "DRAFT";
+
+  const isDraftForm = isCreate || isExistingDraft;
+
+  const existingEvidence =
+    Boolean(existing?.hasTallySheet) ||
+    Number(existing?.tallySheetCount ?? 0) > 0 ||
+    Boolean(String(existing?.tallySheetUrl ?? "").trim());
 
   // ==========================================================================
   // LOOKUPS
@@ -266,7 +284,7 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
   // ==========================================================================
 
   const districtsQ = useQuery({
-    enabled: isCreate && Boolean(countyId),
+    enabled: isDraftForm && Boolean(countyId),
 
     queryKey: ["districts", "submission-form", countyId],
 
@@ -276,7 +294,8 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
   });
 
   const centersQ = useQuery({
-    enabled: isCreate && Boolean(countyId || districtId),
+    enabled:
+      isDraftForm && (isExistingDraft || Boolean(countyId || districtId)),
 
     queryKey: ["centers", "submission-form", countyId, districtId],
 
@@ -296,7 +315,7 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
   });
 
   const placesQ = useQuery({
-    enabled: isCreate && Boolean(centerId),
+    enabled: isDraftForm && Boolean(centerId),
 
     queryKey: ["places", "submission-form", centerId],
 
@@ -456,7 +475,7 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
   // ==========================================================================
 
   const allocationQ = useQuery({
-    enabled: isCreate && Boolean(electionId && placeId),
+    enabled: isDraftForm && Boolean(electionId && placeId),
 
     queryKey: ["place-allocation", electionId, placeId],
 
@@ -484,7 +503,7 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
   const expectedIssued = Number((allocationQ.data as any)?.ballotsIssued);
 
   // ==========================================================================
-  // HYDRATE EDIT
+  // HYDRATE EDIT / DRAFT
   // ==========================================================================
 
   useEffect(() => {
@@ -492,15 +511,15 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
       return;
     }
 
-    setCountyId(existing.countyId ?? "");
+    setCountyId(String(existing.countyId ?? ""));
 
-    setDistrictId(existing.districtId ?? "");
+    setDistrictId(String(existing.districtId ?? ""));
 
-    setCenterId(existing.centerId ?? "");
+    setCenterId(String(existing.centerId ?? ""));
 
-    setPlaceId(existing.placeId ?? "");
+    setPlaceId(String(existing.placeId ?? ""));
 
-    setContestId(existing.contestId ?? "");
+    setContestId(String(existing.contestId ?? ""));
 
     setCandidateVotes(existing.candidateVotes ?? {});
 
@@ -522,6 +541,155 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
 
     setLongitude(existing.longitude ?? "");
   }, [isCreate, existing]);
+
+  // --------------------------------------------------------------------------
+  // RESTORE COUNTY FOR SAVED DRAFT
+  //
+  // VoteSubmissionDto may not carry countyId, so resolve it from countyName
+  // when necessary.
+  // --------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (!isExistingDraft || countyId || !existing || !countiesQ.data) {
+      return;
+    }
+
+    const countyName = String(existing.countyName ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (!countyName) {
+      return;
+    }
+
+    const county = (countiesQ.data as any[]).find(
+      (item: any) =>
+        String(item?.countyName ?? "")
+          .trim()
+          .toLowerCase() === countyName,
+    );
+
+    if (county?.countyId) {
+      setCountyId(String(county.countyId));
+    }
+  }, [isExistingDraft, countyId, existing, countiesQ.data]);
+
+  // --------------------------------------------------------------------------
+  // RESTORE DISTRICT FOR SAVED DRAFT
+  // --------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (!isExistingDraft || districtId || !existing || !districtsQ.data) {
+      return;
+    }
+
+    const districtName = String(existing.districtName ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (!districtName) {
+      return;
+    }
+
+    const district = (districtsQ.data as any[]).find(
+      (item: any) =>
+        String(item?.districtName ?? "")
+          .trim()
+          .toLowerCase() === districtName,
+    );
+
+    if (district?.districtId) {
+      setDistrictId(String(district.districtId));
+    }
+  }, [isExistingDraft, districtId, existing, districtsQ.data]);
+
+  // --------------------------------------------------------------------------
+  // RESTORE CENTER FOR SAVED DRAFT
+  //
+  // centerId is normally present. The name fallback protects older records.
+  // --------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (!isExistingDraft || centerId || !existing || !centersQ.data) {
+      return;
+    }
+
+    const centerName = String(existing.centerName ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (!centerName) {
+      return;
+    }
+
+    const center = (centersQ.data as any[]).find(
+      (item: any) =>
+        String(item?.centerName ?? "")
+          .trim()
+          .toLowerCase() === centerName,
+    );
+
+    if (center?.centerId) {
+      setCenterId(String(center.centerId));
+    }
+  }, [isExistingDraft, centerId, existing, centersQ.data]);
+
+  // --------------------------------------------------------------------------
+  // RESTORE PLACE FOR SAVED DRAFT
+  //
+  // Some submission DTOs expose placeCode/placeNumber/placeLabel instead of
+  // placeId. Resolve the actual placeId from the polling-center places.
+  // --------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (!isExistingDraft || placeId || !existing || !placesQ.data) {
+      return;
+    }
+
+    const existingPlaceCode = String(existing.placeCode ?? "")
+      .trim()
+      .toLowerCase();
+
+    const existingPlaceLabel = String(existing.placeLabel ?? "")
+      .trim()
+      .toLowerCase();
+
+    const existingPlaceNumber =
+      existing.placeNumber == null ? null : Number(existing.placeNumber);
+
+    const place = (placesQ.data as any[]).find((item: any) => {
+      const itemCode = String(item?.placeCode ?? item?.code ?? "")
+        .trim()
+        .toLowerCase();
+
+      const itemLabel = String(
+        item?.placeLabel ??
+          (item?.placeNumber != null ? `Place ${item.placeNumber}` : ""),
+      )
+        .trim()
+        .toLowerCase();
+
+      const itemNumber =
+        item?.placeNumber == null ? null : Number(item.placeNumber);
+
+      const codeMatches =
+        Boolean(existingPlaceCode) && itemCode === existingPlaceCode;
+
+      const labelMatches =
+        Boolean(existingPlaceLabel) && itemLabel === existingPlaceLabel;
+
+      const numberMatches =
+        existingPlaceNumber !== null &&
+        itemNumber !== null &&
+        itemNumber === existingPlaceNumber;
+
+      return codeMatches || labelMatches || numberMatches;
+    });
+
+    if (place?.placeId) {
+      setPlaceId(String(place.placeId));
+    }
+  }, [isExistingDraft, placeId, existing, placesQ.data]);
 
   // ==========================================================================
   // GPS
@@ -683,28 +851,60 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
   // MUTATIONS
   // ==========================================================================
 
+  type CreateMutationInput = {
+    request: VoteSubmissionCreateRequest;
+    draft: boolean;
+  };
+
   const createM = useMutation({
-    mutationFn: (request: VoteSubmissionCreateRequest) =>
-      createSubmissionMultipart({
+    mutationFn: ({ request }: CreateMutationInput) => {
+      if (hasSubmissionId) {
+        throw new Error(
+          "This submission already exists. Existing drafts must be updated, not created again.",
+        );
+      }
+
+      return createSubmissionMultipart({
         payload: request,
 
         files,
-      }),
+      });
+    },
 
-    onSuccess: async (created: any) => {
+    onSuccess: async (created: any, variables: CreateMutationInput) => {
       await queryClient.invalidateQueries({
-        queryKey: ["vote-submissions", electionId],
+        queryKey: ["vote-submissions"],
       });
 
-      navigate(`/elections/${electionId}/submissions/${created.submissionId}`);
+      const createdId = String(created?.submissionId ?? created?.id ?? "");
+
+      if (!createdId) {
+        throw new Error(
+          "The submission was saved, but no submission ID was returned.",
+        );
+      }
+
+      if (variables.draft) {
+        navigate(`/elections/${electionId}/submissions/${createdId}/edit`, {
+          replace: true,
+        });
+
+        return;
+      }
+
+      navigate(`/elections/${electionId}/submissions/${createdId}`);
     },
   });
 
   const updateM = useMutation({
     mutationFn: async (request: VoteSubmissionUpdateRequest) => {
+      if (!submissionId) {
+        throw new Error("The vote submission ID is missing.");
+      }
+
       if (files.length > 0) {
         return updateSubmissionMultipart({
-          id: String(submissionId),
+          id: normalizedSubmissionId,
 
           payload: request,
 
@@ -713,10 +913,60 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
       }
 
       return updateSubmissionJson(
-        String(submissionId),
+        normalizedSubmissionId,
 
         request,
       );
+    },
+
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["vote-submission"],
+      });
+
+      await queryClient.invalidateQueries({
+        queryKey: ["vote-submissions"],
+      });
+
+      setFiles([]);
+
+      if (isExistingDraft) {
+        await queryClient.invalidateQueries({
+          queryKey: ["vote-submission", "edit", submissionId],
+        });
+
+        return;
+      }
+
+      navigate(`/elections/${electionId}/submissions/${submissionId}`);
+    },
+  });
+
+  const submitDraftM = useMutation({
+    mutationFn: async () => {
+      if (!submissionId) {
+        throw new Error("The vote submission ID is missing.");
+      }
+
+      const request = buildUpdateRequest();
+
+      if (files.length > 0) {
+        await updateSubmissionMultipart({
+          id: normalizedSubmissionId,
+
+          payload: request,
+
+          files,
+        });
+      } else {
+        await updateSubmissionJson(
+          normalizedSubmissionId,
+
+          request,
+        );
+      }
+
+      return submitDraft(normalizedSubmissionId);
     },
 
     onSuccess: async () => {
@@ -732,13 +982,13 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
     },
   });
 
-  const busy = createM.isPending || updateM.isPending;
+  const busy = createM.isPending || updateM.isPending || submitDraftM.isPending;
 
   // ==========================================================================
   // READINESS
   // ==========================================================================
 
-  const locationReady = isCreate
+  const locationReady = isDraftForm
     ? Boolean(orgId && electionId && centerId && placeId && contestId)
     : Boolean(submissionId);
 
@@ -746,20 +996,24 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
 
   const reconcileReady = !exceedsIssued && !exceedsRegistered;
 
+  const evidenceReady = files.length > 0 || existingEvidence;
+
   /**
-   * Notes are required for both Draft and final submission.
+   * Draft saves require enough context to reopen the record safely.
    */
   const canDraft = locationReady && ballotsReceivedReady && notesReady && !busy;
 
   /**
-   * Final submission additionally requires evidence.
+   * Final submission requires a reconciled tally, evidence, and at least
+   * one ballot in the box.
    */
   const canSubmit =
     locationReady &&
     ballotsReceivedReady &&
     notesReady &&
     reconcileReady &&
-    files.length > 0 &&
+    evidenceReady &&
+    ballotsInBox > 0 &&
     !busy;
 
   // ==========================================================================
@@ -831,7 +1085,7 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
 
   function goBack() {
     navigate(
-      isCreate
+      isCreate || isExistingDraft
         ? `/elections/${electionId}/submissions`
         : `/elections/${electionId}/submissions/${submissionId}`,
     );
@@ -859,7 +1113,15 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
 
   return (
     <div className="app-form">
-      <Panel title={isCreate ? "New Vote Submission" : "Edit Vote Submission"}>
+      <Panel
+        title={
+          isCreate
+            ? "New Vote Submission"
+            : isExistingDraft
+              ? "Draft Vote Submission"
+              : "Edit Vote Submission"
+        }
+      >
         <div className="flex flex-col gap-2 pb-16">
           {/* ================================================================= */}
           {/* BACK */}
@@ -883,7 +1145,7 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
             title="Submission Context"
             icon={<MapPin size={15} />}
             right={
-              isCreate && contextReady ? (
+              isDraftForm && contextReady ? (
                 <button
                   type="button"
                   onClick={() => setContextExpanded((current) => !current)}
@@ -904,7 +1166,7 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
               ) : null
             }
           >
-            {isCreate ? (
+            {isDraftForm ? (
               <>
                 {!contextExpanded && contextReady ? (
                   <div className="space-y-2">
@@ -950,6 +1212,7 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
                         label="County"
                         value={countyId}
                         onChange={setCountyId}
+                        disabled={!isCreate}
                         options={countyOptions}
                       />
 
@@ -957,7 +1220,7 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
                         label="District"
                         value={districtId}
                         onChange={setDistrictId}
-                        disabled={!countyId}
+                        disabled={!isCreate || !countyId}
                         options={districtOptions}
                       />
 
@@ -965,7 +1228,7 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
                         label="Polling Center"
                         value={centerId}
                         onChange={setCenterId}
-                        disabled={!countyId}
+                        disabled={!isCreate || !countyId}
                         wrapperClassName="col-span-2 lg:col-span-1"
                         options={centerOptions}
                       />
@@ -974,7 +1237,7 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
                         label="Polling Place"
                         value={placeId}
                         onChange={handlePlaceChange}
-                        disabled={!centerId}
+                        disabled={!isCreate || !centerId}
                         options={placeOptions}
                       />
 
@@ -982,6 +1245,7 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
                         label="Contest"
                         value={contestId}
                         onChange={handleContestChange}
+                        disabled={!isCreate}
                         options={contestOptions}
                       />
                     </div>
@@ -1224,7 +1488,11 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
               right={
                 files.length > 0 ? (
                   <span className="text-[10px] font-bold text-emerald-700">
-                    {files.length} attached
+                    {files.length} new attached
+                  </span>
+                ) : existingEvidence ? (
+                  <span className="text-[10px] font-bold text-emerald-700">
+                    Existing evidence attached
                   </span>
                 ) : null
               }
@@ -1296,6 +1564,10 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
                       </button>
                     </div>
                   ))}
+                </div>
+              ) : existingEvidence ? (
+                <div className="mt-1.5 text-[10px] font-semibold text-emerald-700">
+                  Existing evidence will be retained with this submission.
                 </div>
               ) : (
                 <div className="mt-1.5 text-[10px] font-semibold text-amber-700">
@@ -1383,11 +1655,11 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
           {/* ERROR */}
           {/* ================================================================= */}
 
-          {createM.isError || updateM.isError ? (
+          {createM.isError || updateM.isError || submitDraftM.isError ? (
             <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
               <AlertTriangle size={15} className="mt-0.5 shrink-0" />
 
-              {errorText(createM.error ?? updateM.error)}
+              {errorText(createM.error ?? updateM.error ?? submitDraftM.error)}
             </div>
           ) : null}
         </div>
@@ -1411,22 +1683,57 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
               <button
                 type="button"
                 disabled={!canDraft}
-                onClick={() => createM.mutate(buildCreateRequest(true))}
+                onClick={() =>
+                  createM.mutate({
+                    request: buildCreateRequest(true),
+                    draft: true,
+                  })
+                }
                 className="inline-flex min-h-11 items-center justify-center gap-1 rounded-lg border border-slate-300 px-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 sm:px-4"
               >
                 <Save size={14} />
-                Draft
+
+                {createM.isPending ? "Saving..." : "Save Draft"}
               </button>
 
               <button
                 type="button"
                 disabled={!canSubmit}
-                onClick={() => createM.mutate(buildCreateRequest(false))}
+                onClick={() =>
+                  createM.mutate({
+                    request: buildCreateRequest(false),
+                    draft: false,
+                  })
+                }
                 className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-blue-700 px-2 text-sm font-extrabold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-400 sm:px-5"
               >
                 <Send size={14} />
 
-                {busy ? "Submitting..." : "Submit Votes"}
+                {createM.isPending ? "Submitting..." : "Submit for Review"}
+              </button>
+            </>
+          ) : isExistingDraft ? (
+            <>
+              <button
+                type="button"
+                disabled={!canDraft}
+                onClick={() => updateM.mutate(buildUpdateRequest())}
+                className="inline-flex min-h-11 items-center justify-center gap-1 rounded-lg border border-slate-300 px-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 sm:px-4"
+              >
+                <Save size={14} />
+
+                {updateM.isPending ? "Saving..." : "Save Draft"}
+              </button>
+
+              <button
+                type="button"
+                disabled={!canSubmit}
+                onClick={() => submitDraftM.mutate()}
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-blue-700 px-2 text-sm font-extrabold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-400 sm:px-5"
+              >
+                <Send size={14} />
+
+                {submitDraftM.isPending ? "Submitting..." : "Submit for Review"}
               </button>
             </>
           ) : (
@@ -1438,7 +1745,7 @@ export default function SubmissionFormPage({ mode, submissionId }: Props) {
             >
               <Save size={14} />
 
-              {busy ? "Saving..." : "Save Changes"}
+              {updateM.isPending ? "Saving..." : "Save Changes"}
             </button>
           )}
         </section>

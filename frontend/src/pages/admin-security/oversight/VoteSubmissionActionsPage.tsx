@@ -1,6 +1,6 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -24,10 +24,17 @@ import {
 import { AdminShell, Card } from "../shared/admin-ui";
 
 import {
+  countVoteSubmissionActions,
+  countVoteSubmissionActionsByType,
   searchVoteSubmissionActions,
   type VoteSubmissionActionDto,
   type VoteSubmissionActionType,
 } from "../../../shared/services/voteSubmissionActionService";
+
+import { fetchCounties } from "../../../shared/services/countyService";
+import { fetchDistrictsByCounty } from "../../../shared/services/districtService";
+import { fetchPollingCenters } from "../../../shared/services/pollingCenterService";
+import { fetchPollingPlaces } from "../../../shared/services/pollingPlaceService";
 
 import { useAuthStore } from "../../../shared/store/authStore";
 
@@ -70,6 +77,9 @@ function friendlyError(error: any) {
 
 function actionLabel(actionType: VoteSubmissionActionType) {
   switch (actionType) {
+    case "EDIT":
+      return "Edited";
+
     case "VERIFY":
       return "Verified";
 
@@ -85,6 +95,12 @@ function actionLabel(actionType: VoteSubmissionActionType) {
     case "AMEND":
       return "Amended";
 
+    case "RESUBMIT":
+      return "Resubmitted";
+
+    case "REOPEN":
+      return "Reopened";
+
     case "DELETE":
       return "Deleted";
 
@@ -95,6 +111,9 @@ function actionLabel(actionType: VoteSubmissionActionType) {
 
 function actionIcon(actionType: VoteSubmissionActionType) {
   switch (actionType) {
+    case "EDIT":
+      return <FilePenLine size={12} />;
+
     case "VERIFY":
       return <CheckCircle2 size={12} />;
 
@@ -110,6 +129,12 @@ function actionIcon(actionType: VoteSubmissionActionType) {
     case "AMEND":
       return <FilePenLine size={12} />;
 
+    case "RESUBMIT":
+      return <FilePenLine size={12} />;
+
+    case "REOPEN":
+      return <History size={12} />;
+
     case "DELETE":
       return <Trash2 size={12} />;
 
@@ -120,6 +145,9 @@ function actionIcon(actionType: VoteSubmissionActionType) {
 
 function actionClass(actionType: VoteSubmissionActionType) {
   switch (actionType) {
+    case "EDIT":
+      return "border-indigo-200 bg-indigo-50 text-indigo-700";
+
     case "VERIFY":
       return "border-emerald-200 bg-emerald-50 text-emerald-700";
 
@@ -134,6 +162,12 @@ function actionClass(actionType: VoteSubmissionActionType) {
 
     case "AMEND":
       return "border-blue-200 bg-blue-50 text-blue-700";
+
+    case "RESUBMIT":
+      return "border-violet-200 bg-violet-50 text-violet-700";
+
+    case "REOPEN":
+      return "border-cyan-200 bg-cyan-50 text-cyan-700";
 
     case "DELETE":
       return "border-red-200 bg-red-50 text-red-700";
@@ -216,6 +250,10 @@ const ACTION_OPTIONS: Array<{
     label: "All Actions",
   },
   {
+    value: "EDIT",
+    label: "Edited",
+  },
+  {
     value: "VERIFY",
     label: "Verified",
   },
@@ -234,6 +272,14 @@ const ACTION_OPTIONS: Array<{
   {
     value: "AMEND",
     label: "Amended",
+  },
+  {
+    value: "RESUBMIT",
+    label: "Resubmitted",
+  },
+  {
+    value: "REOPEN",
+    label: "Reopened",
   },
   {
     value: "DELETE",
@@ -267,6 +313,107 @@ export default function VoteSubmissionActionsPage() {
   );
 
   const [textFilter, setTextFilter] = useState("");
+
+  const [countyId, setCountyId] = useState("");
+
+  const [districtId, setDistrictId] = useState("");
+
+  const [centerId, setCenterId] = useState("");
+
+  const [placeId, setPlaceId] = useState("");
+
+  // ==========================================================================
+  // GEOGRAPHIC LOOKUPS
+  // ==========================================================================
+
+  const countiesQ = useQuery({
+    queryKey: ["counties", "submission-actions"],
+
+    queryFn: async () =>
+      (
+        await fetchCounties({
+          page: 0,
+          size: 500,
+        })
+      ).items,
+
+    staleTime: 60_000,
+
+    retry: 1,
+  });
+
+  const districtsQ = useQuery({
+    enabled: Boolean(countyId),
+
+    queryKey: ["districts", "submission-actions", countyId],
+
+    queryFn: () => fetchDistrictsByCounty(countyId),
+
+    staleTime: 60_000,
+
+    retry: 1,
+  });
+
+  const centersQ = useQuery({
+    enabled: Boolean(countyId || districtId),
+
+    queryKey: ["centers", "submission-actions", countyId, districtId],
+
+    queryFn: async () =>
+      (
+        await fetchPollingCenters({
+          page: 0,
+          size: 500,
+          countyId: countyId || undefined,
+          districtId: districtId || undefined,
+        })
+      ).items,
+
+    staleTime: 60_000,
+
+    retry: 1,
+  });
+
+  const placesQ = useQuery({
+    enabled: Boolean(centerId),
+
+    queryKey: ["places", "submission-actions", centerId],
+
+    queryFn: async () =>
+      (
+        await fetchPollingPlaces({
+          page: 0,
+          size: 2000,
+          centerId,
+        })
+      ).items,
+
+    staleTime: 60_000,
+
+    retry: 1,
+  });
+
+  // ==========================================================================
+  // CASCADING GEOGRAPHY
+  // ==========================================================================
+
+  useEffect(() => {
+    setDistrictId("");
+    setCenterId("");
+    setPlaceId("");
+    setPage(0);
+  }, [countyId]);
+
+  useEffect(() => {
+    setCenterId("");
+    setPlaceId("");
+    setPage(0);
+  }, [districtId]);
+
+  useEffect(() => {
+    setPlaceId("");
+    setPage(0);
+  }, [centerId]);
 
   // ==========================================================================
   // PAGINATION
@@ -323,17 +470,172 @@ export default function VoteSubmissionActionsPage() {
   const allActions = result?.content ?? [];
 
   // ==========================================================================
-  // LOCAL SEARCH
+  // ACTION COUNTS
+  //
+  // For each submission, keep both:
+  // 1. the count of this specific action type
+  // 2. the total count of all actions on the submission
+  //
+  // Example:
+  // FLAG = 3
+  // total submission actions = 8
+  // display = 3 / 8
+  // ==========================================================================
+
+  const actionCountKeys = useMemo(() => {
+    const seen = new Set<string>();
+
+    const keys: Array<{
+      key: string;
+      submissionId: string;
+      actionType: VoteSubmissionActionType;
+    }> = [];
+
+    for (const action of allActions) {
+      const submissionId = clean(action.submissionId);
+
+      const currentActionType = action.actionType;
+
+      if (!submissionId || !currentActionType) {
+        continue;
+      }
+
+      const key = `${submissionId}:${currentActionType}`;
+
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+
+      keys.push({
+        key,
+        submissionId,
+        actionType: currentActionType,
+      });
+    }
+
+    return keys;
+  }, [allActions]);
+
+  const submissionIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          allActions
+            .map((action) => clean(action.submissionId))
+            .filter(Boolean),
+        ),
+      ),
+    [allActions],
+  );
+
+  const actionTypeCountQueries = useQueries({
+    queries: actionCountKeys.map(({ submissionId, actionType }) => ({
+      queryKey: [
+        "vote-submission-action-count-by-type",
+        submissionId,
+        actionType,
+      ],
+
+      queryFn: () => countVoteSubmissionActionsByType(submissionId, actionType),
+
+      staleTime: 30_000,
+
+      retry: 1,
+    })),
+  });
+
+  const submissionCountQueries = useQueries({
+    queries: submissionIds.map((submissionId) => ({
+      queryKey: ["vote-submission-action-count", submissionId],
+
+      queryFn: () => countVoteSubmissionActions(submissionId),
+
+      staleTime: 30_000,
+
+      retry: 1,
+    })),
+  });
+
+  const actionCountByKey = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    actionCountKeys.forEach((item, index) => {
+      const value = actionTypeCountQueries[index]?.data;
+
+      if (Number.isFinite(Number(value))) {
+        counts.set(item.key, Number(value));
+      }
+    });
+
+    return counts;
+  }, [actionCountKeys, actionTypeCountQueries]);
+
+  const submissionCountById = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    submissionIds.forEach((submissionId, index) => {
+      const value = submissionCountQueries[index]?.data;
+
+      if (Number.isFinite(Number(value))) {
+        counts.set(submissionId, Number(value));
+      }
+    });
+
+    return counts;
+  }, [submissionIds, submissionCountQueries]);
+
+  function getActionTypeCount(action: VoteSubmissionActionDto) {
+    const submissionId = clean(action.submissionId);
+
+    if (!submissionId) {
+      return null;
+    }
+
+    const key = `${submissionId}:${action.actionType}`;
+
+    return actionCountByKey.get(key) ?? null;
+  }
+
+  function getSubmissionCount(action: VoteSubmissionActionDto) {
+    const submissionId = clean(action.submissionId);
+
+    if (!submissionId) {
+      return null;
+    }
+
+    return submissionCountById.get(submissionId) ?? null;
+  }
+
+  // ==========================================================================
+  // LOCAL SEARCH + GEOGRAPHIC FILTERS
   // ==========================================================================
 
   const actions = useMemo(() => {
     const q = textFilter.trim().toLowerCase();
 
-    if (!q) {
-      return allActions;
-    }
-
     return allActions.filter((action) => {
+      if (countyId && clean(action.countyId) !== countyId) {
+        return false;
+      }
+
+      if (districtId && clean(action.districtId) !== districtId) {
+        return false;
+      }
+
+      if (centerId && clean(action.centerId) !== centerId) {
+        return false;
+      }
+
+      if (placeId && clean(action.placeId) !== placeId) {
+        return false;
+      }
+
+      if (!q) {
+        return true;
+      }
+
       const haystack = [
         action.actorName,
         action.actionType,
@@ -358,11 +660,21 @@ export default function VoteSubmissionActionsPage() {
 
       return haystack.includes(q);
     });
-  }, [allActions, textFilter]);
+  }, [allActions, textFilter, countyId, districtId, centerId, placeId]);
 
   const totalElements = Number(result?.totalElements ?? 0);
 
   const totalPages = Number(result?.totalPages ?? 0);
+
+  const hasGeoFilter = Boolean(countyId || districtId || centerId || placeId);
+
+  function clearGeoFilters() {
+    setCountyId("");
+    setDistrictId("");
+    setCenterId("");
+    setPlaceId("");
+    setPage(0);
+  }
 
   // ==========================================================================
   // OPEN DETAIL
@@ -399,7 +711,9 @@ export default function VoteSubmissionActionsPage() {
         title="Action Records"
         right={
           <span className="text-xs font-bold text-slate-500">
-            {totalElements.toLocaleString()} records
+            {hasGeoFilter
+              ? `${actions.length.toLocaleString()} shown • ${totalElements.toLocaleString()} total`
+              : `${totalElements.toLocaleString()} records`}
           </span>
         }
       >
@@ -408,7 +722,9 @@ export default function VoteSubmissionActionsPage() {
         {/* ================================================================ */}
 
         <div className="border-b border-slate-200 pb-2.5">
-          {/* Search */}
+          {/* ============================================================= */}
+          {/* SEARCH */}
+          {/* ============================================================= */}
 
           <label className="block">
             <span className="mb-1 block text-[8px] font-bold uppercase tracking-wide text-slate-400 sm:text-[9px]">
@@ -431,7 +747,99 @@ export default function VoteSubmissionActionsPage() {
             </div>
           </label>
 
-          {/* Mobile filters */}
+          {/* ============================================================= */}
+          {/* GEOGRAPHY */}
+          {/* ============================================================= */}
+
+          <div className="mt-2 grid grid-cols-2 gap-2 lg:grid-cols-4">
+            <FilterSelect
+              label="County"
+              value={countyId}
+              onChange={(value) => {
+                setCountyId(value);
+
+                setPage(0);
+              }}
+              options={(countiesQ.data ?? []).map((item: any) => ({
+                value: String(item.countyId),
+
+                label: String(item.countyName ?? "County"),
+              }))}
+              placeholder="All Counties"
+            />
+
+            <FilterSelect
+              label="District"
+              value={districtId}
+              onChange={(value) => {
+                setDistrictId(value);
+
+                setPage(0);
+              }}
+              disabled={!countyId}
+              options={(districtsQ.data ?? []).map((item: any) => ({
+                value: String(item.districtId),
+
+                label: String(item.districtName ?? "District"),
+              }))}
+              placeholder="All Districts"
+            />
+
+            <FilterSelect
+              label="Polling Center"
+              value={centerId}
+              onChange={(value) => {
+                setCenterId(value);
+
+                setPage(0);
+              }}
+              disabled={!countyId && !districtId}
+              options={(centersQ.data ?? []).map((item: any) => ({
+                value: String(item.centerId),
+
+                label: String(item.centerName ?? "Polling Center"),
+              }))}
+              placeholder="All Centers"
+            />
+
+            <FilterSelect
+              label="Polling Place"
+              value={placeId}
+              onChange={(value) => {
+                setPlaceId(value);
+
+                setPage(0);
+              }}
+              disabled={!centerId}
+              options={(placesQ.data ?? []).map((item: any) => ({
+                value: String(item.placeId),
+
+                label: String(
+                  item.placeLabel ??
+                    (item.placeNumber != null
+                      ? `Place ${item.placeNumber}`
+                      : (item.code ?? "Polling Place")),
+                ),
+              }))}
+              placeholder="All Places"
+            />
+          </div>
+
+          {hasGeoFilter ? (
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={clearGeoFilters}
+                className="text-[9px] font-bold text-blue-700 hover:text-blue-900 sm:text-[10px]"
+              >
+                Clear geography filters
+              </button>
+            </div>
+          ) : null}
+
+          {/* ============================================================= */}
+          {/* MOBILE FILTERS */}
+          {/* ============================================================= */}
 
           <div className="mt-2 grid grid-cols-[minmax(0,1fr)_92px] gap-2 md:hidden">
             <label>
@@ -481,7 +889,9 @@ export default function VoteSubmissionActionsPage() {
             </label>
           </div>
 
-          {/* Desktop filters */}
+          {/* ============================================================= */}
+          {/* DESKTOP FILTERS */}
+          {/* ============================================================= */}
 
           <div className="mt-2 hidden grid-cols-[180px_110px] justify-end gap-2 md:grid">
             <label>
@@ -621,6 +1031,8 @@ export default function VoteSubmissionActionsPage() {
 
                     <HeaderCell>Status</HeaderCell>
 
+                    <HeaderCell>Count</HeaderCell>
+
                     <HeaderCell>Time</HeaderCell>
 
                     <HeaderCell alignRight>Record</HeaderCell>
@@ -632,6 +1044,8 @@ export default function VoteSubmissionActionsPage() {
                     <DesktopActionRow
                       key={action.actionId}
                       action={action}
+                      actionTypeCount={getActionTypeCount(action)}
+                      submissionCount={getSubmissionCount(action)}
                       onOpen={() => openFullRecord(action.actionId)}
                     />
                   ))}
@@ -651,6 +1065,8 @@ export default function VoteSubmissionActionsPage() {
               <MobileActionRow
                 key={action.actionId}
                 action={action}
+                actionTypeCount={getActionTypeCount(action)}
+                submissionCount={getSubmissionCount(action)}
                 first={index === 0}
                 onOpen={() => openFullRecord(action.actionId)}
               />
@@ -712,9 +1128,13 @@ export default function VoteSubmissionActionsPage() {
 
 function DesktopActionRow({
   action,
+  actionTypeCount,
+  submissionCount,
   onOpen,
 }: {
   action: VoteSubmissionActionDto;
+  actionTypeCount: number | null;
+  submissionCount: number | null;
   onOpen: () => void;
 }) {
   return (
@@ -744,7 +1164,7 @@ function DesktopActionRow({
       </BodyCell>
 
       <BodyCell>
-        <div className="max-w-[220px] font-bold text-slate-900 text-[12px]">
+        <div className="max-w-[220px] text-[12px] font-bold text-slate-900">
           {clean(action.electionName) || "—"}
         </div>
 
@@ -754,7 +1174,7 @@ function DesktopActionRow({
       </BodyCell>
 
       <BodyCell>
-        <div className="font-semibold text-slate-800 text-[12px]">
+        <div className="text-[12px] font-semibold text-slate-800">
           {clean(action.countyName) ? `${action.countyName} County` : "—"}
         </div>
 
@@ -764,7 +1184,7 @@ function DesktopActionRow({
       </BodyCell>
 
       <BodyCell>
-        <div className="max-w-[230px] font-semibold text-slate-800 text-[12px]">
+        <div className="max-w-[230px] text-[12px] font-semibold text-slate-800">
           {clean(action.centerName) || "—"}
         </div>
 
@@ -789,6 +1209,25 @@ function DesktopActionRow({
 
           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-bold text-slate-700">
             {statusText(action.statusAfter)}
+          </span>
+        </div>
+      </BodyCell>
+
+      {/* ================================================================ */}
+      {/* ACTION TYPE COUNT / TOTAL SUBMISSION ACTION COUNT */}
+      {/* ================================================================ */}
+
+      <BodyCell>
+        <div className="flex flex-col items-start">
+          <span
+            title="Action type count / total submission actions"
+            className="inline-flex min-w-[52px] justify-center rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-extrabold text-slate-700"
+          >
+            {actionTypeCount ?? "—"} / {submissionCount ?? "—"}
+          </span>
+
+          <span className="mt-0.5 text-[7px] font-semibold uppercase tracking-wide text-slate-400">
+            type / total
           </span>
         </div>
       </BodyCell>
@@ -822,10 +1261,14 @@ function DesktopActionRow({
 
 function MobileActionRow({
   action,
+  actionTypeCount,
+  submissionCount,
   first,
   onOpen,
 }: {
   action: VoteSubmissionActionDto;
+  actionTypeCount: number | null;
+  submissionCount: number | null;
   first: boolean;
   onOpen: () => void;
 }) {
@@ -898,15 +1341,26 @@ function MobileActionRow({
       </div>
 
       {/* ================================================================ */}
-      {/* LINE 4 — STATUS / VIEW */}
+      {/* LINE 4 — STATUS / COUNT / VIEW */}
       {/* ================================================================ */}
 
       <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-slate-100 pt-1.5">
-        <span className="text-[8px] font-bold text-slate-600">
-          {statusText(action.statusBefore)}
-          <span className="mx-1 text-slate-300">→</span>
-          {statusText(action.statusAfter)}
-        </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="text-[8px] font-bold text-slate-600">
+            {statusText(action.statusBefore)}
+
+            <span className="mx-1 text-slate-300">→</span>
+
+            {statusText(action.statusAfter)}
+          </span>
+
+          <span
+            title="Action type count / total submission actions"
+            className="shrink-0 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[7px] font-extrabold text-slate-600"
+          >
+            {actionTypeCount ?? "—"} / {submissionCount ?? "—"} type/total
+          </span>
+        </div>
 
         <span className="inline-flex shrink-0 items-center gap-1 text-[8px] font-extrabold text-blue-700">
           View
@@ -914,6 +1368,52 @@ function MobileActionRow({
         </span>
       </div>
     </button>
+  );
+}
+
+// ============================================================================
+// FILTER SELECT
+// ============================================================================
+
+function FilterSelect({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  disabled = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{
+    value: string;
+    label: string;
+  }>;
+  placeholder: string;
+  disabled?: boolean;
+}) {
+  return (
+    <label>
+      <span className="mb-1 block text-[8px] font-bold uppercase tracking-wide text-slate-400 sm:text-[9px]">
+        {label}
+      </span>
+
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-[10px] font-semibold text-slate-700 disabled:bg-slate-100 disabled:text-slate-400 sm:text-[11px]"
+      >
+        <option value="">{placeholder}</option>
+
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

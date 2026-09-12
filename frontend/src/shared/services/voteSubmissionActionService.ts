@@ -7,11 +7,14 @@ import { useAuthStore } from "../store/authStore";
 // ============================================================================
 
 export type VoteSubmissionActionType =
+  | "EDIT"
   | "VERIFY"
   | "REJECT"
   | "FLAG"
   | "UNFLAG"
   | "AMEND"
+  | "RESUBMIT"
+  | "REOPEN"
   | "DELETE";
 
 export type VoteSubmissionActionDto = {
@@ -238,7 +241,7 @@ export async function getVoteSubmissionAction(
 }
 
 // ============================================================================
-// ONE SUBMISSION
+// ONE SUBMISSION — ACTION HISTORY
 // ============================================================================
 
 export async function listVoteSubmissionActions(
@@ -260,7 +263,12 @@ export async function listVoteSubmissionActions(
 }
 
 // ============================================================================
-// COUNT
+// TOTAL COUNT FOR ONE SUBMISSION
+//
+// Kept because it is still useful for:
+// - submission detail history totals
+// - general audit summaries
+// - "how many actions exist on this submission?"
 // ============================================================================
 
 export async function countVoteSubmissionActions(
@@ -276,6 +284,45 @@ export async function countVoteSubmissionActions(
 
   const { data } = await client.get<number>(
     `/vote-submissions/${encodeURIComponent(cleanId)}/actions/count`,
+  );
+
+  const count = Number(data);
+
+  return Number.isFinite(count) ? count : 0;
+}
+
+// ============================================================================
+// COUNT ONE ACTION TYPE FOR ONE SUBMISSION
+//
+// Example:
+// submission A + FLAG      -> 3
+// submission A + UNFLAG    -> 2
+// submission A + AMEND     -> 1
+//
+// Used by VoteSubmissionActionsPage so each row shows the count of that
+// specific action type instead of the submission's total action history.
+// ============================================================================
+
+export async function countVoteSubmissionActionsByType(
+  submissionId: string,
+  actionType: VoteSubmissionActionType,
+): Promise<number> {
+  const cleanId = String(submissionId ?? "").trim();
+
+  if (!cleanId) {
+    throw new Error("submissionId is required.");
+  }
+
+  if (!actionType) {
+    throw new Error("actionType is required.");
+  }
+
+  const client = getClient();
+
+  const { data } = await client.get<number>(
+    `/vote-submissions/${encodeURIComponent(
+      cleanId,
+    )}/actions/count/${encodeURIComponent(actionType)}`,
   );
 
   const count = Number(data);

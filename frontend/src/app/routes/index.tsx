@@ -23,6 +23,7 @@ import OfficialResultsDashboard from "../../pages/dashboard/modes/OfficialResult
 import ElectionsListPage from "../../pages/elections/ElectionsListPage";
 import ElectionCreatePage from "../../pages/elections/ElectionCreatePage";
 import ElectionDetailPage from "../../pages/elections/ElectionDetailPage";
+import ElectionLifecyclePage from "../../pages/elections/ElectionLifecyclePage";
 
 import ElectionWorkspaceLayout from "../../pages/elections/workspace/ElectionWorkspaceLayout";
 
@@ -313,6 +314,11 @@ export const router = createBrowserRouter([
             index: true,
 
             element: <ElectionDetailPage />,
+          },
+
+          {
+            path: "lifecycle",
+            element: <ElectionLifecyclePage />,
           },
 
           // ================================================================

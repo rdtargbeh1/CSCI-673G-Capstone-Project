@@ -20,6 +20,8 @@ import {
   Image as ImageIcon,
   MapPin,
   Pencil,
+  RefreshCcw,
+  RotateCcw,
   ShieldCheck,
   Trash2,
   UserRound,
@@ -594,28 +596,53 @@ export default function SubmissionDetailPage({
 
   const deleted = status === "DELETED";
 
-  const flagged = status === "FLAGGED";
-
   // ==========================================================================
   // ACTION RULES
   // ==========================================================================
 
-  const canEdit = !deleted && status !== "VERIFIED";
+  const isDraft = status === "DRAFT";
+  const isPending = status === "PENDING";
+  const isVerified = status === "VERIFIED";
+  const isRejected = status === "REJECTED";
+  const isFlagged = status === "FLAGGED";
 
-  const canVerify =
-    !deleted && canReview && (status === "PENDING" || status === "REJECTED");
+  // Status-based action visibility.
+  //
+  // DRAFT / PENDING:
+  //   Edit, Verify, Flag, Delete
+  //
+  // VERIFIED:
+  //   Amend, Delete
+  //
+  // REJECTED:
+  //   Resubmit, Reopen, Delete
+  //
+  // FLAGGED:
+  //   Edit, Unflag
+  //
+  // DELETED / unknown:
+  //   No mutation actions
+  const showDraftPendingActions = !deleted && (isDraft || isPending);
+  const showVerifiedActions = !deleted && isVerified;
+  const showRejectedActions = !deleted && isRejected;
+  const showFlaggedActions = !deleted && isFlagged;
 
-  const canFlag =
-    !deleted &&
-    canReview &&
-    !flagged &&
-    (status === "PENDING" || status === "VERIFIED" || status === "REJECTED");
+  const canEdit = showDraftPendingActions || showFlaggedActions;
 
-  const canUnflag = !deleted && canReview && flagged;
+  const canVerify = showDraftPendingActions && canReview;
 
-  const canAmend = !deleted && status === "VERIFIED";
+  const canFlag = showDraftPendingActions && canReview;
 
-  const canDelete = !deleted;
+  const canUnflag = showFlaggedActions && canReview;
+
+  const canAmend = showVerifiedActions;
+
+  const canResubmit = showRejectedActions;
+
+  const canReopen = showRejectedActions;
+
+  const canDelete =
+    showDraftPendingActions || showVerifiedActions || showRejectedActions;
 
   // ==========================================================================
   // MISSING ID
@@ -729,55 +756,109 @@ export default function SubmissionDetailPage({
           {/* ACTIONS */}
 
           <div className="grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap sm:gap-2 lg:justify-end">
-            <ActionButton
-              label="Edit"
-              icon={<Pencil size={14} />}
-              disabled={!canEdit}
-              onClick={() => navigate(`${basePath}/edit`)}
-              variant="blue"
-            />
+            {showDraftPendingActions ? (
+              <>
+                <ActionButton
+                  label="Edit"
+                  icon={<Pencil size={14} />}
+                  disabled={!canEdit}
+                  onClick={() => navigate(`${basePath}/edit`)}
+                  variant="blue"
+                />
 
-            <ActionButton
-              label="Verify"
-              icon={<CheckCircle2 size={14} />}
-              disabled={!canVerify}
-              onClick={() => navigate(`${basePath}/verify`)}
-              variant="green"
-            />
+                <ActionButton
+                  label="Verify"
+                  icon={<CheckCircle2 size={14} />}
+                  disabled={!canVerify}
+                  onClick={() => navigate(`${basePath}/verify`)}
+                  variant="green"
+                />
 
-            {flagged ? (
-              <ActionButton
-                label="Unflag"
-                icon={<FlagOff size={14} />}
-                disabled={!canUnflag}
-                onClick={() => navigate(`${basePath}/unflag`)}
-                variant="slate"
-              />
-            ) : (
-              <ActionButton
-                label="Flag"
-                icon={<Flag size={14} />}
-                disabled={!canFlag}
-                onClick={() => navigate(`${basePath}/flag`)}
-                variant="amber"
-              />
-            )}
+                <ActionButton
+                  label="Flag"
+                  icon={<Flag size={14} />}
+                  disabled={!canFlag}
+                  onClick={() => navigate(`${basePath}/flag`)}
+                  variant="amber"
+                />
 
-            <ActionButton
-              label="Amend"
-              icon={<FileEdit size={14} />}
-              disabled={!canAmend}
-              onClick={() => navigate(`${basePath}/amend`)}
-              variant="amber"
-            />
+                <ActionButton
+                  label="Delete"
+                  icon={<Trash2 size={14} />}
+                  disabled={!canDelete}
+                  onClick={() => navigate(`${basePath}/delete`)}
+                  variant="red"
+                />
+              </>
+            ) : null}
 
-            <ActionButton
-              label="Delete"
-              icon={<Trash2 size={14} />}
-              disabled={!canDelete}
-              onClick={() => navigate(`${basePath}/delete`)}
-              variant="red"
-            />
+            {showVerifiedActions ? (
+              <>
+                <ActionButton
+                  label="Amend"
+                  icon={<FileEdit size={14} />}
+                  disabled={!canAmend}
+                  onClick={() => navigate(`${basePath}/amend`)}
+                  variant="amber"
+                />
+
+                <ActionButton
+                  label="Delete"
+                  icon={<Trash2 size={14} />}
+                  disabled={!canDelete}
+                  onClick={() => navigate(`${basePath}/delete`)}
+                  variant="red"
+                />
+              </>
+            ) : null}
+
+            {showRejectedActions ? (
+              <>
+                <ActionButton
+                  label="Resubmit"
+                  icon={<RotateCcw size={14} />}
+                  disabled={!canResubmit}
+                  onClick={() => navigate(`${basePath}/resubmit`)}
+                  variant="blue"
+                />
+
+                <ActionButton
+                  label="Reopen"
+                  icon={<RefreshCcw size={14} />}
+                  disabled={!canReopen}
+                  onClick={() => navigate(`${basePath}/reopen`)}
+                  variant="amber"
+                />
+
+                <ActionButton
+                  label="Delete"
+                  icon={<Trash2 size={14} />}
+                  disabled={!canDelete}
+                  onClick={() => navigate(`${basePath}/delete`)}
+                  variant="red"
+                />
+              </>
+            ) : null}
+
+            {showFlaggedActions ? (
+              <>
+                <ActionButton
+                  label="Edit"
+                  icon={<Pencil size={14} />}
+                  disabled={!canEdit}
+                  onClick={() => navigate(`${basePath}/edit`)}
+                  variant="blue"
+                />
+
+                <ActionButton
+                  label="Unflag"
+                  icon={<FlagOff size={14} />}
+                  disabled={!canUnflag}
+                  onClick={() => navigate(`${basePath}/unflag`)}
+                  variant="slate"
+                />
+              </>
+            ) : null}
           </div>
         </div>
 
