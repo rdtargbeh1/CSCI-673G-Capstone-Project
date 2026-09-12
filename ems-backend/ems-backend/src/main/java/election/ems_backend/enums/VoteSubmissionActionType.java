@@ -2,6 +2,8 @@ package election.ems_backend.enums;
 
 public enum VoteSubmissionActionType {
 
+    EDIT,
+
     VERIFY,
 
     REJECT,
@@ -13,6 +15,7 @@ public enum VoteSubmissionActionType {
     AMEND,
 
     RESUBMIT,
+
     REOPEN,
 
     DELETE

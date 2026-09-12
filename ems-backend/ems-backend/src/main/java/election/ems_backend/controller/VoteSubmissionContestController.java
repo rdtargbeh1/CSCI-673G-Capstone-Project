@@ -59,7 +59,11 @@ public class VoteSubmissionContestController {
             @PathVariable UUID electionId,
             @PathVariable UUID submissionId
     ) {
-        authz.requireAnyInTenantOrPlatformAdmin();
+        // ✅ org NEC_ADMIN /TENANT_ADMIN OR platform admin
+        authz.requireAny(
+                "NEC_ADMIN",
+                "TENANT_ADMIN");
+
         int rows = voteSubmissionContestService.normalizeSubmission(submissionId);
         return ResponseEntity.ok(Map.of("submissionId", submissionId, "rowsCreated", rows));
     }
@@ -67,7 +71,12 @@ public class VoteSubmissionContestController {
     // ✅ Normalize VERIFIED submissions for THIS electionId (already in base path)
     @PostMapping("/verified-submissions")
     public ResponseEntity<Map<String, Object>> normalizeVerified() {
-        authz.requireAnyInTenantOrPlatformAdmin();
+
+        // ✅ org NEC_ADMIN /TENANT_ADMIN OR platform admin
+        authz.requireAny(
+                "NEC_ADMIN",
+                "TENANT_ADMIN");
+
         return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).build();
     }
 
@@ -76,7 +85,12 @@ public class VoteSubmissionContestController {
     public ResponseEntity<Map<String, Object>> normalizeVerifiedRun(
             @PathVariable UUID electionId
     ) {
-        authz.requireAnyInTenantOrPlatformAdmin();
+
+        // ✅ org NEC_ADMIN /TENANT_ADMIN OR platform admin
+        authz.requireAny(
+                "NEC_ADMIN",
+                "TENANT_ADMIN");
+
         int rows = voteSubmissionContestService.normalizeVerifiedSubmissionsForElection(electionId);
         return ResponseEntity.ok(Map.of("electionId", electionId, "rowsCreated", rows));
     }

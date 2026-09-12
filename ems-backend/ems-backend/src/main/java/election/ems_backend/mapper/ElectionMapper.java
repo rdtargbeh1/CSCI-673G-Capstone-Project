@@ -2,13 +2,16 @@ package election.ems_backend.mapper;
 
 import election.ems_backend.dto.ElectionCreateRequest;
 import election.ems_backend.dto.ElectionDto;
+import election.ems_backend.dto.ElectionLifecycleRequest;
 import election.ems_backend.dto.ElectionUpdateRequest;
 import election.ems_backend.entity.Election;
 import election.ems_backend.entity.SystemUser;
+import election.ems_backend.enums.ElectionAccessStatus;
 import election.ems_backend.repository.SystemUserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Component
@@ -55,6 +58,64 @@ public class ElectionMapper {
 
                 .isActive(
                         election.isActive()
+                )
+
+
+                // ============================================================
+                // ACCESS / LIFECYCLE
+                // ============================================================
+
+                .accessStatus(
+                        election.getAccessStatus()
+                )
+
+                .availableAt(
+                        election.getAvailableAt()
+                )
+
+                .startAt(
+                        election.getStartAt()
+                )
+
+                .endAt(
+                        election.getEndAt()
+                )
+
+                .availableUntil(
+                        election.getAvailableUntil()
+                )
+
+                .archivedAt(
+                        election.getArchivedAt()
+                )
+
+                .archivedReason(
+                        election.getArchivedReason()
+                )
+
+
+                // ============================================================
+                // COMPUTED STATE
+                // ============================================================
+
+                .beforeOperationalWindow(
+                        election.isBeforeOperationalWindow()
+                )
+
+                .withinOperationalWindow(
+                        election.isWithinOperationalWindow()
+                )
+
+                .afterOperationalWindow(
+                        election.isAfterOperationalWindow()
+                )
+
+                .archiveDue(
+                        election.isArchiveDue()
+                )
+
+                .availableTimeReached(
+                        election.hasReachedAvailableTime()
                 )
 
 
@@ -108,6 +169,15 @@ public class ElectionMapper {
                         )
                 )
 
+
+                // ============================================================
+                // VERSION
+                // ============================================================
+
+                .version(
+                        election.getVersion()
+                )
+
                 .build();
     }
 
@@ -127,11 +197,14 @@ public class ElectionMapper {
 
         boolean enforce =
                 req.getEnforceBallotsGteRegistered() == null
-                        ? true
-                        : req.getEnforceBallotsGteRegistered();
+                        || req.getEnforceBallotsGteRegistered();
 
 
         return Election.builder()
+
+                // ============================================================
+                // BASIC ELECTION
+                // ============================================================
 
                 .electionName(
                         req.getElectionName()
@@ -149,6 +222,26 @@ public class ElectionMapper {
                         req.isActive()
                 )
 
+
+                // ============================================================
+                // NEW ELECTION DEFAULT LIFECYCLE
+                // ============================================================
+
+                /*
+                 * Every newly created election begins as DRAFT.
+                 *
+                 * Lifecycle configuration is handled separately through
+                 * ElectionLifecycleRequest.
+                 */
+                .accessStatus(
+                        ElectionAccessStatus.DRAFT
+                )
+
+
+                // ============================================================
+                // BALLOT POLICY
+                // ============================================================
+
                 .ballotSparePercent(
                         req.getBallotSparePercent()
                 )
@@ -162,7 +255,7 @@ public class ElectionMapper {
 
 
     // ========================================================================
-    // APPLY UPDATE
+    // APPLY NORMAL ELECTION UPDATE
     // ========================================================================
 
     public void apply(
@@ -178,9 +271,14 @@ public class ElectionMapper {
         }
 
 
+        // ====================================================================
+        // BASIC INFORMATION
+        // ====================================================================
+
         if (
                 req.getElectionName() != null
         ) {
+
             election.setElectionName(
                     req.getElectionName()
             );
@@ -190,6 +288,7 @@ public class ElectionMapper {
         if (
                 req.getYear() != null
         ) {
+
             election.setYear(
                     req.getYear()
             );
@@ -199,6 +298,7 @@ public class ElectionMapper {
         if (
                 req.getElectionType() != null
         ) {
+
             election.setElectionType(
                     req.getElectionType()
             );
@@ -208,15 +308,21 @@ public class ElectionMapper {
         if (
                 req.getIsActive() != null
         ) {
+
             election.setActive(
                     req.getIsActive()
             );
         }
 
 
+        // ====================================================================
+        // BALLOT POLICY
+        // ====================================================================
+
         if (
                 req.getBallotSparePercent() != null
         ) {
+
             election.setBallotSparePercent(
                     req.getBallotSparePercent()
             );
@@ -226,8 +332,162 @@ public class ElectionMapper {
         if (
                 req.getEnforceBallotsGteRegistered() != null
         ) {
+
             election.setEnforceBallotsGteRegistered(
                     req.getEnforceBallotsGteRegistered()
+            );
+        }
+    }
+
+
+    // ========================================================================
+    // APPLY ELECTION LIFECYCLE UPDATE
+    // ========================================================================
+
+    /**
+     * Applies lifecycle configuration after the service has validated:
+     *
+     * - allowed status transition
+     * - timeline ordering
+     * - caller authorization
+     * - archive rules
+     *
+     * This mapper intentionally does not decide whether a transition is legal.
+     */
+    public void applyLifecycle(
+            ElectionLifecycleRequest req,
+            Election election
+    ) {
+
+        if (
+                req == null ||
+                        election == null
+        ) {
+            return;
+        }
+
+
+        // ====================================================================
+        // ACCESS STATUS
+        // ====================================================================
+
+        if (
+                req.getAccessStatus() != null
+        ) {
+
+            ElectionAccessStatus previousStatus =
+                    election.getAccessStatus();
+
+            ElectionAccessStatus requestedStatus =
+                    req.getAccessStatus();
+
+
+            election.setAccessStatus(
+                    requestedStatus
+            );
+
+
+            /*
+             * archivedAt is backend-controlled.
+             *
+             * When the election enters ARCHIVED, record the actual
+             * transition time.
+             */
+            if (
+                    requestedStatus == ElectionAccessStatus.ARCHIVED &&
+                            previousStatus != ElectionAccessStatus.ARCHIVED
+            ) {
+
+                election.setArchivedAt(
+                        LocalDateTime.now()
+                );
+            }
+
+
+            /*
+             * If an authorized service allows an election to leave
+             * ARCHIVED state, clear archive metadata.
+             *
+             * The service must decide whether such a transition is legal.
+             */
+            if (
+                    previousStatus == ElectionAccessStatus.ARCHIVED &&
+                            requestedStatus != ElectionAccessStatus.ARCHIVED
+            ) {
+
+                election.setArchivedAt(
+                        null
+                );
+
+                election.setArchivedReason(
+                        null
+                );
+            }
+        }
+
+
+        // ====================================================================
+        // AVAILABILITY WINDOW
+        // ====================================================================
+
+        if (
+                req.getAvailableAt() != null
+        ) {
+
+            election.setAvailableAt(
+                    req.getAvailableAt()
+            );
+        }
+
+
+        // ====================================================================
+        // OPERATIONAL WINDOW
+        // ====================================================================
+
+        if (
+                req.getStartAt() != null
+        ) {
+
+            election.setStartAt(
+                    req.getStartAt()
+            );
+        }
+
+
+        if (
+                req.getEndAt() != null
+        ) {
+
+            election.setEndAt(
+                    req.getEndAt()
+            );
+        }
+
+
+        // ====================================================================
+        // FINAL AVAILABILITY / ARCHIVE DEADLINE
+        // ====================================================================
+
+        if (
+                req.getAvailableUntil() != null
+        ) {
+
+            election.setAvailableUntil(
+                    req.getAvailableUntil()
+            );
+        }
+
+
+        // ====================================================================
+        // ARCHIVE REASON
+        // ====================================================================
+
+        if (
+                req.getArchivedReason() != null
+        ) {
+
+            election.setArchivedReason(
+                    req.getArchivedReason()
             );
         }
     }
@@ -286,7 +546,7 @@ public class ElectionMapper {
              * Future-proofing:
              *
              * If AuditorAware later stores a username instead of a UUID,
-             * this method will simply return that username.
+             * this method simply returns that value.
              */
             return normalized;
         }
@@ -344,6 +604,7 @@ public class ElectionMapper {
                 user.getUserName() != null &&
                         !user.getUserName().isBlank()
         ) {
+
             return user.getUserName();
         }
 
@@ -352,6 +613,7 @@ public class ElectionMapper {
                 user.getEmail() != null &&
                         !user.getEmail().isBlank()
         ) {
+
             return user.getEmail();
         }
 
@@ -360,4 +622,5 @@ public class ElectionMapper {
                 ? user.getUserId().toString()
                 : null;
     }
+
 }

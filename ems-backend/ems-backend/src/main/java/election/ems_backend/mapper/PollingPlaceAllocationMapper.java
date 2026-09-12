@@ -3,13 +3,19 @@ package election.ems_backend.mapper;
 import election.ems_backend.dto.PollingPlaceAllocationCreateRequest;
 import election.ems_backend.dto.PollingPlaceAllocationDto;
 import election.ems_backend.dto.PollingPlaceAllocationUpdateRequest;
+
+import election.ems_backend.entity.County;
+import election.ems_backend.entity.District;
 import election.ems_backend.entity.Election;
 import election.ems_backend.entity.PollingCenter;
 import election.ems_backend.entity.PollingPlace;
 import election.ems_backend.entity.PollingPlaceAllocation;
 import election.ems_backend.entity.SystemUser;
+
 import election.ems_backend.repository.SystemUserRepository;
+
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
@@ -100,6 +106,18 @@ public class PollingPlaceAllocationMapper {
                         : null;
 
 
+        District district =
+                center != null
+                        ? center.getDistrict()
+                        : null;
+
+
+        County county =
+                district != null
+                        ? district.getCounty()
+                        : null;
+
+
         return PollingPlaceAllocationDto.builder()
 
                 // ============================================================
@@ -182,6 +200,40 @@ public class PollingPlaceAllocationMapper {
                 .centerName(
                         center != null
                                 ? center.getCenterName()
+                                : null
+                )
+
+
+                // ============================================================
+                // DISTRICT
+                // ============================================================
+
+                .districtId(
+                        district != null
+                                ? district.getDistrictId()
+                                : null
+                )
+
+                .districtName(
+                        district != null
+                                ? district.getDistrictName()
+                                : null
+                )
+
+
+                // ============================================================
+                // COUNTY
+                // ============================================================
+
+                .countyId(
+                        county != null
+                                ? county.getCountyId()
+                                : null
+                )
+
+                .countyName(
+                        county != null
+                                ? county.getCountyName()
                                 : null
                 )
 
@@ -274,8 +326,6 @@ public class PollingPlaceAllocationMapper {
 
         } catch (IllegalArgumentException ex) {
 
-            // Auditor may someday store a username instead of UUID.
-            // If so, preserve the original value instead of failing.
             return auditUserId;
         }
     }

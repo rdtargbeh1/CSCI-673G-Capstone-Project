@@ -185,8 +185,8 @@ public class SystemUserServiceImplementation implements SystemUserService {
         // Caller: PARTY_ADMIN/ADMIN/SYSTEM_ADMIN in tenant context
         // Enforce target role whitelist
         Set<RoleName> allowed = Set.of(
-                RoleName.AGENT, RoleName.SUPERVISOR, RoleName.DATA_ENTRY,
-                RoleName.OBSERVER, RoleName.COORDINATOR, RoleName.AUDITOR
+                RoleName.FIELD_OFFICER, RoleName.SUPERVISOR, RoleName.DATA_ENTRY, RoleName.PRESIDING_OFFICER,
+                RoleName.OBSERVER, RoleName.COORDINATOR, RoleName.AUDITOR, RoleName.TALLY_OFFICER
         );
         RoleName target = req.getRoleName();
         if (target == null || !allowed.contains(target)) {
@@ -205,7 +205,7 @@ public class SystemUserServiceImplementation implements SystemUserService {
         RoleName target = req.getRoleName();
         if (target == null ||
                 (target != RoleName.ADMIN && target != RoleName.TENANT_ADMIN)) {
-            throw new IllegalArgumentException("Role must be ADMIN or PARTY_ADMIN for this endpoint");
+            throw new IllegalArgumentException("Role must be ADMIN or TENANT_ADMIN for this endpoint");
         }
 
         return createInTenant(req);
@@ -216,41 +216,82 @@ public class SystemUserServiceImplementation implements SystemUserService {
     @Override
     @org.springframework.transaction.annotation.Transactional
     public UserDto createPlatformAdmin(UserCreateRequest req) {
-        // Unscoped platform user (no tenant). Allowed only during bootstrap or by controller guard (SYSTEM_ADMIN).
-        ensureUniqueEmail(req.getEmail(), null);
-        ensureUniqueUsername(req.getUserName(), null);
 
-        // dynamic role from request, fallback to OBSERVER
-        UserRole baseRole = (req.getRoleName() != null)
-                ? loadRole(req.getRoleName())
-                : loadRole(RoleName.OBSERVER);
-
-        String encoded = encoder.encode(req.getPassword());
-
-        // Resolve optional profile image upload (preferred over URL)
-        FileUpload profileImageUpload = null;
-        if (req.getProfileImageUploadId() != null) {
-            profileImageUpload = fileUploadRepository.findById(req.getProfileImageUploadId())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile image upload not found"));
+        if (req == null) {
+            throw new IllegalArgumentException(
+                    "User create request is required"
+            );
         }
 
-        // Platform user: no party, county, or default org.
-        SystemUser entity = mapper.toEntity(req, baseRole, null, null, null, encoded);
+        ensureUniqueEmail(
+                req.getEmail(),
+                null
+        );
 
-        // Only mark as platform owner if the role is SYSTEM_ADMIN
-        entity.setSystemAdmin(baseRole.getRoleName() == RoleName.SYSTEM_ADMIN);
+        ensureUniqueUsername(
+                req.getUserName(),
+                null
+        );
+
+        UserRole baseRole =
+                req.getRoleName() != null
+                        ? loadRole(req.getRoleName())
+                        : loadRole(RoleName.OBSERVER);
+
+        String encodedPassword =
+                encoder.encode(
+                        req.getPassword()
+                );
+
+        FileUpload profileImageUpload = null;
+
+        if (req.getProfileImageUploadId() != null) {
+
+            profileImageUpload =
+                    fileUploadRepository
+                            .findById(
+                                    req.getProfileImageUploadId()
+                            )
+                            .orElseThrow(() ->
+                                    new ResponseStatusException(
+                                            HttpStatus.NOT_FOUND,
+                                            "Profile image upload not found"
+                                    )
+                            );
+        }
+
+        SystemUser entity =
+                mapper.toEntity(
+                        req,
+                        baseRole,
+                        null,                   // party
+                        null,                   // county
+                        null,                   // default organization
+                        encodedPassword,
+                        profileImageUpload
+                );
+
+        entity.setSystemUser(true);
+
+        entity.setSystemAdmin(
+                baseRole.getRoleName() == RoleName.SYSTEM_ADMIN
+        );
+
         entity.setVerified(true);
         entity.setActive(true);
         entity.setFailedLoginAttempts(0);
         entity.setLockedUntil(null);
-        entity.setLastPasswordChange(LocalDateTime.now());
+        entity.setLastPasswordChange(
+                LocalDateTime.now()
+        );
 
-        SystemUser saved = systemUserRepository.save(entity);
+        SystemUser saved =
+                systemUserRepository.save(
+                        entity
+                );
 
-        // NOTE: no OrgMembership is created for platform admins.
         return mapper.toDTO(saved);
     }
-
 
 
     @Override

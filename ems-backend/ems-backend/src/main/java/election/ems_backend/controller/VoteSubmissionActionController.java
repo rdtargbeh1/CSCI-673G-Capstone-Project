@@ -106,4 +106,19 @@ public class VoteSubmissionActionController {
                 )
         );
     }
+
+    @GetMapping("/{submissionId}/actions/count/{actionType}")
+    public ResponseEntity<Long> countActionsByType(
+            @PathVariable UUID submissionId,
+            @PathVariable VoteSubmissionActionType actionType
+    ) {
+
+        return ResponseEntity.ok(
+                actionService.countForSubmissionByType(
+                        submissionId,
+                        actionType
+                )
+        );
+    }
+
 }

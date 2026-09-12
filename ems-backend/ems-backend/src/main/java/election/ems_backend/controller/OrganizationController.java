@@ -57,7 +57,7 @@ public class OrganizationController {
             @Valid @RequestBody OrganizationBrandingUpdateRequest req
     ) {
         // ✅ org ADMIN/PARTY_ADMIN OR platform admin
-        authz.requireAnyInTenantOrPlatformAdmin("ADMIN", "TENANT_ADMIN");
+        authz.requireAny("NEC_ADMIN", "TENANT_ADMIN", "ADMIN");
         return organizationService.updateBranding(id, req);
     }
 

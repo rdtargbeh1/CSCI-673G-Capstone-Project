@@ -1,15 +1,22 @@
 package election.ems_backend.enums;
 
 public enum RoleName {
-    ADMIN,
+
     SYSTEM_ADMIN,
     NEC_ADMIN,
     TENANT_ADMIN,
-    AGENT,
+
+    ADMIN,
+
+    TALLY_OFFICER,
+    AUDITOR,
+
+    COORDINATOR,
     OBSERVER,
     SUPERVISOR,
-    COORDINATOR,
+
+    FIELD_OFFICER,
+    PRESIDING_OFFICER,
     DATA_ENTRY,
-    NEC_VERIFIER,
-    AUDITOR
+
 }

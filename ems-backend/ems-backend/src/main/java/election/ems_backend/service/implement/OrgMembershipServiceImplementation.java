@@ -162,7 +162,7 @@ public class OrgMembershipServiceImplementation implements OrgMembershipService 
     @Override
     public void setEnabledInTenant(UUID userId, boolean enabled) {
         // Only tenant ADMIN or platform admin may enable/disable membership
-        authz.requireAnyInTenantOrPlatformAdmin("TENANT_ADMIN","NEC_ADMIN");
+        authz.requireAny("TENANT_ADMIN","NEC_ADMIN");
 
         UUID orgId = requireTenant();
         OrgMembership m = orgMembershipRepository.findByOrganization_OrgIdAndUser_UserId(orgId, userId)
@@ -185,7 +185,7 @@ public class OrgMembershipServiceImplementation implements OrgMembershipService 
     public void removeMemberInTenant(UUID userId) {
 
         // Only tenant ADMIN or system admin may remove members
-        authz.requireAnyInTenantOrPlatformAdmin("TENANT_ADMIN", "NEC_ADMIN");
+        authz.requireAny("TENANT_ADMIN", "NEC_ADMIN");
 
         UUID orgId = requireTenant();
 
@@ -248,7 +248,7 @@ public class OrgMembershipServiceImplementation implements OrgMembershipService 
         return "ADMIN".equalsIgnoreCase(roleName) ||
                 "SYSTEM_ADMIN".equalsIgnoreCase(roleName) ||
                 "NEC_ADMIN".equalsIgnoreCase(roleName) ||
-                "PARTY_ADMIN".equalsIgnoreCase(roleName);
+                "TENANT_ADMIN".equalsIgnoreCase(roleName);
     }
 
 

@@ -2,6 +2,7 @@ package election.ems_backend.repository;
 
 
 import election.ems_backend.entity.Election;
+import election.ems_backend.enums.ElectionAccessStatus;
 import election.ems_backend.enums.ElectionType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -9,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -19,6 +21,12 @@ public interface ElectionRepository extends JpaRepository<Election, UUID>, JpaSp
     boolean existsByElectionNameIgnoreCaseAndYear(String electionName, int year);
 
     List<Election> findByIsActiveTrueOrderByDateCreatedDesc();
+
+    List<Election> findByAccessStatusAndAvailableUntilLessThanEqual(
+            ElectionAccessStatus accessStatus,
+            LocalDateTime time
+    );
+
 
     /**
      * Readiness guard: Ensure election exists and is active.

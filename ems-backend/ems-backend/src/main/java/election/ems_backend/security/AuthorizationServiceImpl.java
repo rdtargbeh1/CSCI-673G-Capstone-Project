@@ -121,19 +121,48 @@ public class AuthorizationServiceImpl implements AuthorizationService {
 
     @Override
     public OrgMembership requireAny(String... roleNames) {
-        OrgMembership m = requireMembership();
-        if (m.isSystemAdmin()) return m;
-        if (roleNames == null || roleNames.length == 0) return m;
 
-        String have = normalizeRoleToken(m.getRoleName());
-        for (String want : roleNames) {
-            if (want == null) continue;
-            if (normalizeRoleToken(want).equals(have)) return m;
+        OrgMembership m = requireMembership();
+
+        /*
+         * requireMembership() may return a synthetic SYSTEM_ADMIN membership.
+         *
+         * requireAny() is intentionally tenant-membership-only.
+         */
+        if (m.isSystemAdmin()) {
+            throw new AccessDeniedException(
+                    "Tenant membership required"
+            );
         }
 
-        // ✅ avoid leaking the full role list in error messages
-        throw new AccessDeniedException("You have no permission for this action - SORRY!");
-//        throw new AccessDeniedException("Insufficient role");
+        /*
+         * No role names means any real enabled tenant member is accepted.
+         */
+        if (roleNames == null || roleNames.length == 0) {
+            return m;
+        }
+
+        String have = normalizeRoleToken(
+                m.getRoleName()
+        );
+
+        for (String want : roleNames) {
+
+            if (want == null) {
+                continue;
+            }
+
+            if (
+                    normalizeRoleToken(want)
+                            .equals(have)
+            ) {
+                return m;
+            }
+        }
+
+        throw new AccessDeniedException(
+                "You have no permission for this action - SORRY!"
+        );
     }
 
     @Override
@@ -169,44 +198,244 @@ public class AuthorizationServiceImpl implements AuthorizationService {
         }
     }
 
-    @Override
-    public void requireAnyInTenantOrPlatformAdmin(String... roleNames) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-
-        if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken)) {
-            if (isPlatformAdmin(auth)) return; // ✅ single source of truth
-        }
-
-        // Not platform admin — fall back to tenant-scoped check which validates membership.
-        requireAny(roleNames);
-    }
 
     @Override
     public OrgMembership requireNecAdminOrPlatformAdmin() {
 
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        Authentication auth =
+                SecurityContextHolder
+                        .getContext()
+                        .getAuthentication();
 
-        // ✅ 1) SYSTEM_ADMIN (global override) — no tenant required
-        if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken)) {
-            if (isPlatformAdmin(auth)) {
-                TenantContext ctx = TenantContext.get();
-                UUID userId = (ctx != null ? ctx.userId().orElse(null) : null);
-                UUID orgId  = (ctx != null ? ctx.orgId().orElse(null) : null);
-                return OrgMembership.systemAdmin(userId, orgId);
-            }
+        /*
+         * SYSTEM_ADMIN global path.
+         */
+        if (
+                auth != null &&
+                        auth.isAuthenticated() &&
+                        !(auth instanceof AnonymousAuthenticationToken) &&
+                        isPlatformAdmin(auth)
+        ) {
+
+            TenantContext ctx = TenantContext.get();
+
+            UUID userId =
+                    ctx != null
+                            ? ctx.userId().orElse(null)
+                            : null;
+
+            UUID orgId =
+                    ctx != null
+                            ? ctx.orgId().orElse(null)
+                            : null;
+
+            return OrgMembership.systemAdmin(
+                    userId,
+                    orgId
+            );
         }
 
-        // ✅ 2) Otherwise: require NEC_ADMIN membership (tenant-scoped)
-        OrgMembership m = requireMembership();
-
-        if (normalizeRoleToken(m.getRoleName()).equals("NEC_ADMIN")) {
-            return m;
-        }
-
-        throw new AccessDeniedException("NEC Admin or System Admin required");
+        /*
+         * Otherwise the caller must be a real NEC_ADMIN tenant member.
+         */
+        return requireAny(
+                "NEC_ADMIN"
+        );
     }
 
 
+    @Override
+    public OrgMembership requireTopAdmin() {
+
+        Authentication auth =
+                SecurityContextHolder
+                        .getContext()
+                        .getAuthentication();
+
+        // SYSTEM_ADMIN global path
+        if (
+                auth != null &&
+                        auth.isAuthenticated() &&
+                        !(auth instanceof AnonymousAuthenticationToken) &&
+                        isPlatformAdmin(auth)
+        ) {
+
+            TenantContext ctx = TenantContext.get();
+
+            UUID userId =
+                    ctx != null
+                            ? ctx.userId().orElse(null)
+                            : null;
+
+            UUID orgId =
+                    ctx != null
+                            ? ctx.orgId().orElse(null)
+                            : null;
+
+            return OrgMembership.systemAdmin(
+                    userId,
+                    orgId
+            );
+        }
+
+        // Otherwise must be a real tenant member
+        // with NEC_ADMIN or TENANT_ADMIN role.
+        return requireAny(
+                "NEC_ADMIN",
+                "TENANT_ADMIN"
+        );
+    }
+
+
+    @Override
+    public void requireAnyUserRole(
+            String... roleNames
+    ) {
+
+        // ========================================================================
+        // AUTHENTICATION
+        // ========================================================================
+
+        Authentication auth =
+                SecurityContextHolder
+                        .getContext()
+                        .getAuthentication();
+
+        if (
+                auth == null ||
+                        !auth.isAuthenticated() ||
+                        auth instanceof AnonymousAuthenticationToken
+        ) {
+            throw new AuthenticationCredentialsNotFoundException(
+                    "Authentication required"
+            );
+        }
+
+
+        // ========================================================================
+        // CURRENT USER
+        // ========================================================================
+
+        UUID userId =
+                currentUser.currentUserId();
+
+        if (userId == null) {
+
+            TenantContext ctx =
+                    TenantContext.get();
+
+            if (ctx != null) {
+                userId =
+                        ctx.userId()
+                                .orElse(null);
+            }
+        }
+
+
+        if (userId == null) {
+            throw new AccessDeniedException(
+                    "Unable to resolve authenticated user"
+            );
+        }
+
+
+        SystemUser user =
+                systemUserRepository
+                        .findById(userId)
+                        .orElseThrow(() ->
+                                new AccessDeniedException(
+                                        "Authenticated user not found"
+                                )
+                        );
+
+
+        if (!user.isActive()) {
+            throw new AccessDeniedException(
+                    "User account is inactive"
+            );
+        }
+
+
+        // ========================================================================
+        // PLATFORM / SYSTEM USER
+        // ========================================================================
+
+        if (user.isSystemUser()) {
+
+            /*
+             * Platform/system users intentionally do not require
+             * organization membership.
+             *
+             * Their role comes from SystemUser.role.
+             */
+
+            if (
+                    user.getRole() == null ||
+                            user.getRole().getRoleName() == null
+            ) {
+                throw new AccessDeniedException(
+                        "System user role is missing"
+                );
+            }
+
+
+            String have =
+                    normalizeRoleToken(
+                            user.getRole()
+                                    .getRoleName()
+                                    .name()
+                    );
+
+
+            if (
+                    roleNames == null ||
+                            roleNames.length == 0
+            ) {
+                return;
+            }
+
+
+            for (String want : roleNames) {
+
+                if (want == null) {
+                    continue;
+                }
+
+                if (
+                        normalizeRoleToken(want)
+                                .equals(have)
+                ) {
+                    return;
+                }
+            }
+
+
+            throw new AccessDeniedException(
+                    "You have no permission for this action"
+            );
+        }
+
+
+        // ========================================================================
+        // NEC / TENANT USER
+        // ========================================================================
+
+        /*
+         * Non-system users must operate through their current organization.
+         *
+         * requireAny(...) requires:
+         *
+         * - current org_id
+         * - enabled membership for current org + authenticated user
+         * - matching membership role
+         *
+         * Therefore a user who belongs to Organization A cannot use the same
+         * role to perform an operation while Organization B is the active tenant.
+         */
+        requireAny(
+                roleNames
+        );
+    }
 
     // ---------------- private helpers ----------------
 

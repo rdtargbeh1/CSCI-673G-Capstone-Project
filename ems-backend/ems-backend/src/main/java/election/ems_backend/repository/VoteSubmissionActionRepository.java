@@ -86,6 +86,11 @@ public interface VoteSubmissionActionRepository
             Pageable pageable
     );
 
+    long countBySubmission_SubmissionIdAndActionType(
+            UUID submissionId,
+            VoteSubmissionActionType actionType
+    );
+
     // ========================================================================
     // COUNT / EXISTS
     // ========================================================================

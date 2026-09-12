@@ -38,4 +38,6 @@ public class UserDto {
     private String profileImageUrl;    // optional external or stored file URL
     private UUID profileImageUploadId; // optional upload id referencing file_u
 
+
+
 }

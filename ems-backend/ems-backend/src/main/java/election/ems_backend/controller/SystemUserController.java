@@ -47,14 +47,14 @@ public class SystemUserController {
 
     @PostMapping
     public ResponseEntity<UserDto> createInTenant(@Valid @RequestBody UserCreateRequest req) {
-        authz.requireAnyInTenantOrPlatformAdmin();
+        authz.requireTopAdmin();
         UserDto dto = systemUserService.createInTenant(req);
         return ResponseEntity.status(HttpStatus.CREATED).body(dto);
     }
 
     @PutMapping("/{userId}")
     public UserDto updateInTenant(@PathVariable UUID userId, @Valid @RequestBody UserUpdateRequest req) {
-        authz.requireAnyInTenantOrPlatformAdmin();
+        authz.requireTopAdmin();
         return systemUserService.updateInTenant(userId, req);
     }
 
@@ -110,14 +110,14 @@ public class SystemUserController {
     @PatchMapping("/{userId}/active")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void setActive(@PathVariable UUID userId, @RequestBody @Valid SetBooleanRequest body) {
-        authz.requireAnyInTenantOrPlatformAdmin();
+        authz.requireTopAdmin();
         systemUserService.setActiveInTenant(userId, body.value());
     }
 
     @PatchMapping("/{id}/verified")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void setVerified(@PathVariable UUID id, @RequestBody @Valid SetBooleanRequest body) {
-        authz.requireAnyInTenantOrPlatformAdmin();
+        authz.requireTopAdmin();
         systemUserService.setVerifiedInTenant(id, body.value());
     }
 

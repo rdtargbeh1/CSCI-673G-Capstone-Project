@@ -7,6 +7,7 @@ import election.ems_backend.enums.*;
 import election.ems_backend.integration.SigningService;
 import election.ems_backend.mapper.VoteSubmissionMapper;
 import election.ems_backend.repository.*;
+import election.ems_backend.security.AuthorizationService;
 import election.ems_backend.service.*;
 import election.ems_backend.utility.RecomputeEvent;
 import election.ems_backend.utility.RequestUtils;
@@ -98,6 +99,8 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     private final VoteSubmissionActionRepository voteSubmissionActionRepository;
     private final DiscrepancyService discrepancyService;
     private final DiscrepancyRepository discrepancyRepository;
+
+    private final AuthorizationService authz;
 
     private final NECResultService necResultService;
     private final VoteSubmissionMapper mapper;
@@ -380,30 +383,108 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     }
 
 
-    // ------------------------------------------------------------------------
-    // Update
-    // ------------------------------------------------------------------------
 
     @Override
     @Transactional
-    public VoteSubmissionDto update(UUID id, VoteSubmissionUpdateRequest req, List<MultipartFile> files) {
+    public VoteSubmissionDto update(
+            UUID id,
+            VoteSubmissionUpdateRequest req,
+            List<MultipartFile> files
+    ) {
+
         int attempts = 0;
 
         while (true) {
             try {
-                VoteSubmission s = voteSubmissionRepository.findById(id)
-                        .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Submission not found"));
 
-                // ✅ Allow updates for PENDING + DRAFT only
-                if (s.getStatus() != VoteStatus.PENDING && s.getStatus() != VoteStatus.DRAFT) {
-                    throw new ResponseStatusException(BAD_REQUEST, "Only PENDING or DRAFT submissions can be updated");
+                VoteSubmission s = voteSubmissionRepository.findById(id)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        NOT_FOUND,
+                                        "Submission not found"
+                                )
+                        );
+
+                // ====================================================================
+                // UPDATE STATUS RULE
+                //
+                // Normal editable states:
+                // - DRAFT
+                // - PENDING
+                //
+                // FLAGGED is also editable, but only by trusted administrative /
+                // tally-review roles because the record is under integrity review.
+                // ====================================================================
+
+                VoteStatus status = s.getStatus();
+
+                if (
+                        status != VoteStatus.DRAFT &&
+                                status != VoteStatus.PENDING &&
+                                status != VoteStatus.FLAGGED
+                ) {
+                    throw new ResponseStatusException(
+                            BAD_REQUEST,
+                            "Only DRAFT, PENDING, or FLAGGED submissions can be updated"
+                    );
                 }
 
-                final boolean isDraft = (s.getStatus() == VoteStatus.DRAFT);
+                // ====================================================================
+                // FLAGGED SUBMISSION — RESTRICTED EDIT
+                // ====================================================================
+
+                if (status == VoteStatus.FLAGGED) {
+
+                    authz.requireAny(
+                            "NEC_ADMIN",
+                            "TENANT_ADMIN",
+                            "ADMIN",
+                            "TALLY_OFFICER"
+                    );
+                }
+
+                final boolean isDraft =
+                        status == VoteStatus.DRAFT;
+
+                // ====================================================================
+                // ACTION HISTORY — CAPTURE BEFORE EDIT
+                //
+                // DRAFT is not yet a submitted vote record, so EDIT action history
+                // starts only after the submission is PENDING or FLAGGED.
+                // ====================================================================
+
+                final String statusBefore =
+                        status != null
+                                ? status.name()
+                                : null;
+
+                final Map<String, Object> voteDataBefore =
+                        !isDraft
+                                ? voteSubmissionActionService.captureVoteData(s)
+                                : null;
+
+                final UUID editActorUserId =
+                        !isDraft
+                                ? resolveCurrentUserId()
+                                : null;
+
+                if (
+                        !isDraft &&
+                                editActorUserId == null
+                ) {
+                    throw new ResponseStatusException(
+                            UNAUTHORIZED,
+                            "Authenticated user could not be resolved for edit history"
+                    );
+                }
 
                 PollingPlace place = s.getPollingPlace();
+
                 if (place == null) {
-                    throw new ResponseStatusException(BAD_REQUEST, "Submission is missing polling place reference");
+                    throw new ResponseStatusException(
+                            BAD_REQUEST,
+                            "Submission is missing polling place reference"
+                    );
                 }
 
                 var alloc = placeAllocationRepo
@@ -411,38 +492,82 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                                 s.getElection().getElectionId(),
                                 place.getPlaceId()
                         )
-                        .orElseThrow(() -> new ResponseStatusException(
-                                BAD_REQUEST,
-                                "Polling place not allocated for this election"
-                        ));
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        BAD_REQUEST,
+                                        "Polling place not allocated for this election"
+                                )
+                        );
 
-                Map<String, Integer> mergedVotes = mergeCandidateVotes(s.getCandidateVotes(), req.getCandidateVotes());
+                Map<String, Integer> mergedVotes =
+                        mergeCandidateVotes(
+                                s.getCandidateVotes(),
+                                req.getCandidateVotes()
+                        );
 
                 if (mergedVotes.size() > MAX_CANDIDATE_KEYS) {
-                    throw new ResponseStatusException(BAD_REQUEST, "Too many candidate entries");
+                    throw new ResponseStatusException(
+                            BAD_REQUEST,
+                            "Too many candidate entries"
+                    );
                 }
 
-                boolean candidateVotesProvided = req.getCandidateVotes() != null;
-                Integer castFromReq = req.getBallotsInBox();
+                boolean candidateVotesProvided =
+                        req.getCandidateVotes() != null;
 
-                // ✅ Only enforce ballotsCast when NOT draft
-                if (!isDraft && candidateVotesProvided && castFromReq == null) {
+                Integer castFromReq =
+                        req.getBallotsInBox();
+
+                // Non-draft states, including FLAGGED, must remain fully valid.
+                if (
+                        !isDraft &&
+                                candidateVotesProvided &&
+                                castFromReq == null
+                ) {
                     throw new ResponseStatusException(
                             BAD_REQUEST,
                             "ballotsInBox is required when updating candidateVotes"
                     );
                 }
 
-                // For draft: allow cast to remain 0 / existing
-                int cast = (castFromReq != null) ? castFromReq : nzInt(s.getBallotsInBox());
-                int invalid = (req.getInvalidBallots() != null) ? req.getInvalidBallots() : nzInt(s.getInvalidBallots());
-                int blank = (req.getUnmarkedBallots() != null) ? req.getUnmarkedBallots() : nzInt(s.getUnmarkedBallots());
-                int rej = (req.getRejectedBallots() != null) ? req.getRejectedBallots() : nzInt(s.getRejectedBallots());
-                int spo = (req.getSpoiledBallots() != null) ? req.getSpoiledBallots() : nzInt(s.getSpoiledBallots());
-                int unused = (req.getUnusedBallots() != null) ? req.getUnusedBallots() : nzInt(s.getUnusedBallots());
+                int cast =
+                        castFromReq != null
+                                ? castFromReq
+                                : nzInt(s.getBallotsInBox());
 
-                // ✅ Strict validations only for PENDING (not DRAFT)
+                int invalid =
+                        req.getInvalidBallots() != null
+                                ? req.getInvalidBallots()
+                                : nzInt(s.getInvalidBallots());
+
+                int blank =
+                        req.getUnmarkedBallots() != null
+                                ? req.getUnmarkedBallots()
+                                : nzInt(s.getUnmarkedBallots());
+
+                int rej =
+                        req.getRejectedBallots() != null
+                                ? req.getRejectedBallots()
+                                : nzInt(s.getRejectedBallots());
+
+                int spo =
+                        req.getSpoiledBallots() != null
+                                ? req.getSpoiledBallots()
+                                : nzInt(s.getSpoiledBallots());
+
+                int unused =
+                        req.getUnusedBallots() != null
+                                ? req.getUnusedBallots()
+                                : nzInt(s.getUnusedBallots());
+
+                // ====================================================================
+                // STRICT VALIDATION FOR PENDING + FLAGGED
+                //
+                // Only DRAFT is permitted to remain incomplete.
+                // ====================================================================
+
                 if (!isDraft) {
+
                     validateCandidateVotes(
                             s.getOrganization().getOrgId(),
                             s.getElection().getElectionId(),
@@ -452,149 +577,286 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                     );
 
                     validateTally(
-                            mergedVotes, invalid, blank, rej, spo, unused, cast,
-                            alloc.getRegisteredVoters(), alloc.getBallotsIssued()
+                            mergedVotes,
+                            invalid,
+                            blank,
+                            rej,
+                            spo,
+                            unused,
+                            cast,
+                            alloc.getRegisteredVoters(),
+                            alloc.getBallotsIssued()
                     );
                 }
 
-                // ---------------------------
-                // Apply request after passing validations (or immediately for draft)
-                // ---------------------------
+                // --------------------------------------------------------------------
+                // Apply request after validation
+                // --------------------------------------------------------------------
+
                 mapper.apply(req, s);
 
-                // Ensure merged map is what gets saved (mapper may replace/ignore)
                 s.setCandidateVotes(mergedVotes);
 
-                // Optional: enforce ballotsCast if mapper doesn't set it correctly
                 if (castFromReq != null) {
                     s.setBallotsInBox(castFromReq);
                 }
 
-                // ✅ Ensure DB-required fields always set (draft-safe)
-                if (s.getCandidateVotes() == null) s.setCandidateVotes(new HashMap<>());
-                if (s.getBallotsInBox() == null) s.setBallotsInBox(0);
+                if (s.getCandidateVotes() == null) {
+                    s.setCandidateVotes(new HashMap<>());
+                }
 
-                // ✅ Draft updates do NOT produce hashes/signatures
+                if (s.getBallotsInBox() == null) {
+                    s.setBallotsInBox(0);
+                }
+
+                // ====================================================================
+                // DRAFT
+                // ====================================================================
+
                 if (isDraft) {
+
                     s.setSubmissionHash(null);
                     s.setSubmissionSignature(null);
                     s.setSubmissionSignerKeyId(null);
                     s.setChainHash(null);
+
                 } else {
-                    // ✅ include contestId in hash (existing behavior)
-                    s.setSubmissionHash(buildSubmissionHash(
-                            s.getOrganization().getOrgId(),
-                            s.getElection().getElectionId(),
-                            s.getContestId(),
-                            s.getPollingCenter().getCenterId(),
-                            s.getPollingPlace().getPlaceId(),
-                            s.getAgent().getUserId(),
-                            s.getCandidateVotes(),
-                            s.getBallotsInBox(),
-                            s.getInvalidBallots(),
-                            s.getUnmarkedBallots(),
-                            s.getRejectedBallots(),
-                            s.getSpoiledBallots(),
-                            s.getUnusedBallots()
-                    ));
+
+                    // PENDING and FLAGGED both remain integrity-protected records.
+                    s.setSubmissionHash(
+                            buildSubmissionHash(
+                                    s.getOrganization().getOrgId(),
+                                    s.getElection().getElectionId(),
+                                    s.getContestId(),
+                                    s.getPollingCenter().getCenterId(),
+                                    s.getPollingPlace().getPlaceId(),
+                                    s.getAgent().getUserId(),
+                                    s.getCandidateVotes(),
+                                    s.getBallotsInBox(),
+                                    s.getInvalidBallots(),
+                                    s.getUnmarkedBallots(),
+                                    s.getRejectedBallots(),
+                                    s.getSpoiledBallots(),
+                                    s.getUnusedBallots()
+                            )
+                    );
                 }
 
-                VoteSubmission saved = voteSubmissionRepository.save(s);
+                VoteSubmission saved =
+                        voteSubmissionRepository.save(s);
 
-                // ✅ Normalize only for non-draft submissions
+                // Normalize PENDING + FLAGGED, never DRAFT.
                 if (!isDraft) {
-                    voteSubmissionContestService.normalizeSubmission(saved.getSubmissionId());
+                    voteSubmissionContestService.normalizeSubmission(
+                            saved.getSubmissionId()
+                    );
                 }
 
                 if (files != null && !files.isEmpty()) {
-                    attachFilesToSubmission(saved.getOrganization(), saved, saved.getAgent(), files);
+                    attachFilesToSubmission(
+                            saved.getOrganization(),
+                            saved,
+                            saved.getAgent(),
+                            files
+                    );
                 }
 
-                // ✅ Draft: stop here (no ledger/signing/standard notify)
+                // ====================================================================
+                // DRAFT — STOP HERE
+                // ====================================================================
+
                 if (isDraft) {
+
                     auditLogService.logSubmissionUpdate(
                             saved.getOrganization().getOrgId(),
                             saved.getAgent().getUserId(),
                             "VoteSubmission",
-                            "Updated DRAFT submission: " + saved.getSubmissionId()
+                            "Updated DRAFT submission: " +
+                                    saved.getSubmissionId()
                     );
 
                     notify(
-                            saved.getOrganization().getOrgId(), saved.getAgent().getUserId(),
+                            saved.getOrganization().getOrgId(),
+                            saved.getAgent().getUserId(),
                             NotificationType.VOTE,
                             "Draft Updated",
-                            "Your draft submission for " + saved.getPollingCenter().getCenterName() + " was updated.",
-                            "vote_submission", saved.getSubmissionId(),
-                            NotificationPriority.LOW, DeliveryMethod.IN_APP
+                            "Your draft submission for " +
+                                    saved.getPollingCenter().getCenterName() +
+                                    " was updated.",
+                            "vote_submission",
+                            saved.getSubmissionId(),
+                            NotificationPriority.LOW,
+                            DeliveryMethod.IN_APP
                     );
 
-                    VoteSubmissionDto dto = mapper.toDTO(saved);
-                    enrichWithAllocation(dto, alloc);
+                    VoteSubmissionDto dto =
+                            mapper.toDTO(saved);
+
+                    enrichWithAllocation(
+                            dto,
+                            alloc
+                    );
+
                     return dto;
                 }
 
-                // ---------------------------
-                // Non-draft: Ledger update + sign (existing behavior)
-                // ---------------------------
-                String payloadHash = buildSubmissionPayloadHash(saved);
-                Map<String, Object> ledgerRes = jdbc.queryForMap(
-                        "SELECT * FROM fn_log_ledger_and_update_submission(?, ?, ?, ?)",
-                        "VOTE_SUBMISSION_UPDATE",
-                        saved.getSubmissionId(),
-                        payloadHash,
-                        saved.getAgent().getUserId()
-                );
+                // ====================================================================
+                // PENDING / FLAGGED — LEDGER + SIGN
+                // ====================================================================
 
-                UUID ledgerId = toUuid(ledgerRes.get("ledger_id"));
-                String chainHash = ledgerRes.get("chain_hash") != null ? ledgerRes.get("chain_hash").toString() : null;
+                String payloadHash =
+                        buildSubmissionPayloadHash(saved);
 
-                SigningService.SignResult signResult = signingService.signHex(chainHash);
+                Map<String, Object> ledgerRes =
+                        jdbc.queryForMap(
+                                "SELECT * FROM fn_log_ledger_and_update_submission(?, ?, ?, ?)",
+                                "VOTE_SUBMISSION_UPDATE",
+                                saved.getSubmissionId(),
+                                payloadHash,
+                                saved.getAgent().getUserId()
+                        );
 
-                jdbc.update("UPDATE audit_ledger SET signature = ? WHERE ledger_id = ?", signResult.signature(), ledgerId);
+                UUID ledgerId =
+                        toUuid(
+                                ledgerRes.get("ledger_id")
+                        );
+
+                String chainHash =
+                        ledgerRes.get("chain_hash") != null
+                                ? ledgerRes.get("chain_hash").toString()
+                                : null;
+
+                SigningService.SignResult signResult =
+                        signingService.signHex(chainHash);
+
                 jdbc.update(
-                        "UPDATE vote_submission SET submission_signature = ?, submission_signer_key_id = ? WHERE submission_id = ?",
-                        signResult.signature(), signResult.keyId(), saved.getSubmissionId()
+                        "UPDATE audit_ledger SET signature = ? WHERE ledger_id = ?",
+                        signResult.signature(),
+                        ledgerId
                 );
 
+                jdbc.update(
+                        "UPDATE vote_submission " +
+                                "SET submission_signature = ?, submission_signer_key_id = ? " +
+                                "WHERE submission_id = ?",
+                        signResult.signature(),
+                        signResult.keyId(),
+                        saved.getSubmissionId()
+                );
 
-                // ===== DISCREPANCY REVALIDATION =====
+                // ====================================================================
+                // ACTION HISTORY — RECORD EDIT + ACTUAL VOTE DATA CHANGES
+                // ====================================================================
+
+                if (
+                        voteSubmissionActionService.hasVoteDataChanges(
+                                voteDataBefore,
+                                saved
+                        )
+                ) {
+
+                    voteSubmissionActionService.recordVoteDataChange(
+                            saved.getSubmissionId(),
+                            editActorUserId,
+                            VoteSubmissionActionType.EDIT,
+                            statusBefore,
+                            saved.getStatus() != null
+                                    ? saved.getStatus().name()
+                                    : null,
+                            null,
+                            "Vote submission data edited.",
+                            null,
+                            null,
+                            false,
+                            voteDataBefore,
+                            saved,
+                            null
+                    );
+                }
+
+                // ====================================================================
+                // DISCREPANCY REVALIDATION
+                // ====================================================================
+
                 if (alloc != null) {
-                    PollingPlaceAllocationDto allocDto = PollingPlaceAllocationDto.builder()
-                            .electionId(alloc.getElection().getElectionId())
-                            .placeId(alloc.getPollingPlace().getPlaceId())
-                            .registeredVoters(alloc.getRegisteredVoters())
-                            .ballotsIssued(alloc.getBallotsIssued())
-                            .build();
 
-                    discrepancyService.revalidateSubmissionDiscrepancies(saved, allocDto);
+                    PollingPlaceAllocationDto allocDto =
+                            PollingPlaceAllocationDto.builder()
+                                    .electionId(
+                                            alloc.getElection().getElectionId()
+                                    )
+                                    .placeId(
+                                            alloc.getPollingPlace().getPlaceId()
+                                    )
+                                    .registeredVoters(
+                                            alloc.getRegisteredVoters()
+                                    )
+                                    .ballotsIssued(
+                                            alloc.getBallotsIssued()
+                                    )
+                                    .build();
+
+                    discrepancyService
+                            .revalidateSubmissionDiscrepancies(
+                                    saved,
+                                    allocDto
+                            );
                 }
 
                 auditLogService.logSubmissionUpdate(
                         saved.getOrganization().getOrgId(),
                         saved.getAgent().getUserId(),
                         "VoteSubmission",
-                        "Updated submission: " + saved.getSubmissionId()
+                        "Updated submission: " +
+                                saved.getSubmissionId()
                 );
 
                 notify(
-                        saved.getOrganization().getOrgId(), saved.getAgent().getUserId(),
+                        saved.getOrganization().getOrgId(),
+                        saved.getAgent().getUserId(),
                         NotificationType.VOTE,
                         "Submission Updated",
-                        "Your vote submission for " + saved.getPollingCenter().getCenterName() + " was updated.",
-                        "vote_submission", saved.getSubmissionId(),
-                        NotificationPriority.LOW, DeliveryMethod.IN_APP
+                        "Your vote submission for " +
+                                saved.getPollingCenter().getCenterName() +
+                                " was updated.",
+                        "vote_submission",
+                        saved.getSubmissionId(),
+                        NotificationPriority.LOW,
+                        DeliveryMethod.IN_APP
                 );
 
-                VoteSubmissionDto dto = mapper.toDTO(saved);
-                enrichWithAllocation(dto, alloc);
+                VoteSubmissionDto dto =
+                        mapper.toDTO(saved);
+
+                enrichWithAllocation(
+                        dto,
+                        alloc
+                );
+
                 return dto;
 
             } catch (ObjectOptimisticLockingFailureException e) {
+
                 attempts++;
+
                 if (attempts > OPTIMISTIC_LOCK_RETRIES) {
-                    throw new ResponseStatusException(CONFLICT, "Concurrent update conflict, please retry");
+                    throw new ResponseStatusException(
+                            CONFLICT,
+                            "Concurrent update conflict, please retry"
+                    );
                 }
-                try { Thread.sleep(50L + (long) (Math.random() * 50)); } catch (InterruptedException ignored) {}
+
+                try {
+
+                    Thread.sleep(
+                            50L +
+                                    (long) (
+                                            Math.random() * 50
+                                    )
+                    );
+
+                } catch (InterruptedException ignored) {
+                }
             }
         }
     }
@@ -987,8 +1249,17 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         // ✅ FREEZE: block amend if NECResult already published
         assertNecResultNotPublishedOrThrow(s, "amended");
 
-        // ✅ Only NEC admins should do this
-        // (enforce via AuthorizationService elsewhere)
+        // ========================================================================
+        // VERIFIED ONLY
+        // ========================================================================
+
+        if (s.getStatus() != VoteStatus.VERIFIED) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Only VERIFIED submissions can be amended"
+            );
+        }
+
         SystemUser actor = userRepo.findById(req.getActorUserId())
                 .orElseThrow(() ->
                         new ResponseStatusException(
@@ -996,18 +1267,6 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                                 "Actor not found"
                         )
                 );
-
-        // ✅ Allow amending VERIFIED / REJECTED / PENDING
-        if (
-                s.getStatus() != VoteStatus.VERIFIED &&
-                        s.getStatus() != VoteStatus.REJECTED &&
-                        s.getStatus() != VoteStatus.PENDING
-        ) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Only VERIFIED/REJECTED/PENDING submissions can be amended"
-            );
-        }
 
         // ========================================================================
         // ACTION HISTORY: CAPTURE STATE BEFORE AMENDMENT
@@ -1017,6 +1276,11 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                 s.getStatus() != null
                         ? s.getStatus().name()
                         : null;
+
+        final Map<String, Object> voteDataBefore =
+                voteSubmissionActionService.captureVoteData(
+                        s
+                );
 
         PollingPlace place = s.getPollingPlace();
 
@@ -1162,53 +1426,24 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                 voteSubmissionRepository.saveAndFlush(s);
 
         // ========================================================================
-        // ACTION HISTORY: RECORD AMENDMENT
+        // ACTION HISTORY: RECORD AMENDMENT + EXACT VOTE DATA CHANGES
         // ========================================================================
 
-        VoteSubmissionActionRequest actionRequest =
-                new VoteSubmissionActionRequest();
-
-        actionRequest.setActorUserId(
-                actor.getUserId()
-        );
-
-        actionRequest.setActionType(
-                VoteSubmissionActionType.AMEND
-        );
-
-        actionRequest.setStatusBefore(
-                statusBefore
-        );
-
-        actionRequest.setStatusAfter(
+        voteSubmissionActionService.recordVoteDataChange(
+                saved.getSubmissionId(),
+                actor.getUserId(),
+                VoteSubmissionActionType.AMEND,
+                statusBefore,
                 saved.getStatus() != null
                         ? saved.getStatus().name()
-                        : null
-        );
-
-        actionRequest.setReason(
-                req.getReason().trim()
-        );
-
-        actionRequest.setComments(
-                saved.getComments()
-        );
-
-        actionRequest.setTypedSignature(
-                req.getTypedSignature()
-        );
-
-        actionRequest.setCertificationStatement(
-                req.getCertificationStatement()
-        );
-
-        actionRequest.setCertificationConfirmed(
-                req.getCertificationConfirmed()
-        );
-
-        voteSubmissionActionService.recordAction(
-                saved.getSubmissionId(),
-                actionRequest,
+                        : null,
+                req.getReason().trim(),
+                saved.getComments(),
+                req.getTypedSignature(),
+                req.getCertificationStatement(),
+                req.getCertificationConfirmed(),
+                voteDataBefore,
+                saved,
                 null
         );
 
@@ -1579,7 +1814,6 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     }
 
 
-
     @Override
     @Transactional
     public VoteSubmissionDto submitDraft(UUID id, HttpServletRequest request) {
@@ -1597,13 +1831,22 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                         s.getElection().getElectionId(),
                         place.getPlaceId()
                 )
-                .orElseThrow(() -> new ResponseStatusException(BAD_REQUEST, "Polling place not allocated for this election"));
+                .orElseThrow(() -> new ResponseStatusException(
+                        BAD_REQUEST,
+                        "Polling place not allocated for this election"
+                ));
 
         // Require minimum “final submission” requirements
         if (s.getBallotsInBox() == null || s.getBallotsInBox() <= 0) {
-            throw new ResponseStatusException(BAD_REQUEST, "ballotsInBox is required to submit draft");
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "ballotsInBox is required to submit draft"
+            );
         }
-        if (s.getCandidateVotes() == null) s.setCandidateVotes(new HashMap<>());
+
+        if (s.getCandidateVotes() == null) {
+            s.setCandidateVotes(new HashMap<>());
+        }
 
         // Full validations
         validateCandidateVotes(
@@ -1636,15 +1879,35 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         }
 
         // Hash + duplicate check
-        s.setSubmissionHash(buildSubmissionPayloadHash(s));
-        if (voteSubmissionRepository.existsBySubmissionHash(s.getSubmissionHash())) {
-            throw new ResponseStatusException(CONFLICT, "Duplicate submission (same content).");
+        String submissionHash = buildSubmissionPayloadHash(s);
+
+        s.setSubmissionHash(submissionHash);
+
+        Long duplicateCount = jdbc.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM vote_submission
+                WHERE submission_hash = ?
+                  AND submission_id <> ?
+                  AND date_deleted IS NULL
+                """,
+                Long.class,
+                submissionHash,
+                id
+        );
+
+        if (duplicateCount != null && duplicateCount > 0) {
+            throw new ResponseStatusException(
+                    CONFLICT,
+                    "Duplicate submission (same content)."
+            );
         }
 
         VoteSubmission saved = voteSubmissionRepository.save(s);
 
         // Ledger + sign (same as your create/update)
         String payloadHash = buildSubmissionPayloadHash(saved);
+
         Map<String, Object> ledgerRes = jdbc.queryForMap(
                 "SELECT * FROM fn_log_ledger_and_update_submission(?, ?, ?, ?)",
                 "VOTE_SUBMISSION_SUBMIT_DRAFT",
@@ -1654,25 +1917,51 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         );
 
         UUID ledgerId = toUuid(ledgerRes.get("ledger_id"));
-        String chainHash = ledgerRes.get("chain_hash") != null ? ledgerRes.get("chain_hash").toString() : null;
 
-        SigningService.SignResult signResult = signingService.signHex(chainHash);
+        String chainHash =
+                ledgerRes.get("chain_hash") != null
+                        ? ledgerRes.get("chain_hash").toString()
+                        : null;
 
-        jdbc.update("UPDATE audit_ledger SET signature = ? WHERE ledger_id = ?", signResult.signature(), ledgerId);
-        jdbc.update("UPDATE vote_submission SET submission_signature = ?, submission_signer_key_id = ? WHERE submission_id = ?",
-                signResult.signature(), signResult.keyId(), saved.getSubmissionId());
+        SigningService.SignResult signResult =
+                signingService.signHex(chainHash);
+
+        jdbc.update(
+                "UPDATE audit_ledger SET signature = ? WHERE ledger_id = ?",
+                signResult.signature(),
+                ledgerId
+        );
+
+        jdbc.update(
+                """
+                UPDATE vote_submission
+                SET submission_signature = ?,
+                    submission_signer_key_id = ?
+                WHERE submission_id = ?
+                """,
+                signResult.signature(),
+                signResult.keyId(),
+                saved.getSubmissionId()
+        );
 
         notify(
-                saved.getOrganization().getOrgId(), saved.getAgent().getUserId(),
+                saved.getOrganization().getOrgId(),
+                saved.getAgent().getUserId(),
                 NotificationType.VOTE,
                 "Draft Submitted",
-                "Your draft submission for " + saved.getPollingCenter().getCenterName() + " was submitted for review.",
-                "vote_submission", saved.getSubmissionId(),
-                NotificationPriority.NORMAL, DeliveryMethod.IN_APP
+                "Your draft submission for "
+                        + saved.getPollingCenter().getCenterName()
+                        + " was submitted for review.",
+                "vote_submission",
+                saved.getSubmissionId(),
+                NotificationPriority.NORMAL,
+                DeliveryMethod.IN_APP
         );
 
         VoteSubmissionDto dto = mapper.toDTO(saved);
+
         enrichWithAllocation(dto, alloc);
+
         return dto;
     }
 
@@ -1939,9 +2228,6 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
 
         // ========================================================================
         // REQUIRE PRIOR REJECTION HISTORY
-        //
-        // This prevents a corrupted/manual REJECTED status from being silently
-        // converted through this workflow without an actual rejection action.
         // ========================================================================
 
         boolean rejectionExists =
@@ -1993,6 +2279,11 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                 s.getStatus() != null
                         ? s.getStatus().name()
                         : null;
+
+        final Map<String, Object> voteDataBefore =
+                voteSubmissionActionService.captureVoteData(
+                        s
+                );
 
         // ========================================================================
         // MERGE CORRECTED VALUES
@@ -2111,8 +2402,6 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
 
         // ========================================================================
         // STATE TRANSITION
-        //
-        // Same row. Same submission ID. Same polling place.
         // ========================================================================
 
         s.setStatus(
@@ -2148,51 +2437,22 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                 );
 
         // ========================================================================
-        // ACTION HISTORY
+        // ACTION HISTORY — RESUBMIT + EXACT VOTE DATA CHANGES
         // ========================================================================
 
-        VoteSubmissionActionRequest actionRequest =
-                new VoteSubmissionActionRequest();
-
-        actionRequest.setActorUserId(
-                actor.getUserId()
-        );
-
-        actionRequest.setActionType(
-                VoteSubmissionActionType.RESUBMIT
-        );
-
-        actionRequest.setStatusBefore(
-                statusBefore
-        );
-
-        actionRequest.setStatusAfter(
-                VoteStatus.PENDING.name()
-        );
-
-        actionRequest.setReason(
-                req.getReason().trim()
-        );
-
-        actionRequest.setComments(
-                saved.getComments()
-        );
-
-        actionRequest.setTypedSignature(
-                req.getTypedSignature()
-        );
-
-        actionRequest.setCertificationStatement(
-                req.getCertificationStatement()
-        );
-
-        actionRequest.setCertificationConfirmed(
-                req.getCertificationConfirmed()
-        );
-
-        voteSubmissionActionService.recordAction(
+        voteSubmissionActionService.recordVoteDataChange(
                 saved.getSubmissionId(),
-                actionRequest,
+                actor.getUserId(),
+                VoteSubmissionActionType.RESUBMIT,
+                statusBefore,
+                VoteStatus.PENDING.name(),
+                req.getReason().trim(),
+                saved.getComments(),
+                req.getTypedSignature(),
+                req.getCertificationStatement(),
+                req.getCertificationConfirmed(),
+                voteDataBefore,
+                saved,
                 null
         );
 
@@ -2346,7 +2606,6 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                 saved
         );
     }
-
 
 
     @Override

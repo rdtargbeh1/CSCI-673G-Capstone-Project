@@ -84,7 +84,7 @@ public class VoteSubmissionController {
         authz.requireAny(
                 "TENANT_ADMIN",
                 "NEC_ADMIN",
-                "NEC_VERIFIER"
+                "TALLY_OFFICER"
         );
 
         return voteSubmissionService.verify(id, req);
@@ -163,7 +163,7 @@ public class VoteSubmissionController {
 
         authz.requireAny(
                 "NEC_ADMIN",
-                "NEC_VERIFIER",
+                "TALLY_OFFICER",
                 "TENANT_ADMIN"
         );
 
@@ -186,7 +186,20 @@ public class VoteSubmissionController {
             @Valid @RequestBody VoteSubmissionResubmitRequest request
     ) {
 
-        authz.requireMembership();
+        authz.requireAny(
+                "NEC_ADMIN",
+                "TENANT_ADMIN",
+                "ADMIN",
+                "TALLY_OFFICER",
+                "COORDINATOR",
+                "SUPERVISOR",
+                "FIELD_OFFICER",
+                "PRESIDING_OFFICER",
+                "DATA_ENTRY"
+        );
+
+
+//        authz.requireMembership();
 
         return ResponseEntity.ok(
                 voteSubmissionService.resubmitRejected(

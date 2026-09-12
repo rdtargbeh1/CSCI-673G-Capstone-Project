@@ -22,7 +22,13 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -399,6 +405,30 @@ public class VoteSubmissionActionServiceImplementation {
                 );
     }
 
+    public long countForSubmissionByType(
+            UUID submissionId,
+            VoteSubmissionActionType actionType
+    ) {
+
+        if (submissionId == null) {
+            throw new IllegalArgumentException(
+                    "submissionId is required."
+            );
+        }
+
+        if (actionType == null) {
+            throw new IllegalArgumentException(
+                    "actionType is required."
+            );
+        }
+
+        return actionRepository
+                .countBySubmission_SubmissionIdAndActionType(
+                        submissionId,
+                        actionType
+                );
+    }
+
     // ========================================================================
     // CERTIFICATION
     // ========================================================================
@@ -408,71 +438,261 @@ public class VoteSubmissionActionServiceImplementation {
             VoteSubmissionActionRequest request
     ) {
 
+        VoteSubmissionActionType actionType = request.getActionType();
+
+        // EDIT is authenticated and its exact vote-data changes are recorded.
+        // DELETE keeps its existing destructive-confirmation workflow.
         if (
-                request.getActionType() ==
-                        VoteSubmissionActionType.DELETE
+                actionType == VoteSubmissionActionType.EDIT ||
+                        actionType == VoteSubmissionActionType.DELETE
         ) {
             return;
         }
 
-        if (
-                !Boolean.TRUE.equals(
-                        request.getCertificationConfirmed()
-                )
-        ) {
+        if (!Boolean.TRUE.equals(request.getCertificationConfirmed())) {
             throw new IllegalArgumentException(
                     "Certification must be confirmed."
             );
         }
 
-        String expectedName =
-                resolveUserName(
-                        actor
-                );
+        String expectedName = resolveUserName(actor);
+        String typedSignature = clean(request.getTypedSignature());
 
-        String typedSignature =
-                clean(
-                        request.getTypedSignature()
-                );
-
-        if (
-                expectedName == null ||
-                        expectedName.isBlank()
-        ) {
+        if (expectedName == null || expectedName.isBlank()) {
             throw new IllegalStateException(
                     "Authenticated user does not have a valid account name for certification."
             );
         }
 
-        if (
-                typedSignature == null ||
-                        typedSignature.isBlank()
-        ) {
+        if (typedSignature == null || typedSignature.isBlank()) {
             throw new IllegalArgumentException(
                     "Typed signature is required."
             );
         }
 
-        if (
-                !expectedName.equalsIgnoreCase(
-                        typedSignature
-                )
-        ) {
+        if (!expectedName.equalsIgnoreCase(typedSignature)) {
             throw new IllegalArgumentException(
                     "Typed signature does not match the authenticated user's account name."
             );
         }
 
-        if (
-                clean(
-                        request.getCertificationStatement()
-                ) == null
-        ) {
+        if (clean(request.getCertificationStatement()) == null) {
             throw new IllegalArgumentException(
                     "Certification statement is required."
             );
         }
     }
+
+
+    // ========================================================================
+    // VOTE DATA SNAPSHOT
+    // ========================================================================
+
+    public Map<String, Object> captureVoteData(
+            VoteSubmission submission
+    ) {
+
+        if (submission == null) {
+            return Collections.emptyMap();
+        }
+
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+
+        snapshot.put(
+                "candidateVotes",
+                submission.getCandidateVotes() == null
+                        ? Collections.emptyMap()
+                        : new LinkedHashMap<>(submission.getCandidateVotes())
+        );
+        snapshot.put("ballotsReceived", submission.getBallotsReceived());
+        snapshot.put("ballotsInBox", submission.getBallotsInBox());
+        snapshot.put("invalidBallots", submission.getInvalidBallots());
+        snapshot.put("unmarkedBallots", submission.getUnmarkedBallots());
+        snapshot.put("rejectedBallots", submission.getRejectedBallots());
+        snapshot.put("spoiledBallots", submission.getSpoiledBallots());
+        snapshot.put("unusedBallots", submission.getUnusedBallots());
+
+        return snapshot;
+    }
+
+
+    // ========================================================================
+    // VOTE DATA CHANGES
+    // ========================================================================
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> buildVoteDataChanges(
+            Map<String, Object> before,
+            Map<String, Object> after
+    ) {
+
+        Map<String, Object> changes = new LinkedHashMap<>();
+
+        Map<String, Integer> beforeVotes =
+                before != null && before.get("candidateVotes") instanceof Map
+                        ? (Map<String, Integer>) before.get("candidateVotes")
+                        : Collections.emptyMap();
+
+        Map<String, Integer> afterVotes =
+                after != null && after.get("candidateVotes") instanceof Map
+                        ? (Map<String, Integer>) after.get("candidateVotes")
+                        : Collections.emptyMap();
+
+        Set<String> candidateIds = new LinkedHashSet<>();
+        candidateIds.addAll(beforeVotes.keySet());
+        candidateIds.addAll(afterVotes.keySet());
+
+        Map<String, Object> candidateChanges = new LinkedHashMap<>();
+
+        for (String candidateId : candidateIds) {
+            int beforeValue = beforeVotes.getOrDefault(candidateId, 0);
+            int afterValue = afterVotes.getOrDefault(candidateId, 0);
+
+            if (beforeValue == afterValue) {
+                continue;
+            }
+
+            Map<String, Object> change = new LinkedHashMap<>();
+            change.put("before", beforeValue);
+            change.put("after", afterValue);
+            change.put("delta", afterValue - beforeValue);
+            candidateChanges.put(candidateId, change);
+        }
+
+        if (!candidateChanges.isEmpty()) {
+            changes.put("candidateVotes", candidateChanges);
+        }
+
+        String[] trackedFields = {
+                "ballotsReceived",
+                "ballotsInBox",
+                "invalidBallots",
+                "unmarkedBallots",
+                "rejectedBallots",
+                "spoiledBallots",
+                "unusedBallots"
+        };
+
+        for (String field : trackedFields) {
+            Object beforeValue = before != null ? before.get(field) : null;
+            Object afterValue = after != null ? after.get(field) : null;
+
+            if (Objects.equals(beforeValue, afterValue)) {
+                continue;
+            }
+
+            Map<String, Object> change = new LinkedHashMap<>();
+            change.put("before", beforeValue);
+            change.put("after", afterValue);
+
+            if (beforeValue instanceof Number beforeNumber &&
+                    afterValue instanceof Number afterNumber) {
+                change.put(
+                        "delta",
+                        afterNumber.intValue() - beforeNumber.intValue()
+                );
+            }
+
+            changes.put(field, change);
+        }
+
+        return changes;
+    }
+
+
+    // ========================================================================
+    // VOTE DATA ACTION PAYLOAD
+    // ========================================================================
+
+    public Map<String, Object> buildVoteDataActionData(
+            Map<String, Object> before,
+            VoteSubmission afterSubmission
+    ) {
+
+        Map<String, Object> safeBefore =
+                before == null
+                        ? Collections.emptyMap()
+                        : new LinkedHashMap<>(before);
+
+        Map<String, Object> after = captureVoteData(afterSubmission);
+        Map<String, Object> changes = buildVoteDataChanges(safeBefore, after);
+
+        Map<String, Object> actionData = new LinkedHashMap<>();
+        actionData.put("before", safeBefore);
+        actionData.put("after", after);
+        actionData.put("changes", changes);
+        actionData.put("changedFieldCount", changes.size());
+
+        return actionData;
+    }
+
+
+    public boolean hasVoteDataChanges(
+            Map<String, Object> before,
+            VoteSubmission afterSubmission
+    ) {
+        return !buildVoteDataChanges(
+                before,
+                captureVoteData(afterSubmission)
+        ).isEmpty();
+    }
+
+
+    // ========================================================================
+    // RECORD VOTE-DATA CHANGE ACTION
+    // ========================================================================
+
+    @Transactional
+    public VoteSubmissionActionDto recordVoteDataChange(
+            UUID submissionId,
+            UUID actorUserId,
+            VoteSubmissionActionType actionType,
+            String statusBefore,
+            String statusAfter,
+            String reason,
+            String comments,
+            String typedSignature,
+            String certificationStatement,
+            Boolean certificationConfirmed,
+            Map<String, Object> beforeSnapshot,
+            VoteSubmission afterSubmission,
+            HttpServletRequest httpRequest
+    ) {
+
+        if (
+                actionType != VoteSubmissionActionType.EDIT &&
+                        actionType != VoteSubmissionActionType.AMEND &&
+                        actionType != VoteSubmissionActionType.RESUBMIT
+        ) {
+            throw new IllegalArgumentException(
+                    "Vote-data change history is supported only for EDIT, AMEND, or RESUBMIT."
+            );
+        }
+
+        VoteSubmissionActionRequest request = new VoteSubmissionActionRequest();
+        request.setActorUserId(actorUserId);
+        request.setActionType(actionType);
+        request.setStatusBefore(statusBefore);
+        request.setStatusAfter(statusAfter);
+        request.setReason(reason);
+        request.setComments(comments);
+        request.setTypedSignature(typedSignature);
+        request.setCertificationStatement(certificationStatement);
+        request.setCertificationConfirmed(certificationConfirmed);
+        request.setActionData(
+                buildVoteDataActionData(
+                        beforeSnapshot,
+                        afterSubmission
+                )
+        );
+
+        return recordAction(
+                submissionId,
+                request,
+                httpRequest
+        );
+    }
+
 
     // ========================================================================
     // USER NAME

@@ -58,7 +58,7 @@ public class TenantUserController {
     @ResponseStatus(HttpStatus.CREATED)
     public UserDto createMember(@RequestBody @Valid UserCreateRequest req) {
 //        authz.requireAnyInTenantOrPlatformAdmin();
-        authz.requireAny("TENANT_ADMIN", "ADMIN", "SYSTEM_ADMIN");  // Caller must be a tenant PARTY_ADMIN, ADMIN, or platform SYSTEM_ADMIN
+        authz.requireAny("TENANT_ADMIN", "ADMIN");  // Caller must be a tenant PARTY_ADMIN, ADMIN, or platform SYSTEM_ADMIN
         return systemUserService.createTenantMemberRestricted(req);
     }
 

@@ -8,11 +8,12 @@ import lombok.Setter;
 @Getter
 @Setter
 public class ElectionCreateRequest {
+
     @NotBlank
     @Size(max = 100)
     private String electionName;
 
-    @Min(1847)
+    @Min(1900)
     @Max(2100)
     private int year;
 
@@ -26,5 +27,4 @@ public class ElectionCreateRequest {
     private Integer ballotSparePercent;
 
     private Boolean enforceBallotsGteRegistered;
-
 }
