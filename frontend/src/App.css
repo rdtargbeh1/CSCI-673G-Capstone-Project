@@ -1,42 +1,1080 @@
+/* app.css */
+
+@import "tailwindcss";
+
+/*
+ * ================================================================
+ * EMS APPLICATION ROOT LAYOUT
+ * ================================================================
+ */
+
 #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 100vh;
+
+  margin: 0;
+  padding: 0;
+
+  text-align: left;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+/* ================================================================
+   GLOBAL RESPONSIVE SAFETY
+================================================================ */
+
+html,
+body {
+  width: 100%;
+  min-width: 0;
+
+  margin: 0;
+  padding: 0;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+body {
+  overflow-x: hidden;
+}
+
+#root * {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+/* ================================================================
+   RESPONSIVE PAGE CONTAINER
+================================================================ */
+
+.app-page {
+  width: 100%;
+  max-width: 1440px;
+
+  margin-left: auto;
+  margin-right: auto;
+
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+@media (min-width: 640px) {
+  .app-page {
+    padding-left: 16px;
+    padding-right: 16px;
   }
+}
+
+@media (min-width: 1024px) {
+  .app-page {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}
+
+@media (min-width: 1536px) {
+  .app-page {
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+}
+
+/* ================================================================
+   OPERATIONAL CONTENT CONTAINER
+================================================================ */
+
+.app-content {
+  width: 100%;
+  max-width: 1180px;
+
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ================================================================
+   DETAIL / FORM CONTAINER
+================================================================ */
+
+.app-detail {
+  width: 100%;
+  max-width: 1100px;
+
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.app-form {
+  width: 100%;
+  max-width: 1000px;
+
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ================================================================
+   RESPONSIVE LIST
+================================================================ */
+
+.entity-list {
+  width: 100%;
+
+  overflow: hidden;
+
+  border: 1px solid rgb(226 232 240);
+  border-radius: 12px;
+
+  background: white;
+}
+
+.entity-list-item {
+  width: 100%;
+
+  padding: 12px;
+
+  border-bottom: 1px solid rgb(226 232 240);
+
+  background: white;
+
+  text-align: left;
+
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.entity-list-item:last-child {
+  border-bottom: 0;
+}
+
+.entity-list-item:hover {
+  background: rgb(248 250 252);
+}
+
+/* ================================================================
+   ENTITY LIST - TABLET
+================================================================ */
+
+@media (min-width: 640px) {
+  .entity-list-item {
+    padding: 14px 16px;
+  }
+}
+
+/* ================================================================
+   ENTITY LIST - DESKTOP
+================================================================ */
+
+@media (min-width: 1024px) {
+  .entity-list-item {
+    padding: 14px 18px;
+  }
+}
+
+/* ================================================================
+   ELECTION WORKSPACE
+================================================================ */
+
+.election-workspace {
+  width: 100%;
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 0.75rem;
+}
+
+/* ================================================================
+   ELECTION HEADER ACTIONS
+================================================================ */
+
+.election-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+
+  gap: 0.5rem;
+}
+
+/* ================================================================
+   ELECTION HEADER BUTTON
+================================================================ */
+
+.election-header-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 0.4rem;
+
+  min-height: 44px;
+
+  padding: 0.5rem 0.75rem;
+
+  border: 1px solid rgb(226 232 240);
+
+  border-radius: 0.625rem;
+
+  background: white;
+
+  color: rgb(15 23 42);
+
+  font-size: 0.875rem;
+
+  font-weight: 700;
+
+  line-height: 1.2;
+
+  white-space: nowrap;
+
+  cursor: pointer;
+
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 100ms ease;
+}
+
+.election-header-button:hover {
+  background: rgb(248 250 252);
+}
+
+.election-header-button:active {
+  transform: scale(0.98);
+}
+
+.election-header-button:disabled {
+  cursor: not-allowed;
+
+  opacity: 0.55;
+}
+
+.election-header-button-icon {
+  width: 1rem;
+
+  height: 1rem;
+
+  flex-shrink: 0;
+}
+
+/* ================================================================
+   ELECTION STATUS
+================================================================ */
+
+.election-status-badge {
+  display: inline-flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  gap: 0.4rem;
+
+  min-height: 40px;
+
+  padding: 0.45rem 0.7rem;
+
+  border: 1px solid rgb(226 232 240);
+
+  border-radius: 999px;
+
+  background: white;
+
+  font-size: 0.75rem;
+
+  font-weight: 800;
+
+  white-space: nowrap;
+}
+
+.election-status-dot {
+  width: 7px;
+
+  height: 7px;
+
+  flex-shrink: 0;
+
+  border-radius: 999px;
+}
+
+.election-status-active {
+  color: rgb(21 128 61);
+}
+
+.election-status-active .election-status-dot {
+  background: rgb(34 197 94);
+}
+
+.election-status-inactive {
+  color: rgb(185 28 28);
+}
+
+.election-status-inactive .election-status-dot {
+  background: rgb(239 68 68);
+}
+
+/* ================================================================
+   SWITCH ELECTION
+================================================================ */
+
+.election-switch-wrapper {
+  position: relative;
+}
+
+.election-switch-chevron {
+  width: 0.9rem;
+
+  height: 0.9rem;
+
+  transition: transform 150ms ease;
+}
+
+.election-switch-chevron-open {
+  transform: rotate(180deg);
+}
+
+.election-switch-popover {
+  position: absolute;
+
+  z-index: 60;
+
+  top: calc(100% + 8px);
+
+  right: 0;
+
+  width: 420px;
+
+  max-width: min(92vw, 420px);
+
+  padding: 0.875rem;
+
+  border: 1px solid rgb(226 232 240);
+
+  border-radius: 0.75rem;
+
+  background: white;
+
+  box-shadow: 0 16px 40px rgb(15 23 42 / 0.16);
+}
+
+.election-switch-title {
+  color: rgb(15 23 42);
+
+  font-size: 1rem;
+
+  font-weight: 800;
+}
+
+.election-switch-content {
+  margin-top: 0.625rem;
+}
+
+.election-switch-select {
+  width: 100%;
+
+  min-height: 44px;
+
+  padding: 0.5rem 0.75rem;
+
+  border: 1px solid rgb(203 213 225);
+
+  border-radius: 0.625rem;
+
+  background: white;
+
+  color: rgb(15 23 42);
+
+  font-size: 0.875rem;
+
+  font-weight: 600;
+
+  outline: none;
+}
+
+.election-switch-select:focus {
+  border-color: rgb(59 130 246);
+
+  box-shadow: 0 0 0 2px rgb(219 234 254);
+}
+
+.election-switch-message {
+  font-size: 0.875rem;
+
+  color: rgb(71 85 105);
+}
+
+.election-switch-error {
+  font-size: 0.875rem;
+
+  color: rgb(185 28 28);
+}
+
+.election-switch-help {
+  margin-top: 0.625rem;
+
+  color: rgb(100 116 139);
+
+  font-size: 0.75rem;
+
+  line-height: 1.4;
+}
+
+/* ================================================================
+   ELECTION REFRESH
+================================================================ */
+
+@keyframes election-refresh-spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+.election-refresh-spinning {
+  animation: election-refresh-spin 0.9s linear infinite;
+}
+
+/* ================================================================
+   ELECTION WORKSPACE NAVIGATION
+================================================================ */
+
+.election-workspace-nav {
+  width: 100%;
+
+  min-width: 0;
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  gap: 0.75rem;
+
+  padding: 0.45rem 0.55rem;
+
+  border: 1px solid rgb(226 232 240);
+
+  border-radius: 0.75rem;
+
+  background: white;
+}
+
+/* ================================================================
+   ELECTION WORKSPACE TABS
+================================================================ */
+
+.election-workspace-tabs {
+  min-width: 0;
+
+  display: flex;
+
+  align-items: center;
+
+  flex-wrap: wrap;
+
+  gap: 0.375rem;
+}
+
+.election-workspace-tab {
+  position: relative;
+
+  display: inline-flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  gap: 0.4rem;
+
+  min-height: 38px;
+
+  padding: 0.4rem 0.65rem;
+
+  border: 1px solid rgb(226 232 240);
+
+  border-radius: 0.6rem;
+
+  background: white;
+
+  color: rgb(51 65 85);
+
+  font-size: 0.8125rem;
+
+  font-weight: 700;
+
+  line-height: 1.2;
+
+  text-decoration: none;
+
+  white-space: nowrap;
+
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.election-workspace-tab:hover {
+  background: rgb(248 250 252);
+}
+
+.election-workspace-tab-active {
+  border-color: rgb(199 210 254);
+
+  background: rgb(238 242 255);
+
+  color: rgb(49 46 129);
+
+  box-shadow: inset 0 -2px 0 rgb(79 70 229);
+}
+
+.election-workspace-tab-dot {
+  width: 7px;
+
+  height: 7px;
+
+  flex-shrink: 0;
+
+  border-radius: 999px;
+
+  background: rgb(203 213 225);
+}
+
+.election-workspace-tab-dot-active {
+  background: rgb(79 70 229);
+}
+
+.election-workspace-tab-label {
+  min-width: 0;
+}
+
+/* ================================================================
+   ELECTION WORKSPACE MODE
+================================================================ */
+
+.election-workspace-mode {
+  display: flex;
+
+  flex-shrink: 0;
+
+  align-items: center;
+}
+
+/* ================================================================
+   ELECTION WORKSPACE CONTENT
+================================================================ */
+
+.election-workspace-content {
+  width: 100%;
+
+  min-width: 0;
+}
+
+.election-workspace-error {
+  margin-bottom: 0.75rem;
+
+  padding: 0.75rem;
+
+  border: 1px solid rgb(254 202 202);
+
+  border-radius: 0.625rem;
+
+  background: rgb(254 242 242);
+
+  color: rgb(153 27 27);
+
+  font-size: 0.875rem;
+
+  font-weight: 700;
+}
+
+/* ================================================================
+   ELECTION WORKSPACE - MOBILE
+================================================================ */
+
+@media (max-width: 639px) {
+  .election-workspace {
+    gap: 0.5rem;
+  }
+
+  /*
+   * Header actions remain compact rather than
+   * stacking every button vertically.
+   */
+
+  .election-header-actions {
+    gap: 0.35rem;
+  }
+
+  .election-header-button {
+    min-height: 40px;
+
+    padding: 0.4rem 0.55rem;
+
+    font-size: 0.75rem;
+  }
+
+  .election-header-button-icon {
+    width: 0.9rem;
+
+    height: 0.9rem;
+  }
+
+  .election-status-badge {
+    min-height: 38px;
+
+    padding: 0.4rem 0.55rem;
+
+    font-size: 0.7rem;
+  }
+
+  .election-switch-popover {
+    position: fixed;
+
+    top: auto;
+
+    right: 10px;
+
+    bottom: 12px;
+
+    left: 10px;
+
+    width: auto;
+
+    max-width: none;
+  }
+
+  /*
+   * Election navigation becomes horizontally scrollable.
+   * This is preferable to crushing six tabs into tiny rows.
+   */
+
+  .election-workspace-nav {
+    display: block;
+
+    padding: 0.4rem;
+
+    overflow: hidden;
+  }
+
+  .election-workspace-tabs {
+    width: 100%;
+
+    flex-wrap: nowrap;
+
+    overflow-x: auto;
+
+    overflow-y: hidden;
+
+    gap: 0.3rem;
+
+    padding-bottom: 2px;
+
+    scrollbar-width: thin;
+
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .election-workspace-tab {
+    flex: 0 0 auto;
+
+    min-height: 38px;
+
+    padding: 0.4rem 0.625rem;
+
+    font-size: 0.75rem;
+  }
+
+  .election-workspace-mode {
+    display: none;
   }
 }
 
-.card {
-  padding: 2em;
+/* ================================================================
+   ELECTION WORKSPACE - VERY SMALL MOBILE
+================================================================ */
+
+@media (max-width: 400px) {
+  .election-header-button {
+    padding-left: 0.45rem;
+
+    padding-right: 0.45rem;
+  }
+
+  .election-refresh-label {
+    display: none;
+  }
+
+  .election-switch-button-label {
+    max-width: 92px;
+
+    overflow: hidden;
+
+    text-overflow: ellipsis;
+  }
+
+  .election-workspace-tab {
+    padding-left: 0.55rem;
+
+    padding-right: 0.55rem;
+
+    font-size: 0.72rem;
+  }
 }
 
-.read-the-docs {
-  color: #888;
+/* ================================================================
+   ELECTION WORKSPACE - TABLET
+================================================================ */
+
+@media (min-width: 640px) and (max-width: 1023px) {
+  .election-header-button {
+    font-size: 0.8125rem;
+  }
+
+  .election-workspace-tab {
+    font-size: 0.8125rem;
+
+    padding-left: 0.7rem;
+
+    padding-right: 0.7rem;
+  }
+}
+
+/* ================================================================
+   ELECTION WORKSPACE - DESKTOP
+================================================================ */
+
+@media (min-width: 1024px) {
+  .election-header-button {
+    min-height: 44px;
+
+    padding: 0.55rem 0.8rem;
+
+    font-size: 0.875rem;
+  }
+
+  .election-workspace-nav {
+    padding: 0.5rem 0.65rem;
+  }
+
+  .election-workspace-tabs {
+    gap: 0.45rem;
+  }
+
+  .election-workspace-tab {
+    min-height: 40px;
+
+    padding: 0.45rem 0.8rem;
+
+    font-size: 0.875rem;
+  }
+}
+
+/* ================================================================
+   ELECTION WORKSPACE - LARGE DESKTOP
+================================================================ */
+
+@media (min-width: 1440px) {
+  .election-header-button {
+    font-size: 0.9375rem;
+  }
+
+  .election-workspace-tab {
+    padding-left: 0.9rem;
+
+    padding-right: 0.9rem;
+
+    font-size: 0.9375rem;
+  }
+}
+
+/* ================================================================
+   ALLOCATION WORKSPACE
+================================================================ */
+
+.allocation-workspace {
+  width: 100%;
+
+  min-width: 0;
+
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 0.75rem;
+}
+
+/* ================================================================
+   ALLOCATION CONTENT
+================================================================ */
+
+.allocation-content {
+  width: 100%;
+
+  min-width: 0;
+}
+
+/* ================================================================
+   ALLOCATION TOOLBAR
+================================================================ */
+
+.allocation-toolbar {
+  width: 100%;
+
+  min-width: 0;
+
+  display: flex;
+
+  flex-wrap: wrap;
+
+  align-items: center;
+
+  justify-content: flex-end;
+
+  gap: 0.5rem;
+}
+
+/* ================================================================
+   ALLOCATION TAB BUTTON
+================================================================ */
+
+.allocation-tab-button {
+  display: inline-flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  min-height: 44px;
+
+  gap: 0.5rem;
+
+  padding: 0.625rem 1rem;
+
+  border: 1px solid rgb(203 213 225);
+
+  border-radius: 0.625rem;
+
+  background-color: white;
+
+  color: rgb(15 23 42);
+
+  font-size: 0.875rem;
+
+  font-weight: 700;
+
+  line-height: 1.25rem;
+
+  white-space: nowrap;
+
+  cursor: pointer;
+
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease,
+    transform 100ms ease;
+}
+
+.allocation-tab-button:hover {
+  background-color: rgb(248 250 252);
+}
+
+.allocation-tab-button:active {
+  transform: scale(0.98);
+}
+
+.allocation-tab-button:focus-visible {
+  outline: 2px solid rgb(59 130 246);
+
+  outline-offset: 2px;
+}
+
+/* ================================================================
+   ACTIVE ALLOCATION TAB
+================================================================ */
+
+.allocation-tab-button-active {
+  border-color: rgb(30 64 175);
+
+  background-color: rgb(30 58 138);
+
+  color: white;
+
+  box-shadow:
+    0 1px 2px rgb(15 23 42 / 0.08),
+    0 3px 8px rgb(30 58 138 / 0.16);
+}
+
+.allocation-tab-button-active:hover {
+  background-color: rgb(30 58 138);
+
+  color: white;
+}
+
+/* ================================================================
+   ALLOCATION ICON
+================================================================ */
+
+.allocation-tab-icon {
+  width: 1rem;
+
+  height: 1rem;
+
+  flex-shrink: 0;
+}
+
+/* ================================================================
+   ALLOCATION DIVIDER
+================================================================ */
+
+.allocation-toolbar-divider {
+  display: none;
+
+  width: 1px;
+
+  height: 1.75rem;
+
+  background-color: rgb(203 213 225);
+}
+
+/* ================================================================
+   ALLOCATION BULK IMPORT
+================================================================ */
+
+.allocation-bulk-button {
+  display: inline-flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  min-height: 44px;
+
+  gap: 0.5rem;
+
+  padding: 0.625rem 1rem;
+
+  border: 1px solid rgb(203 213 225);
+
+  border-radius: 0.625rem;
+
+  background-color: rgb(248 250 252);
+
+  color: rgb(100 116 139);
+
+  font-size: 0.875rem;
+
+  font-weight: 600;
+
+  white-space: nowrap;
+
+  cursor: not-allowed;
+
+  opacity: 0.85;
+}
+
+/* ================================================================
+   ALLOCATION READ ONLY
+================================================================ */
+
+.allocation-read-only {
+  display: flex;
+
+  align-items: center;
+}
+
+/* ================================================================
+   ALLOCATION MOBILE
+================================================================ */
+
+@media (max-width: 639px) {
+  .allocation-workspace {
+    gap: 0.5rem;
+  }
+
+  .allocation-toolbar {
+    gap: 0.375rem;
+  }
+
+  .allocation-tab-button {
+    min-height: 42px;
+
+    padding: 0.5rem 0.625rem;
+
+    font-size: 0.8125rem;
+  }
+
+  .allocation-bulk-button {
+    min-height: 42px;
+
+    padding: 0.5rem 0.625rem;
+
+    font-size: 0.8125rem;
+  }
+
+  .allocation-tab-icon {
+    width: 0.9375rem;
+
+    height: 0.9375rem;
+  }
+}
+
+/* ================================================================
+   ALLOCATION DESKTOP
+================================================================ */
+
+@media (min-width: 1024px) {
+  .allocation-toolbar-divider {
+    display: block;
+  }
+
+  .allocation-tab-button {
+    min-height: 44px;
+
+    padding: 0.625rem 1.125rem;
+
+    font-size: 0.9375rem;
+  }
+
+  .allocation-bulk-button {
+    min-height: 44px;
+
+    padding: 0.625rem 1rem;
+
+    font-size: 0.875rem;
+  }
+}
+
+/* ================================================================
+   TOUCH DEVICE SUPPORT
+================================================================ */
+
+@media (pointer: coarse) {
+  button,
+  select,
+  input,
+  textarea {
+    min-height: 44px;
+  }
+}
+
+/* ================================================================
+   REDUCED MOTION ACCESSIBILITY
+================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+
+    animation-duration: 0.01ms !important;
+
+    animation-iteration-count: 1 !important;
+
+    transition-duration: 0.01ms !important;
+  }
 }
