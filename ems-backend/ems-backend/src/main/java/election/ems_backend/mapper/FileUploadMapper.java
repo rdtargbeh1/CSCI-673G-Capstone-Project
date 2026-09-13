@@ -6,22 +6,64 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class FileUploadMapper {
-    public FileUploadDto toDTO(FileUpload f) {
-        return FileUploadDto.builder()
-                .fileId(f.getFileId())
-                .orgId(f.getOrganization().getOrgId())
-                .relatedTable(f.getRelatedTable())
-                .relatedId(f.getRelatedId())
-                .fileType(f.getFileType())
-                .fileUrl(f.getFileUrl())
-                .mimeType(f.getMimeType())
-                .sizeBytes(f.getSizeBytes())
-                .sha256(f.getSha256())
-                .storageProvider(f.getStorageProvider())
-                .uploadedBy(f.getUploadedBy().getUserId())
-                .dateUpdated(f.getDateUpdated())
-                .deletedAt(f.getDateDeleted())
-                .tags(f.getTags())
+
+    public FileUploadDto toDTO(
+            FileUpload file
+    ) {
+
+        if (file == null) {
+            return null;
+        }
+
+
+        return FileUploadDto
+                .builder()
+                .fileId(
+                        file.getFileId()
+                )
+                .orgId(
+                        file.getOrganization() != null
+                                ? file.getOrganization().getOrgId()
+                                : null
+                )
+                .relatedTable(
+                        file.getRelatedTable()
+                )
+                .relatedId(
+                        file.getRelatedId()
+                )
+                .fileType(
+                        file.getFileType()
+                )
+                .fileUrl(
+                        file.getFileUrl()
+                )
+                .mimeType(
+                        file.getMimeType()
+                )
+                .sizeBytes(
+                        file.getSizeBytes()
+                )
+                .sha256(
+                        file.getSha256()
+                )
+                .storageProvider(
+                        file.getStorageProvider()
+                )
+                .uploadedBy(
+                        file.getUploadedBy() != null
+                                ? file.getUploadedBy().getUserId()
+                                : null
+                )
+                .dateUpdated(
+                        file.getDateUpdated()
+                )
+                .deletedAt(
+                        file.getDateDeleted()
+                )
+                .tags(
+                        file.getTags()
+                )
                 .build();
     }
 }

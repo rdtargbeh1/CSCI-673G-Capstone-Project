@@ -12,7 +12,7 @@ import java.util.UUID;
 @Getter
 @Setter
 public class FileUploadCreateRequest {
-    @NotNull
+
     private UUID orgId;
     @NotNull private String relatedTable;   // "vote_submission", "tally_sheet", etc.
     @NotNull private UUID relatedId;

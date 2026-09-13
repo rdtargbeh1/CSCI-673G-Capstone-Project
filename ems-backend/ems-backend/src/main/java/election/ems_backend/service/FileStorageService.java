@@ -34,12 +34,8 @@ public interface FileStorageService {
      *
      * election-vote-tracker/party/.../logo.png
      */
-    String store(
-            String folder,
-            String storedName,
-            InputStream input,
-            long size,
-            String contentType
+    String store(String folder, String storedName, InputStream input,
+            long size, String contentType
     ) throws IOException;
 
 
@@ -53,8 +49,7 @@ public interface FileStorageService {
      * Primarily used when the application needs to proxy file content,
      * such as local-development images.
      */
-    byte[] read(
-            String fileUrlOrKey
+    byte[] read(String fileUrlOrKey
     ) throws IOException;
 
 
@@ -65,9 +60,7 @@ public interface FileStorageService {
     /**
      * Best-effort delete of a previously stored object.
      */
-    void delete(
-            String fileUrlOrKey
-    );
+    void delete(String fileUrlOrKey);
 
 
     // =========================================================================
@@ -94,13 +87,8 @@ public interface FileStorageService {
      *
      * LOCAL storage does not need to implement this.
      */
-    default PresignResult presignUpload(
-            String folder,
-            String originalFileName,
-            String contentType,
-            long contentLength,
-            Duration ttl
-    ) {
+    default PresignResult presignUpload(String folder, String originalFileName, String contentType,
+            long contentLength, Duration ttl) {
 
         throw new UnsupportedOperationException(
                 "Presigned upload is not supported by this storage provider"
@@ -120,11 +108,7 @@ public interface FileStorageService {
      * LOCAL returns null because local files are served through
      * the application's FileUpload content endpoint.
      */
-    default String presignRead(
-            String fileUrlOrKey,
-            Duration ttl
-    ) {
-
+    default String presignRead(String fileUrlOrKey, Duration ttl) {
         return null;
     }
 
