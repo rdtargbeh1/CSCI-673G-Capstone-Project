@@ -1,0 +1,56 @@
+package election.ems_backend.views;
+
+import election.ems_backend.views.entity.CandidateCountyStatsParty;
+import jakarta.persistence.criteria.Path;
+import org.springframework.data.jpa.domain.Specification;
+
+import java.util.UUID;
+
+public final class CandidateCountyStatsPartySpecs {
+    private CandidateCountyStatsPartySpecs() {}
+
+    public static Specification<CandidateCountyStatsParty> orgEquals(UUID orgId) {
+        return (root, query, cb) -> {
+            if (orgId == null) return null;
+            Path<UUID> p = root.get("id").get("orgId");
+            return cb.equal(p, orgId);
+        };
+    }
+
+    public static Specification<CandidateCountyStatsParty> electionEquals(UUID electionId) {
+        return (root, query, cb) -> {
+            if (electionId == null) return null;
+            Path<UUID> p = root.get("id").get("electionId");
+            return cb.equal(p, electionId);
+        };
+    }
+
+    public static Specification<CandidateCountyStatsParty> contestEquals(UUID contestId) {
+        return (root, query, cb) -> contestId == null
+                ? cb.conjunction()
+                : cb.equal(root.get("id").get("contestId"), contestId);
+    }
+
+    public static Specification<CandidateCountyStatsParty> countyEquals(UUID countyId) {
+        return (root, query, cb) -> {
+            if (countyId == null) return null;
+            Path<UUID> p = root.get("id").get("countyId");
+            return cb.equal(p, countyId);
+        };
+    }
+
+    public static Specification<CandidateCountyStatsParty> candidateEquals(UUID candidateId) {
+        return (root, query, cb) -> {
+            if (candidateId == null) return null;
+            Path<UUID> p = root.get("id").get("candidateId");
+            return cb.equal(p, candidateId);
+        };
+    }
+
+    public static Specification<CandidateCountyStatsParty> partyEquals(UUID partyId) {
+        return (root, query, cb) -> {
+            if (partyId == null) return null;
+            return cb.equal(root.get("partyId"), partyId);
+        };
+    }
+}

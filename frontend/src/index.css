@@ -1,68 +1,64 @@
+/* index.css */
+
+@import "tailwindcss";
+
+/* @tailwind base;
+@tailwind components;
+@tailwind utilities; */
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --org-primary: #0f6324;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+.bg-org-primary {
+  background-color: var(--org-primary);
 }
-a:hover {
-  color: #535bf2;
+.text-org-primary {
+  color: var(--org-primary);
 }
-
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+.border-org-primary {
+  border-color: var(--org-primary);
+}
+.ring-org-primary {
+  --tw-ring-color: var(--org-primary);
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
+@layer components {
+  .auth-card {
+    @apply w-full max-w-md rounded-2xl border border-slate-200 bg-white p-7 shadow-lg;
   }
-  a:hover {
-    color: #747bff;
+
+  .auth-title {
+    @apply mb-2 text-center text-xl font-bold text-slate-900;
   }
-  button {
-    background-color: #f9f9f9;
+
+  .auth-subtitle {
+    @apply mb-6 text-center text-sm text-slate-600;
+  }
+
+  .form-label {
+    @apply mb-1.5 block text-sm font-medium text-slate-700 text-center;
+  }
+
+  .form-input {
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 outline-none text-center
+           transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500;
+  }
+
+  .primary-btn {
+    @apply w-full rounded-lg bg-blue-600 py-2.5 font-semibold text-white
+           transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .error-box {
+    @apply mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-center;
+  }
+
+  .error-text {
+    @apply text-sm font-medium text-red-800;
+  }
+
+  .error-footer {
+    @apply mt-1 text-xs text-red-700;
   }
 }
