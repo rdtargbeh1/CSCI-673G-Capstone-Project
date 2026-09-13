@@ -8,6 +8,7 @@ import election.ems_backend.integration.SigningService;
 import election.ems_backend.mapper.VoteSubmissionMapper;
 import election.ems_backend.repository.*;
 import election.ems_backend.security.AuthorizationService;
+import election.ems_backend.security.ElectionAccessPolicy;
 import election.ems_backend.service.*;
 import election.ems_backend.utility.RecomputeEvent;
 import election.ems_backend.utility.RequestUtils;
@@ -100,6 +101,7 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
     private final DiscrepancyService discrepancyService;
     private final DiscrepancyRepository discrepancyRepository;
 
+    private final ElectionAccessPolicy electionAccessPolicy;
     private final AuthorizationService authz;
 
     private final NECResultService necResultService;
@@ -132,88 +134,266 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
         return createInternal(req, null, request);
     }
 
-    private VoteSubmissionDto createInternal(VoteSubmissionCreateRequest req,
-                                             List<MultipartFile> files,
-                                             HttpServletRequest request) {
+    private VoteSubmissionDto createInternal(
+            VoteSubmissionCreateRequest req,
+            List<MultipartFile> files,
+            HttpServletRequest request
+    ) {
 
-        if (req == null) throw new ResponseStatusException(BAD_REQUEST, "Request body is required");
+        if (req == null) {
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "Request body is required"
+            );
+        }
 
-        final boolean isDraft = Boolean.TRUE.equals(req.getDraft());
+        final boolean isDraft =
+                Boolean.TRUE.equals(req.getDraft());
 
         // ---------------------------
         // 1) Hard validations
         // ---------------------------
-        if (req.getOrgId() == null) throw new ResponseStatusException(BAD_REQUEST, "orgId is required");
-        if (req.getElectionId() == null) throw new ResponseStatusException(BAD_REQUEST, "electionId is required");
-        if (req.getCenterId() == null) throw new ResponseStatusException(BAD_REQUEST, "centerId is required");
-        if (req.getPlaceId() == null) throw new ResponseStatusException(BAD_REQUEST, "placeId is required");
-        if (req.getContestId() == null) throw new ResponseStatusException(BAD_REQUEST, "contestId is required");
 
-        UUID agentId = (req.getAgentId() != null) ? req.getAgentId() : resolveCurrentUserId();
+        if (req.getOrgId() == null) {
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "orgId is required"
+            );
+        }
+
+        if (req.getElectionId() == null) {
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "electionId is required"
+            );
+        }
+
+        if (req.getCenterId() == null) {
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "centerId is required"
+            );
+        }
+
+        if (req.getPlaceId() == null) {
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "placeId is required"
+            );
+        }
+
+        if (req.getContestId() == null) {
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "contestId is required"
+            );
+        }
+
+
+        UUID agentId =
+                (req.getAgentId() != null)
+                        ? req.getAgentId()
+                        : resolveCurrentUserId();
+
         if (agentId == null) {
-            throw new ResponseStatusException(BAD_REQUEST, "agentId is required");
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "agentId is required"
+            );
         }
 
-        boolean hasVotes = req.getCandidateVotes() != null && !req.getCandidateVotes().isEmpty();
-        if (!isDraft && hasVotes && req.getBallotsInBox() == null) {
-            throw new ResponseStatusException(BAD_REQUEST, "ballotsCast is required when submitting candidateVotes");
+
+        boolean hasVotes =
+                req.getCandidateVotes() != null
+                        &&
+                        !req.getCandidateVotes().isEmpty();
+
+        if (
+                !isDraft
+                        &&
+                        hasVotes
+                        &&
+                        req.getBallotsInBox() == null
+        ) {
+
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "ballotsCast is required when submitting candidateVotes"
+            );
         }
+
 
         // ---------------------------
         // 2) Fetch references
         // ---------------------------
-        Organization org = orgRepo.findById(req.getOrgId())
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Organization not found"));
 
-        Election e = electionRepo.findById(req.getElectionId())
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Election not found"));
+        Organization org =
+                orgRepo.findById(req.getOrgId())
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        NOT_FOUND,
+                                        "Organization not found"
+                                )
+                        );
 
-        PollingCenter c = centerRepo.findById(req.getCenterId())
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Polling center not found"));
 
-        SystemUser agent = userRepo.findById(agentId)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Agent not found"));
+        Election e =
+                electionRepo.findById(req.getElectionId())
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        NOT_FOUND,
+                                        "Election not found"
+                                )
+                        );
 
-        PollingPlace p = placeRepo.findById(req.getPlaceId())
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Polling place not found"));
 
-        if (p.getPollingCenter() == null || p.getPollingCenter().getCenterId() == null) {
-            throw new ResponseStatusException(BAD_REQUEST, "Polling place is missing polling center reference");
+        PollingCenter c =
+                centerRepo.findById(req.getCenterId())
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        NOT_FOUND,
+                                        "Polling center not found"
+                                )
+                        );
+
+
+        SystemUser agent =
+                userRepo.findById(agentId)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        NOT_FOUND,
+                                        "Agent not found"
+                                )
+                        );
+
+
+        PollingPlace p =
+                placeRepo.findById(req.getPlaceId())
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        NOT_FOUND,
+                                        "Polling place not found"
+                                )
+                        );
+
+
+        if (
+                p.getPollingCenter() == null
+                        ||
+                        p.getPollingCenter().getCenterId() == null
+        ) {
+
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "Polling place is missing polling center reference"
+            );
         }
-        if (!p.getPollingCenter().getCenterId().equals(c.getCenterId())) {
-            throw new ResponseStatusException(BAD_REQUEST, "Polling place does not belong to the specified polling center");
+
+
+        if (
+                !p.getPollingCenter()
+                        .getCenterId()
+                        .equals(c.getCenterId())
+        ) {
+
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "Polling place does not belong to the specified polling center"
+            );
         }
 
-        var alloc = placeAllocationRepo
-                .findByElection_ElectionIdAndPollingPlace_PlaceId(e.getElectionId(), p.getPlaceId())
-                .orElseThrow(() -> new ResponseStatusException(BAD_REQUEST, "Polling place not allocated for this election"));
 
-        Contest contest = contestRepo.findById(req.getContestId())
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Contest not found"));
+        var alloc =
+                placeAllocationRepo
+                        .findByElection_ElectionIdAndPollingPlace_PlaceId(
+                                e.getElectionId(),
+                                p.getPlaceId()
+                        )
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        BAD_REQUEST,
+                                        "Polling place not allocated for this election"
+                                )
+                        );
 
-        if (!contest.getElectionId().equals(e.getElectionId())) {
-            throw new ResponseStatusException(BAD_REQUEST, "Contest does not belong to the specified election");
+
+        Contest contest =
+                contestRepo.findById(req.getContestId())
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        NOT_FOUND,
+                                        "Contest not found"
+                                )
+                        );
+
+
+        if (
+                !contest.getElectionId()
+                        .equals(e.getElectionId())
+        ) {
+
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "Contest does not belong to the specified election"
+            );
         }
+
+
         if (!contest.isActive()) {
-            throw new ResponseStatusException(BAD_REQUEST, "Contest is not active");
+
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "Contest is not active"
+            );
         }
 
-        boolean alreadyExists = voteSubmissionRepository
-                .existsByOrganization_OrgIdAndElection_ElectionIdAndPollingPlace_PlaceIdAndContestIdAndDateDeletedIsNull(
-                        org.getOrgId(), e.getElectionId(), p.getPlaceId(), req.getContestId()
-                );
+
+        // ------------------------------------------------------------------------
+        // CONTEST CONDUCT RULE
+        //
+        // A vote submission may only be created for a PUBLISHED contest
+        // belonging to an election that is currently operational.
+        // ------------------------------------------------------------------------
+
+        electionAccessPolicy.requireContestOperational(
+                contest
+        );
+
+
+        boolean alreadyExists =
+                voteSubmissionRepository
+                        .existsByOrganization_OrgIdAndElection_ElectionIdAndPollingPlace_PlaceIdAndContestIdAndDateDeletedIsNull(
+                                org.getOrgId(),
+                                e.getElectionId(),
+                                p.getPlaceId(),
+                                req.getContestId()
+                        );
+
+
         if (alreadyExists) {
+
             throw new ResponseStatusException(
                     CONFLICT,
                     "Submission already exists for this polling place and contest. Update the existing submission instead."
             );
         }
 
-        if (req.getCandidateVotes() != null && req.getCandidateVotes().size() > MAX_CANDIDATE_KEYS) {
-            throw new ResponseStatusException(BAD_REQUEST, "Too many candidate entries");
+
+        if (
+                req.getCandidateVotes() != null
+                        &&
+                        req.getCandidateVotes().size() > MAX_CANDIDATE_KEYS
+        ) {
+
+            throw new ResponseStatusException(
+                    BAD_REQUEST,
+                    "Too many candidate entries"
+            );
         }
 
+
         if (!isDraft) {
+
             validateCandidateVotes(
                     org.getOrgId(),
                     e.getElectionId(),
@@ -221,6 +401,7 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
                     req.getCandidateVotes(),
                     req.getBallotsInBox()
             );
+
 
             validateTally(
                     req.getCandidateVotes(),
@@ -235,152 +416,595 @@ public class VoteSubmissionServiceImplementation implements VoteSubmissionServic
             );
         }
 
+
         // ---------------------------
         // 3) Build entity
         // ---------------------------
-        VoteSubmission s = mapper.toEntity(req, org, e, c, agent);
+
+        VoteSubmission s =
+                mapper.toEntity(
+                        req,
+                        org,
+                        e,
+                        c,
+                        agent
+                );
+
+
         s.setPollingPlace(p);
 
-        if (s.getCandidateVotes() == null) s.setCandidateVotes(new HashMap<>());
-        if (s.getBallotsInBox() == null) s.setBallotsInBox(0);
 
-        s.setStatus(isDraft ? VoteStatus.DRAFT : VoteStatus.PENDING);
+        if (s.getCandidateVotes() == null) {
+            s.setCandidateVotes(
+                    new HashMap<>()
+            );
+        }
+
+
+        if (s.getBallotsInBox() == null) {
+            s.setBallotsInBox(0);
+        }
+
+
+        s.setStatus(
+                isDraft
+                        ? VoteStatus.DRAFT
+                        : VoteStatus.PENDING
+        );
+
 
         // ===== INITIALIZE hasDiscrepancies =====
+
         s.setHasDiscrepancies(false);
 
+
         if (request != null) {
-            s.setClientIp(RequestUtils.getClientIp(request));
-            s.setUserAgent(RequestUtils.getUserAgent(request));
+
+            s.setClientIp(
+                    RequestUtils.getClientIp(
+                            request
+                    )
+            );
+
+            s.setUserAgent(
+                    RequestUtils.getUserAgent(
+                            request
+                    )
+            );
         }
-        if (req.getLatitude() != null && req.getLongitude() != null) {
-            Point gps = geometryFactory.createPoint(new Coordinate(req.getLongitude(), req.getLatitude()));
+
+
+        if (
+                req.getLatitude() != null
+                        &&
+                        req.getLongitude() != null
+        ) {
+
+            Point gps =
+                    geometryFactory.createPoint(
+                            new Coordinate(
+                                    req.getLongitude(),
+                                    req.getLatitude()
+                            )
+                    );
+
             gps.setSRID(4326);
+
             s.setGpsLocation(gps);
         }
 
-        if (req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) {
-            voteSubmissionRepository.findByIdempotencyKey(req.getIdempotencyKey()).ifPresent(existing -> {
-                throw new ResponseStatusException(CONFLICT,
-                        "Submission with this idempotency key already exists: " + existing.getSubmissionId());
-            });
-            s.setIdempotencyKey(req.getIdempotencyKey());
+
+        if (
+                req.getIdempotencyKey() != null
+                        &&
+                        !req.getIdempotencyKey().isBlank()
+        ) {
+
+            voteSubmissionRepository
+                    .findByIdempotencyKey(
+                            req.getIdempotencyKey()
+                    )
+                    .ifPresent(existing -> {
+
+                        throw new ResponseStatusException(
+                                CONFLICT,
+                                "Submission with this idempotency key already exists: "
+                                        + existing.getSubmissionId()
+                        );
+                    });
+
+
+            s.setIdempotencyKey(
+                    req.getIdempotencyKey()
+            );
         }
 
-        if (!isDraft) {
-            s.setSubmissionHash(buildSubmissionHash(
-                    org.getOrgId(),
-                    e.getElectionId(),
-                    req.getContestId(),
-                    c.getCenterId(),
-                    p.getPlaceId(),
-                    agent.getUserId(),
-                    s.getCandidateVotes(),
-                    s.getBallotsInBox(),
-                    s.getInvalidBallots(),
-                    s.getUnmarkedBallots(),
-                    s.getRejectedBallots(),
-                    s.getSpoiledBallots(),
-                    s.getUnusedBallots()
-            ));
 
-            if (voteSubmissionRepository.existsBySubmissionHash(s.getSubmissionHash())) {
-                throw new ResponseStatusException(CONFLICT, "Duplicate submission (same content).");
+        if (!isDraft) {
+
+            s.setSubmissionHash(
+                    buildSubmissionHash(
+                            org.getOrgId(),
+                            e.getElectionId(),
+                            req.getContestId(),
+                            c.getCenterId(),
+                            p.getPlaceId(),
+                            agent.getUserId(),
+                            s.getCandidateVotes(),
+                            s.getBallotsInBox(),
+                            s.getInvalidBallots(),
+                            s.getUnmarkedBallots(),
+                            s.getRejectedBallots(),
+                            s.getSpoiledBallots(),
+                            s.getUnusedBallots()
+                    )
+            );
+
+
+            if (
+                    voteSubmissionRepository
+                            .existsBySubmissionHash(
+                                    s.getSubmissionHash()
+                            )
+            ) {
+
+                throw new ResponseStatusException(
+                        CONFLICT,
+                        "Duplicate submission (same content)."
+                );
             }
+
         } else {
+
             s.setSubmissionHash(null);
+
             s.setSubmissionSignature(null);
+
             s.setSubmissionSignerKeyId(null);
+
             s.setChainHash(null);
         }
 
-        VoteSubmission saved = voteSubmissionRepository.save(s);
+
+        VoteSubmission saved =
+                voteSubmissionRepository.save(s);
+
 
         if (!isDraft) {
-            voteSubmissionContestService.normalizeSubmission(saved.getSubmissionId());
+
+            voteSubmissionContestService
+                    .normalizeSubmission(
+                            saved.getSubmissionId()
+                    );
         }
 
-        if (files != null && !files.isEmpty()) {
-            attachFilesToSubmission(org, saved, agent, files);
+
+        if (
+                files != null
+                        &&
+                        !files.isEmpty()
+        ) {
+
+            attachFilesToSubmission(
+                    org,
+                    saved,
+                    agent,
+                    files
+            );
         }
+
 
         if (isDraft) {
+
             auditLogService.logSubmissionCreate(
                     org.getOrgId(),
                     agent.getUserId(),
                     "VoteSubmission",
-                    "Created DRAFT submission: " + saved.getSubmissionId() +
-                            " contest=" + req.getContestId() +
-                            " at " + c.getCenterName() +
-                            " / place: " + p.getCode()
+                    "Created DRAFT submission: "
+                            + saved.getSubmissionId()
+                            + " contest="
+                            + req.getContestId()
+                            + " at "
+                            + c.getCenterName()
+                            + " / place: "
+                            + p.getCode()
             );
 
+
             notify(
-                    org.getOrgId(), agent.getUserId(),
+                    org.getOrgId(),
+                    agent.getUserId(),
                     NotificationType.VOTE,
                     "Draft Saved",
-                    "Your draft for " + c.getCenterName() + " / place " + p.getCode() + " was saved.",
-                    "vote_submission", saved.getSubmissionId(),
+                    "Your draft for "
+                            + c.getCenterName()
+                            + " / place "
+                            + p.getCode()
+                            + " was saved.",
+                    "vote_submission",
+                    saved.getSubmissionId(),
                     NotificationPriority.LOW,
                     DeliveryMethod.IN_APP
             );
 
-            VoteSubmissionDto dto = mapper.toDTO(saved);
-            enrichWithAllocation(dto, alloc);
+
+            VoteSubmissionDto dto =
+                    mapper.toDTO(saved);
+
+            enrichWithAllocation(
+                    dto,
+                    alloc
+            );
+
             return dto;
         }
+
 
         // ---------------------------
         // 4) Non-draft: Ledger + sign
         // ---------------------------
-        String payloadHash = buildSubmissionPayloadHash(saved);
-        Map<String, Object> ledgerRes = jdbc.queryForMap(
-                "SELECT * FROM fn_log_ledger_and_update_submission(?, ?, ?, ?)",
-                "VOTE_SUBMISSION",
-                saved.getSubmissionId(),
-                payloadHash,
-                agent.getUserId()
+
+        String payloadHash =
+                buildSubmissionPayloadHash(
+                        saved
+                );
+
+
+        Map<String, Object> ledgerRes =
+                jdbc.queryForMap(
+                        "SELECT * FROM fn_log_ledger_and_update_submission(?, ?, ?, ?)",
+                        "VOTE_SUBMISSION",
+                        saved.getSubmissionId(),
+                        payloadHash,
+                        agent.getUserId()
+                );
+
+
+        UUID ledgerId =
+                toUuid(
+                        ledgerRes.get("ledger_id")
+                );
+
+
+        String chainHash =
+                ledgerRes.get("chain_hash") != null
+                        ? ledgerRes.get("chain_hash").toString()
+                        : null;
+
+
+        SigningService.SignResult signResult =
+                signingService.signHex(
+                        chainHash
+                );
+
+
+        jdbc.update(
+                "UPDATE audit_ledger SET signature = ? WHERE ledger_id = ?",
+                signResult.signature(),
+                ledgerId
         );
 
-        UUID ledgerId = toUuid(ledgerRes.get("ledger_id"));
-        String chainHash = ledgerRes.get("chain_hash") != null ? ledgerRes.get("chain_hash").toString() : null;
 
-        SigningService.SignResult signResult = signingService.signHex(chainHash);
+        jdbc.update(
+                "UPDATE vote_submission SET submission_signature = ?, submission_signer_key_id = ? WHERE submission_id = ?",
+                signResult.signature(),
+                signResult.keyId(),
+                saved.getSubmissionId()
+        );
 
-        jdbc.update("UPDATE audit_ledger SET signature = ? WHERE ledger_id = ?", signResult.signature(), ledgerId);
-        jdbc.update("UPDATE vote_submission SET submission_signature = ?, submission_signer_key_id = ? WHERE submission_id = ?",
-                signResult.signature(), signResult.keyId(), saved.getSubmissionId());
 
         // ===== DISCREPANCY DETECTION =====
-        detectAndCreateDiscrepancies(saved, alloc);
+
+        detectAndCreateDiscrepancies(
+                saved,
+                alloc
+        );
+
 
         auditLogService.logSubmissionCreate(
                 org.getOrgId(),
                 agent.getUserId(),
                 "VoteSubmission",
-                "Created submission: " + saved.getSubmissionId() +
-                        " contest=" + req.getContestId() +
-                        " at " + c.getCenterName() +
-                        " / place: " + p.getCode()
+                "Created submission: "
+                        + saved.getSubmissionId()
+                        + " contest="
+                        + req.getContestId()
+                        + " at "
+                        + c.getCenterName()
+                        + " / place: "
+                        + p.getCode()
         );
 
-        String placeDisplay = (p.getLabel() != null && !p.getLabel().isBlank())
-                ? p.getLabel()
-                : "Place " + p.getPlaceNumber();
+
+        String placeDisplay =
+                (
+                        p.getLabel() != null
+                                &&
+                                !p.getLabel().isBlank()
+                )
+                        ? p.getLabel()
+                        : "Place " + p.getPlaceNumber();
+
 
         notify(
-                org.getOrgId(), agent.getUserId(),
+                org.getOrgId(),
+                agent.getUserId(),
                 NotificationType.VOTE,
                 "Submission Received",
-                "Your vote submission for " + c.getCenterName() + " - " + placeDisplay + " was received.",
-                "vote_submission", saved.getSubmissionId(),
-                NotificationPriority.NORMAL, DeliveryMethod.IN_APP
+                "Your vote submission for "
+                        + c.getCenterName()
+                        + " - "
+                        + placeDisplay
+                        + " was received.",
+                "vote_submission",
+                saved.getSubmissionId(),
+                NotificationPriority.NORMAL,
+                DeliveryMethod.IN_APP
         );
 
-        VoteSubmissionDto dto = mapper.toDTO(saved);
-        enrichWithAllocation(dto, alloc);
+
+        VoteSubmissionDto dto =
+                mapper.toDTO(saved);
+
+
+        enrichWithAllocation(
+                dto,
+                alloc
+        );
+
+
         return dto;
     }
+
+//    private VoteSubmissionDto createInternal(VoteSubmissionCreateRequest req,
+//                                             List<MultipartFile> files,
+//                                             HttpServletRequest request) {
+//
+//        if (req == null) throw new ResponseStatusException(BAD_REQUEST, "Request body is required");
+//
+//        final boolean isDraft = Boolean.TRUE.equals(req.getDraft());
+//
+//        // ---------------------------
+//        // 1) Hard validations
+//        // ---------------------------
+//        if (req.getOrgId() == null) throw new ResponseStatusException(BAD_REQUEST, "orgId is required");
+//        if (req.getElectionId() == null) throw new ResponseStatusException(BAD_REQUEST, "electionId is required");
+//        if (req.getCenterId() == null) throw new ResponseStatusException(BAD_REQUEST, "centerId is required");
+//        if (req.getPlaceId() == null) throw new ResponseStatusException(BAD_REQUEST, "placeId is required");
+//        if (req.getContestId() == null) throw new ResponseStatusException(BAD_REQUEST, "contestId is required");
+//
+//        UUID agentId = (req.getAgentId() != null) ? req.getAgentId() : resolveCurrentUserId();
+//        if (agentId == null) {
+//            throw new ResponseStatusException(BAD_REQUEST, "agentId is required");
+//        }
+//
+//        boolean hasVotes = req.getCandidateVotes() != null && !req.getCandidateVotes().isEmpty();
+//        if (!isDraft && hasVotes && req.getBallotsInBox() == null) {
+//            throw new ResponseStatusException(BAD_REQUEST, "ballotsCast is required when submitting candidateVotes");
+//        }
+//
+//        // ---------------------------
+//        // 2) Fetch references
+//        // ---------------------------
+//        Organization org = orgRepo.findById(req.getOrgId())
+//                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Organization not found"));
+//
+//        Election e = electionRepo.findById(req.getElectionId())
+//                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Election not found"));
+//
+//        PollingCenter c = centerRepo.findById(req.getCenterId())
+//                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Polling center not found"));
+//
+//        SystemUser agent = userRepo.findById(agentId)
+//                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Agent not found"));
+//
+//        PollingPlace p = placeRepo.findById(req.getPlaceId())
+//                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Polling place not found"));
+//
+//        if (p.getPollingCenter() == null || p.getPollingCenter().getCenterId() == null) {
+//            throw new ResponseStatusException(BAD_REQUEST, "Polling place is missing polling center reference");
+//        }
+//        if (!p.getPollingCenter().getCenterId().equals(c.getCenterId())) {
+//            throw new ResponseStatusException(BAD_REQUEST, "Polling place does not belong to the specified polling center");
+//        }
+//
+//        var alloc = placeAllocationRepo
+//                .findByElection_ElectionIdAndPollingPlace_PlaceId(e.getElectionId(), p.getPlaceId())
+//                .orElseThrow(() -> new ResponseStatusException(BAD_REQUEST, "Polling place not allocated for this election"));
+//
+//        Contest contest = contestRepo.findById(req.getContestId())
+//                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Contest not found"));
+//
+//        if (!contest.getElectionId().equals(e.getElectionId())) {
+//            throw new ResponseStatusException(BAD_REQUEST, "Contest does not belong to the specified election");
+//        }
+//        if (!contest.isActive()) {
+//            throw new ResponseStatusException(BAD_REQUEST, "Contest is not active");
+//        }
+//
+//        boolean alreadyExists = voteSubmissionRepository
+//                .existsByOrganization_OrgIdAndElection_ElectionIdAndPollingPlace_PlaceIdAndContestIdAndDateDeletedIsNull(
+//                        org.getOrgId(), e.getElectionId(), p.getPlaceId(), req.getContestId()
+//                );
+//        if (alreadyExists) {
+//            throw new ResponseStatusException(
+//                    CONFLICT,
+//                    "Submission already exists for this polling place and contest. Update the existing submission instead."
+//            );
+//        }
+//
+//        if (req.getCandidateVotes() != null && req.getCandidateVotes().size() > MAX_CANDIDATE_KEYS) {
+//            throw new ResponseStatusException(BAD_REQUEST, "Too many candidate entries");
+//        }
+//
+//        if (!isDraft) {
+//            validateCandidateVotes(
+//                    org.getOrgId(),
+//                    e.getElectionId(),
+//                    req.getContestId(),
+//                    req.getCandidateVotes(),
+//                    req.getBallotsInBox()
+//            );
+//
+//            validateTally(
+//                    req.getCandidateVotes(),
+//                    nz(req.getInvalidBallots()),
+//                    nz(req.getUnmarkedBallots()),
+//                    nz(req.getRejectedBallots()),
+//                    nz(req.getSpoiledBallots()),
+//                    nz(req.getUnusedBallots()),
+//                    nz(req.getBallotsInBox()),
+//                    alloc.getRegisteredVoters(),
+//                    alloc.getBallotsIssued()
+//            );
+//        }
+//
+//        // ---------------------------
+//        // 3) Build entity
+//        // ---------------------------
+//        VoteSubmission s = mapper.toEntity(req, org, e, c, agent);
+//        s.setPollingPlace(p);
+//
+//        if (s.getCandidateVotes() == null) s.setCandidateVotes(new HashMap<>());
+//        if (s.getBallotsInBox() == null) s.setBallotsInBox(0);
+//
+//        s.setStatus(isDraft ? VoteStatus.DRAFT : VoteStatus.PENDING);
+//
+//        // ===== INITIALIZE hasDiscrepancies =====
+//        s.setHasDiscrepancies(false);
+//
+//        if (request != null) {
+//            s.setClientIp(RequestUtils.getClientIp(request));
+//            s.setUserAgent(RequestUtils.getUserAgent(request));
+//        }
+//        if (req.getLatitude() != null && req.getLongitude() != null) {
+//            Point gps = geometryFactory.createPoint(new Coordinate(req.getLongitude(), req.getLatitude()));
+//            gps.setSRID(4326);
+//            s.setGpsLocation(gps);
+//        }
+//
+//        if (req.getIdempotencyKey() != null && !req.getIdempotencyKey().isBlank()) {
+//            voteSubmissionRepository.findByIdempotencyKey(req.getIdempotencyKey()).ifPresent(existing -> {
+//                throw new ResponseStatusException(CONFLICT,
+//                        "Submission with this idempotency key already exists: " + existing.getSubmissionId());
+//            });
+//            s.setIdempotencyKey(req.getIdempotencyKey());
+//        }
+//
+//        if (!isDraft) {
+//            s.setSubmissionHash(buildSubmissionHash(
+//                    org.getOrgId(),
+//                    e.getElectionId(),
+//                    req.getContestId(),
+//                    c.getCenterId(),
+//                    p.getPlaceId(),
+//                    agent.getUserId(),
+//                    s.getCandidateVotes(),
+//                    s.getBallotsInBox(),
+//                    s.getInvalidBallots(),
+//                    s.getUnmarkedBallots(),
+//                    s.getRejectedBallots(),
+//                    s.getSpoiledBallots(),
+//                    s.getUnusedBallots()
+//            ));
+//
+//            if (voteSubmissionRepository.existsBySubmissionHash(s.getSubmissionHash())) {
+//                throw new ResponseStatusException(CONFLICT, "Duplicate submission (same content).");
+//            }
+//        } else {
+//            s.setSubmissionHash(null);
+//            s.setSubmissionSignature(null);
+//            s.setSubmissionSignerKeyId(null);
+//            s.setChainHash(null);
+//        }
+//
+//        VoteSubmission saved = voteSubmissionRepository.save(s);
+//
+//        if (!isDraft) {
+//            voteSubmissionContestService.normalizeSubmission(saved.getSubmissionId());
+//        }
+//
+//        if (files != null && !files.isEmpty()) {
+//            attachFilesToSubmission(org, saved, agent, files);
+//        }
+//
+//        if (isDraft) {
+//            auditLogService.logSubmissionCreate(
+//                    org.getOrgId(),
+//                    agent.getUserId(),
+//                    "VoteSubmission",
+//                    "Created DRAFT submission: " + saved.getSubmissionId() +
+//                            " contest=" + req.getContestId() +
+//                            " at " + c.getCenterName() +
+//                            " / place: " + p.getCode()
+//            );
+//
+//            notify(
+//                    org.getOrgId(), agent.getUserId(),
+//                    NotificationType.VOTE,
+//                    "Draft Saved",
+//                    "Your draft for " + c.getCenterName() + " / place " + p.getCode() + " was saved.",
+//                    "vote_submission", saved.getSubmissionId(),
+//                    NotificationPriority.LOW,
+//                    DeliveryMethod.IN_APP
+//            );
+//
+//            VoteSubmissionDto dto = mapper.toDTO(saved);
+//            enrichWithAllocation(dto, alloc);
+//            return dto;
+//        }
+//
+//        // ---------------------------
+//        // 4) Non-draft: Ledger + sign
+//        // ---------------------------
+//        String payloadHash = buildSubmissionPayloadHash(saved);
+//        Map<String, Object> ledgerRes = jdbc.queryForMap(
+//                "SELECT * FROM fn_log_ledger_and_update_submission(?, ?, ?, ?)",
+//                "VOTE_SUBMISSION",
+//                saved.getSubmissionId(),
+//                payloadHash,
+//                agent.getUserId()
+//        );
+//
+//        UUID ledgerId = toUuid(ledgerRes.get("ledger_id"));
+//        String chainHash = ledgerRes.get("chain_hash") != null ? ledgerRes.get("chain_hash").toString() : null;
+//
+//        SigningService.SignResult signResult = signingService.signHex(chainHash);
+//
+//        jdbc.update("UPDATE audit_ledger SET signature = ? WHERE ledger_id = ?", signResult.signature(), ledgerId);
+//        jdbc.update("UPDATE vote_submission SET submission_signature = ?, submission_signer_key_id = ? WHERE submission_id = ?",
+//                signResult.signature(), signResult.keyId(), saved.getSubmissionId());
+//
+//        // ===== DISCREPANCY DETECTION =====
+//        detectAndCreateDiscrepancies(saved, alloc);
+//
+//        auditLogService.logSubmissionCreate(
+//                org.getOrgId(),
+//                agent.getUserId(),
+//                "VoteSubmission",
+//                "Created submission: " + saved.getSubmissionId() +
+//                        " contest=" + req.getContestId() +
+//                        " at " + c.getCenterName() +
+//                        " / place: " + p.getCode()
+//        );
+//
+//        String placeDisplay = (p.getLabel() != null && !p.getLabel().isBlank())
+//                ? p.getLabel()
+//                : "Place " + p.getPlaceNumber();
+//
+//        notify(
+//                org.getOrgId(), agent.getUserId(),
+//                NotificationType.VOTE,
+//                "Submission Received",
+//                "Your vote submission for " + c.getCenterName() + " - " + placeDisplay + " was received.",
+//                "vote_submission", saved.getSubmissionId(),
+//                NotificationPriority.NORMAL, DeliveryMethod.IN_APP
+//        );
+//
+//        VoteSubmissionDto dto = mapper.toDTO(saved);
+//        enrichWithAllocation(dto, alloc);
+//        return dto;
+//    }
 
 
 

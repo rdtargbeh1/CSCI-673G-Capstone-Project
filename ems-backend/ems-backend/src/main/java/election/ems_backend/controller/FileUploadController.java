@@ -9,6 +9,7 @@ import election.ems_backend.repository.OrganizationRepository;
 import election.ems_backend.repository.SystemUserRepository;
 import election.ems_backend.service.FileStorageService;
 import election.ems_backend.service.FileUploadService;
+import election.ems_backend.tenant.TenantContext;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -63,20 +64,25 @@ public class FileUploadController {
     public FileUploadDto upload(
             @PathVariable String relatedTable,
             @PathVariable UUID relatedId,
-            @RequestParam UUID orgId,
-            @RequestParam UUID uploadedBy,
             @RequestParam(defaultValue = "PHOTO") FileType fileType,
             @RequestPart("file") MultipartFile file,
             @RequestParam(required = false) String mimeType,
             @RequestParam(required = false) Long sizeBytes
     ) {
 
+        UUID currentUserId =
+                TenantContext.requireCurrentUserId();
+
+        UUID currentOrgId =
+                TenantContext.getCurrentOrgIdOrNull();
+
+
         FileUploadCreateRequest meta =
                 new FileUploadCreateRequest();
 
 
         meta.setOrgId(
-                orgId
+                currentOrgId
         );
 
 
@@ -108,7 +114,7 @@ public class FileUploadController {
         return service.uploadMultipart(
                 meta,
                 file,
-                uploadedBy
+                currentUserId
         );
     }
 

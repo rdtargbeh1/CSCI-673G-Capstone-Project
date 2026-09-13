@@ -1,8 +1,4 @@
-
-
-
 // ops-ui.tsx
-
 
 /**
  * OPERATIONS UI SHARED (Tailwind)
@@ -73,10 +69,7 @@ export function OpsTabs() {
       >
         Tally Sheets
       </NavLink>
-      
     </div>
-
-    
   );
 }
 

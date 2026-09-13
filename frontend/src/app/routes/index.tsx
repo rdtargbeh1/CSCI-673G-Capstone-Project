@@ -107,10 +107,7 @@ import CompareCountyCandidatesPage from "../../pages/elections/workspace/tabs/re
 // ============================================================================
 
 import OperationsLayout from "../../pages/operations/OperationsLayout";
-import SubmissionQueuePage from "../../pages/operations/SubmissionQueuePage";
-import ObserverReportsPage from "../../pages/operations/ObserverReportsPage";
-import NotificationsPage from "../../pages/operations/NotificationsPage";
-import TallySheetsPage from "../../pages/operations/TallySheetsPage";
+import OperationsTab from "../../pages/operations/shared/OperationsTab";
 
 // ============================================================================
 // GEOGRAPHY
@@ -142,21 +139,15 @@ import ReportFilesPage from "../../pages/reports/ReportFilesPage";
 
 import AdminSecurityLayout from "../../pages/admin-security/AdminSecurityLayout";
 
-import OrganizationsPage from "../../pages/admin-security/tenant/OrganizationsPage";
-import MembershipsPage from "../../pages/admin-security/tenant/MembershipsPage";
-import OrgSettingsPage from "../../pages/admin-security/tenant/OrgSettingsPage";
+import TenantTab from "../../pages/admin-security/tenant/shared/TenantTab";
 
-import UsersPage from "../../pages/admin-security/security/UsersPage";
-import RolesPage from "../../pages/admin-security/security/RolesPage";
-import MfaPage from "../../pages/admin-security/security/MfaPage";
-import SessionsPage from "../../pages/admin-security/security/SessionsPage";
-import SigningKeysPage from "../../pages/admin-security/security/SigningKeysPage";
+// import OrganizationsPage from "../../pages/admin-security/tenant/OrganizationsPage";
+// import MembershipsPage from "../../pages/admin-security/tenant/MembershipsPage";
+// import OrgSettingsPage from "../../pages/admin-security/tenant/OrgSettingsPage";
 
-import AuditLogsPage from "../../pages/admin-security/oversight/AuditLogsPage";
-import AuditLedgerPage from "../../pages/admin-security/oversight/AuditLedgerPage";
-import VoteSubmissionActionsPage from "../../pages/admin-security/oversight/VoteSubmissionActionsPage";
-import SubmissionActionDetailPage from "../../pages/admin-security/oversight/SubmissionActionDetailPage";
-import FileUploadsPage from "../../pages/admin-security/oversight/FileUploadsPage";
+import SecurityTab from "../../pages/admin-security/security/shared/SecurityTab";
+
+import OversightTab from "../../pages/admin-security/oversight/shared/OversightTab";
 
 // ============================================================================
 // DASHBOARD ENTRY
@@ -696,33 +687,9 @@ export const router = createBrowserRouter([
 
         children: [
           {
-            index: true,
+            path: "*",
 
-            element: <SubmissionQueuePage />,
-          },
-
-          {
-            path: "submissions",
-
-            element: <SubmissionQueuePage />,
-          },
-
-          {
-            path: "observer-reports",
-
-            element: <ObserverReportsPage />,
-          },
-
-          {
-            path: "notifications",
-
-            element: <NotificationsPage />,
-          },
-
-          {
-            path: "tally-sheets",
-
-            element: <TallySheetsPage />,
+            element: <OperationsTab />,
           },
         ],
       },
@@ -840,105 +807,45 @@ export const router = createBrowserRouter([
           },
 
           // ================================================================
-          // TENANT ADMIN
+          // TENANT ADMIN MODULE
           // ================================================================
 
           {
-            path: "organizations",
+            path: "tenant",
 
-            element: <OrganizationsPage />,
+            element: <TenantTab />,
           },
 
           {
-            path: "memberships",
+            path: "tenant/*",
 
-            element: <MembershipsPage />,
-          },
-
-          {
-            path: "org-settings",
-
-            element: <OrgSettingsPage />,
+            element: <TenantTab />,
           },
 
           // ================================================================
-          // SECURITY
+          // SECURITY MODULE
           // ================================================================
 
           {
-            path: "users",
+            path: "*",
 
-            element: <UsersPage />,
-          },
-
-          {
-            path: "roles",
-
-            element: <RolesPage />,
-          },
-
-          {
-            path: "mfa",
-
-            element: <MfaPage />,
-          },
-
-          {
-            path: "sessions",
-
-            element: <SessionsPage />,
-          },
-
-          {
-            path: "signing-keys",
-
-            element: <SigningKeysPage />,
+            element: <SecurityTab />,
           },
 
           // ================================================================
-          // OVERSIGHT
+          // OVERSIGHT MODULE
           // ================================================================
 
           {
-            path: "audit-logs",
+            path: "oversight",
 
-            element: <AuditLogsPage />,
+            element: <OversightTab />,
           },
 
           {
-            path: "audit-ledger",
+            path: "oversight/*",
 
-            element: <AuditLedgerPage />,
-          },
-
-          // ================================================================
-          // VOTE SUBMISSION ACTION LEDGER
-          //
-          // /admin-security/submission-actions
-          // ================================================================
-
-          {
-            path: "submission-actions",
-
-            element: <VoteSubmissionActionsPage />,
-          },
-
-          // ================================================================
-          // VOTE SUBMISSION ACTION DETAIL
-          //
-          // /admin-security/submission-actions/:actionId
-          // ================================================================
-
-          {
-            path: "submission-actions/:actionId",
-
-            element: <SubmissionActionDetailPage />,
-          },
-
-          {
-            path: "file-uploads",
-
-            element: <FileUploadsPage />,
+            element: <OversightTab />,
           },
         ],
       },

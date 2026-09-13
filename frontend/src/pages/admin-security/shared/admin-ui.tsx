@@ -67,20 +67,20 @@ const ADMIN_TABS: AdminTab[] = [
 
   {
     label: "Organizations",
-    path: "/admin-security/organizations",
+    path: "/admin-security/tenant/organizations",
     group: "Tenant Admin",
     systemOnly: true,
   },
 
   {
     label: "Memberships",
-    path: "/admin-security/memberships",
+    path: "/admin-security/tenant/memberships",
     group: "Tenant Admin",
   },
 
   {
     label: "Org Settings",
-    path: "/admin-security/org-settings",
+    path: "/admin-security/tenant/org-settings",
     group: "Tenant Admin",
   },
 
@@ -124,28 +124,34 @@ const ADMIN_TABS: AdminTab[] = [
 
   {
     label: "Audit Logs",
-    path: "/admin-security/audit-logs",
+    path: "/admin-security/oversight/audit-logs",
     group: "Oversight",
   },
 
   {
     label: "Audit Ledger",
-    path: "/admin-security/audit-ledger",
+    path: "/admin-security/oversight/audit-ledger",
     group: "Oversight",
     necOrSystemOnly: true,
   },
 
   {
     label: "Submission Actions",
-    path: "/admin-security/submission-actions",
+    path: "/admin-security/oversight/submission-actions",
     group: "Oversight",
     necOrSystemOnly: true,
-    matchPrefixes: ["/admin-security/submission-actions"],
+
+    // Keeps Submission Actions selected on:
+    //
+    // /admin-security/oversight/submission-actions
+    // /admin-security/oversight/submission-actions/:actionId
+    //
+    matchPrefixes: ["/admin-security/oversight/submission-actions"],
   },
 
   {
     label: "File Uploads",
-    path: "/admin-security/file-uploads",
+    path: "/admin-security/oversight/file-uploads",
     group: "Oversight",
   },
 ];

@@ -1,8 +1,10 @@
 package election.ems_backend.security;
 
+import election.ems_backend.entity.Contest;
 import election.ems_backend.entity.Election;
 import election.ems_backend.entity.Organization;
 import election.ems_backend.entity.SystemUser;
+import election.ems_backend.enums.ContestStatus;
 import election.ems_backend.enums.ElectionAccessStatus;
 import election.ems_backend.enums.OrganizationType;
 import election.ems_backend.repository.OrganizationRepository;
@@ -50,6 +52,12 @@ import java.util.UUID;
  *      - startAt
  *      - endAt
  *      - availableUntil
+ *
+ * 5. Contest operational state
+ *      - DRAFT
+ *      - PUBLISHED
+ *      - LOCKED
+ *      - ARCHIVED
  *
  *
  * IMPORTANT:
@@ -615,7 +623,7 @@ public class ElectionAccessPolicy {
     /**
      * Enforces operational-window access.
      *
-     * Useful later for modules where the action must happen during
+     * Useful for modules where the action must happen during
      * election operations.
      */
     public void requireOperational(
@@ -631,6 +639,201 @@ public class ElectionAccessPolicy {
 
             throw new AccessDeniedException(
                     "Election is outside its operational window"
+            );
+        }
+    }
+
+
+    // ========================================================================
+    // CONTEST OPERATIONAL ELIGIBILITY
+    // ========================================================================
+
+    /**
+     * Determines whether a contest may participate in live election
+     * operations.
+     *
+     * A contest must:
+     *
+     * - exist
+     * - belong to an election
+     * - have ContestStatus.PUBLISHED
+     * - belong to an election that is currently operational
+     *
+     *
+     * Contest status meaning:
+     *
+     * DRAFT:
+     *     configuration only
+     *
+     * PUBLISHED:
+     *     eligible for election conduct
+     *
+     * LOCKED:
+     *     no new or modified live vote data
+     *
+     * ARCHIVED:
+     *     historical/read-only
+     */
+    public boolean isContestOperational(
+            Contest contest
+    ) {
+
+        if (contest == null) {
+            return false;
+        }
+
+
+        if (
+                contest.getStatus()
+                        != ContestStatus.PUBLISHED
+        ) {
+
+            return false;
+        }
+
+
+        Election election =
+                contest.getElection();
+
+
+        if (election == null) {
+            return false;
+        }
+
+
+        return isOperational(
+                election
+        );
+    }
+
+
+    /**
+     * Enforces that a contest may participate in live election
+     * operations.
+     *
+     * This should be used before:
+     *
+     * - accepting new live vote data
+     * - modifying live vote data
+     * - conducting the contest
+     */
+    public void requireContestOperational(
+            Contest contest
+    ) {
+
+        if (contest == null) {
+
+            throw new AccessDeniedException(
+                    "Contest is required"
+            );
+        }
+
+
+        if (
+                contest.getStatus()
+                        != ContestStatus.PUBLISHED
+        ) {
+
+            throw new AccessDeniedException(
+                    "Contest must be PUBLISHED before election operations can be conducted"
+            );
+        }
+
+
+        Election election =
+                contest.getElection();
+
+
+        if (election == null) {
+
+            throw new AccessDeniedException(
+                    "Contest is not attached to an election"
+            );
+        }
+
+
+        requireOperational(
+                election
+        );
+    }
+
+
+    // ========================================================================
+    // CONTEST REVIEW / RECONCILIATION
+    // ========================================================================
+
+    /**
+     * Determines whether an existing contest may continue through
+     * operational or post-election review.
+     *
+     * PUBLISHED:
+     *     contest remains active and reviewable
+     *
+     * LOCKED:
+     *     ordinary vote-entry changes are blocked, but existing records
+     *     may continue through verification, reconciliation and review
+     *
+     * DRAFT:
+     *     not an officially conducted contest
+     *
+     * ARCHIVED:
+     *     historical/read-only
+     */
+    public boolean allowsContestReview(
+            Contest contest
+    ) {
+
+        if (
+                contest == null ||
+                        contest.getStatus() == null ||
+                        contest.getElection() == null
+        ) {
+
+            return false;
+        }
+
+
+        ContestStatus status =
+                contest.getStatus();
+
+
+        if (
+                status != ContestStatus.PUBLISHED &&
+                        status != ContestStatus.LOCKED
+        ) {
+
+            return false;
+        }
+
+
+        Election election =
+                contest.getElection();
+
+
+        return isOperational(election)
+                ||
+                isPostElectionWindow(election);
+    }
+
+
+    /**
+     * Enforces contest eligibility for:
+     *
+     * - verification
+     * - rejection
+     * - flag review
+     * - unflag review
+     * - reconciliation
+     * - post-election processing
+     */
+    public void requireContestReview(
+            Contest contest
+    ) {
+
+        if (!allowsContestReview(contest)) {
+
+            throw new AccessDeniedException(
+                    "Contest is not available for election review or reconciliation"
             );
         }
     }

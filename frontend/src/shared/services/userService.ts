@@ -1,7 +1,4 @@
-
-
 // src/shared/services/userService.ts
-
 
 import type { AxiosResponse } from "axios";
 import { apiClient } from "../lib/apiClient";
@@ -30,7 +27,7 @@ const tenantHeaders = (orgId?: string | null) =>
  */
 function requireOrgId(
   orgId?: string | null,
-  action = "this operation"
+  action = "this operation",
 ): string {
   const v = String(orgId ?? "").trim();
   if (!v) throw new Error(`X-Org-Id is required for ${action}.`);
@@ -48,7 +45,7 @@ function requireOrgId(
 async function patchAssignId(
   orgId: string | null | undefined,
   url: string,
-  id: string | null
+  id: string | null,
 ): Promise<void> {
   const cfg = tenantHeaders(orgId);
 
@@ -61,7 +58,7 @@ async function patchAssignId(
         ...(cfg?.headers ?? {}),
         "Content-Type": "application/json", // ✅ force JSON
       },
-    }
+    },
   );
 }
 
@@ -77,7 +74,7 @@ export async function fetchUsers(
     size: number;
     q?: string;
     active?: boolean;
-  }
+  },
 ): Promise<FetchUsersResponse> {
   const tenantId = requireOrgId(orgId, "fetch users");
 
@@ -117,12 +114,41 @@ export async function deleteUser(orgId: string, userId: string): Promise<void> {
  */
 export async function fetchUserById(
   orgId: string | null | undefined,
-  userId: string
+  userId: string,
 ): Promise<UserDto> {
+  // PLATFORM / SYSTEM USER:
+  // Existing backend exposes platform users through GET /api/users/platform.
+  // There is no dedicated GET /api/platform/system-users/{userId} endpoint
+  // in the provided controller, so resolve the selected platform user from
+  // the existing platform-user search endpoint.
+  if (!orgId || String(orgId).trim() === "") {
+    const page = await fetchPlatformUsers({
+      page: 0,
+      size: 1000,
+      q: undefined,
+      active: undefined,
+    });
+
+    const found = page.users.find(
+      (user: UserDto) => String(user.userId) === String(userId),
+    );
+
+    if (!found) {
+      throw new Error("System user not found.");
+    }
+
+    return found;
+  }
+
+  // TENANT USER:
+  // Requires X-Org-Id and uses the tenant-scoped detail endpoint.
+  const tenantId = requireOrgId(orgId, "fetch user");
+
   const { data }: AxiosResponse<UserDto> = await apiClient.get(
     `/users/${userId}`,
-    tenantHeaders(orgId)
+    tenantHeaders(tenantId),
   );
+
   return data;
 }
 
@@ -130,13 +156,13 @@ export async function fetchUserById(
 export async function updateUser(
   orgId: string | null | undefined,
   userId: string,
-  payload: UserUpdateRequest
+  payload: UserUpdateRequest,
 ): Promise<UserDto> {
   const tenantId = requireOrgId(orgId, "update user");
   const { data }: AxiosResponse<UserDto> = await apiClient.put(
     `/users/${userId}`,
     payload,
-    tenantHeaders(tenantId)
+    tenantHeaders(tenantId),
   );
   return data;
 }
@@ -154,13 +180,13 @@ export async function updateUser(
  */
 export async function createTenantMember(
   orgId: string,
-  payload: UserCreateRequest
+  payload: UserCreateRequest,
 ): Promise<UserDto> {
   const tenantId = requireOrgId(orgId, "create tenant user");
   const { data }: AxiosResponse<UserDto> = await apiClient.post(
-    "/tenants/user",
+    "/tenants/users",
     payload,
-    tenantHeaders(tenantId)
+    tenantHeaders(tenantId),
   );
   return data;
 }
@@ -169,13 +195,13 @@ export async function createTenantMember(
 // POST /api/users
 export async function createUser(
   orgId: string,
-  payload: UserCreateRequest
+  payload: UserCreateRequest,
 ): Promise<UserDto> {
   const tenantId = requireOrgId(orgId, "create user");
   const { data } = await apiClient.post<UserDto>(
     "/users",
     payload,
-    tenantHeaders(tenantId)
+    tenantHeaders(tenantId),
   );
   return data;
 }
@@ -189,13 +215,13 @@ export async function createUser(
  */
 export async function createTenantAdmin(
   orgId: string,
-  payload: UserCreateRequest
+  payload: UserCreateRequest,
 ): Promise<UserDto> {
   const tenantId = requireOrgId(orgId, "create tenant admin");
   const { data }: AxiosResponse<UserDto> = await apiClient.post(
     "/tenants/users/admins",
     payload,
-    tenantHeaders(tenantId)
+    tenantHeaders(tenantId),
   );
   return data;
 }
@@ -208,13 +234,13 @@ export async function createTenantAdmin(
 export async function setUserActive(
   orgId: string,
   userId: string,
-  value: boolean
+  value: boolean,
 ): Promise<void> {
   const tenantId = requireOrgId(orgId, "set user active");
   await apiClient.patch(
     `/users/${userId}/active`,
     { value },
-    tenantHeaders(tenantId)
+    tenantHeaders(tenantId),
   );
 }
 
@@ -222,13 +248,13 @@ export async function setUserActive(
 export async function setUserVerified(
   orgId: string,
   userId: string,
-  value: boolean
+  value: boolean,
 ): Promise<void> {
   const tenantId = requireOrgId(orgId, "set user verified");
   await apiClient.patch(
     `/users/${userId}/verified`,
     { value },
-    tenantHeaders(tenantId)
+    tenantHeaders(tenantId),
   );
 }
 
@@ -240,13 +266,13 @@ export async function setUserVerified(
 export async function assignUserRole(
   orgId: string,
   userId: string,
-  roleName: RoleName | string
+  roleName: RoleName | string,
 ): Promise<void> {
   const tenantId = requireOrgId(orgId, "assign role");
   await apiClient.patch(
     `/users/${userId}/role`,
     { roleName },
-    tenantHeaders(tenantId)
+    tenantHeaders(tenantId),
   );
 }
 
@@ -254,7 +280,7 @@ export async function assignUserRole(
 export async function assignUserParty(
   orgId: string,
   userId: string,
-  partyId: string | null
+  partyId: string | null,
 ): Promise<void> {
   await patchAssignId(orgId, `/users/${userId}/party`, partyId);
 }
@@ -263,7 +289,7 @@ export async function assignUserParty(
 export async function assignUserCounty(
   orgId: string,
   userId: string,
-  countyId: string | null
+  countyId: string | null,
 ): Promise<void> {
   await patchAssignId(orgId, `/users/${userId}/county`, countyId);
 }
@@ -272,7 +298,7 @@ export async function assignUserCounty(
 export async function setUserDefaultOrg(
   orgId: string,
   userId: string,
-  defaultOrgId: string | null
+  defaultOrgId: string | null,
 ): Promise<void> {
   await patchAssignId(orgId, `/users/${userId}/default-org`, defaultOrgId);
 }
@@ -285,13 +311,13 @@ export async function assignUserToCountyAndRole(
   orgId: string,
   userId: string,
   countyId: string,
-  roleName: RoleName | string
+  roleName: RoleName | string,
 ): Promise<UserDto> {
   const tenantId = requireOrgId(orgId, "assign county + role");
   const { data }: AxiosResponse<UserDto> = await apiClient.patch(
     `/users/${userId}/assign-county-role`,
     { countyId, roleName },
-    tenantHeaders(tenantId)
+    tenantHeaders(tenantId),
   );
   return data;
 }
@@ -300,18 +326,15 @@ export async function assignUserToCountyAndRole(
    SECURITY / PASSWORD / LOCK
    ========================================================= */
 
-   export async function changePassword(
+export async function changePassword(
   orgId: string | null | undefined,
   userId: string,
-  payload: any
+  payload: any,
 ): Promise<void> {
   // ✅ FIXED: Platform users (no org) use a different endpoint
   if (!orgId || orgId.toString().trim() === "") {
     // Platform user - no X-Org-Id needed
-    await apiClient.post(
-      `/platform/system-users/${userId}/password`,
-      payload
-    );
+    await apiClient.post(`/platform/system-users/${userId}/password`, payload);
     return;
   }
 
@@ -320,10 +343,9 @@ export async function assignUserToCountyAndRole(
   await apiClient.post(
     `/users/${userId}/password`,
     payload,
-    tenantHeaders(tenantId)
+    tenantHeaders(tenantId),
   );
 }
-
 
 /**
  * ✅ CONSOLIDATED: Admin reset password for BOTH platform and tenant users
@@ -334,7 +356,7 @@ export async function adminResetPassword(
   orgId: string | null | undefined,
   userId: string,
   newPassword: string,
-  sendEmail: boolean = false
+  sendEmail: boolean = false,
 ): Promise<void> {
   // Platform user (no org)
   if (!orgId || orgId.toString().trim() === "") {
@@ -353,47 +375,45 @@ export async function adminResetPassword(
       newPassword,
       sendEmail,
     },
-    tenantHeaders(tenantId)
+    tenantHeaders(tenantId),
   );
 }
-
-
 
 export async function setUserLock(
   orgId: string,
   userId: string,
   lock: boolean,
-  until?: string | null
+  until?: string | null,
 ): Promise<void> {
   const tenantId = requireOrgId(orgId, "set lock");
   await apiClient.patch(
     `/users/${userId}/lock`,
     { lock, until: until ?? null },
-    tenantHeaders(tenantId)
+    tenantHeaders(tenantId),
   );
 }
 
 export async function recordLoginFailure(
   orgId: string,
-  userId: string
+  userId: string,
 ): Promise<void> {
   const tenantId = requireOrgId(orgId, "record login failure");
   await apiClient.post(
     `/users/${userId}/login-failure`,
     null,
-    tenantHeaders(tenantId)
+    tenantHeaders(tenantId),
   );
 }
 
 export async function recordLoginSuccess(
   orgId: string,
-  userId: string
+  userId: string,
 ): Promise<void> {
   const tenantId = requireOrgId(orgId, "record login success");
   await apiClient.post(
     `/users/${userId}/login-success`,
     null,
-    tenantHeaders(tenantId)
+    tenantHeaders(tenantId),
   );
 }
 
@@ -406,7 +426,7 @@ export async function fetchMe(orgId: string): Promise<UserDto> {
   const tenantId = requireOrgId(orgId, "fetch current user (/user/me)");
   const { data }: AxiosResponse<UserDto> = await apiClient.get(
     "/users/me",
-    tenantHeaders(tenantId)
+    tenantHeaders(tenantId),
   );
   return data;
 }
@@ -418,7 +438,7 @@ export async function fetchMe(orgId: string): Promise<UserDto> {
 export async function uploadProfilePhoto(
   orgId: string | null | undefined,
   userId: string,
-  file: File
+  file: File,
 ): Promise<string> {
   const tenantId = requireOrgId(orgId, "upload profile photo");
 
@@ -428,7 +448,7 @@ export async function uploadProfilePhoto(
   const { data }: AxiosResponse<string> = await apiClient.post(
     `/users/${userId}/profile-photo`,
     formData,
-    tenantHeaders(tenantId)
+    tenantHeaders(tenantId),
   );
 
   return data;
@@ -437,18 +457,18 @@ export async function uploadProfilePhoto(
 // ✅ Bootstrap first system admin (platform user, no org header)
 // POST /api/public/bootstrap/system-admin
 export async function bootstrapFirstSystemAdmin(
-  payload: UserCreateRequest
+  payload: UserCreateRequest,
 ): Promise<UserDto> {
   const { data }: AxiosResponse<UserDto> = await apiClient.post(
     "/public/bootstrap/system-admin",
-    payload
+    payload,
   );
   return data;
 }
 
 // ✅ NEW: platform create (NO X-Org-Id)
 export async function createUserPlatform(
-  req: UserCreateRequest
+  req: UserCreateRequest,
 ): Promise<UserDto> {
   const { data } = await apiClient.post<UserDto>("platform/system-users", req);
   return data;
@@ -483,11 +503,11 @@ export async function createPlatformUser(payload: UserCreateRequest) {
 // PUT /api/platform/system-users/{userId}
 export async function updatePlatformUser(
   userId: string,
-  payload: UserUpdateRequest
+  payload: UserUpdateRequest,
 ): Promise<UserDto> {
   const { data } = await apiClient.put<UserDto>(
     `/platform/system-users/${userId}`,
-    payload
+    payload,
   );
   return data;
 }
@@ -499,7 +519,7 @@ export async function updatePlatformUser(
 
 export async function setPlatformUserActive(
   userId: string,
-  value: boolean
+  value: boolean,
 ): Promise<void> {
   await apiClient.patch(`/platform/system-users/${userId}/active`, null, {
     params: { value },
@@ -508,11 +528,9 @@ export async function setPlatformUserActive(
 
 export async function setPlatformUserVerified(
   userId: string,
-  value: boolean
+  value: boolean,
 ): Promise<void> {
   await apiClient.patch(`/platform/system-users/${userId}/verified`, null, {
     params: { value },
   });
 }
-
-

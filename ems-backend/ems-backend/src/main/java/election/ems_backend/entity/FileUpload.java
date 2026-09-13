@@ -27,11 +27,15 @@ public class FileUpload {
     @Column(name = "file_id", updatable = false, nullable = false)
     private UUID fileId;
 
-    /** Organization that owns the file */
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    /**
+     * Organization that owns the file.
+     *
+     * Nullable only for platform/system-user files.
+     * Tenant-owned files must still have an organization.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(
             name = "org_id",
-            nullable = false,
             foreignKey = @ForeignKey(name = "fk_file_upload_org")
     )
     private Organization organization;

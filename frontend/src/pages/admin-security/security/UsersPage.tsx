@@ -1,118 +1,137 @@
-
 // src/pages/admin-security/security/UsersPage.tsx
 
 import { useMemo, useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAuthStore } from "../../../shared/store/authStore";
 
-import type {
-  UserCreateRequest,
-  UserDto,
-  UserUpdateRequest,
-  RoleName,
-} from "../../../auth/userTypes";
+import { useLocation, useNavigate } from "react-router-dom";
+
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
-  fetchUsers,
-  createUser,
-  updateUser,
-  deleteUser,
-  setUserActive,
-  setUserVerified,
-  assignUserCounty,
-  fetchPlatformUsers,
-  createPlatformUser,
-  setPlatformUserActive,
-  setPlatformUserVerified,
-  updatePlatformUser,
-  createTenantAdmin,
-  adminResetPassword,
-} from "../../../shared/services/userService";
-
-import {
-  fetchOrganizations as fetchOrganizationsPaged,
-  type Organization,
-} from "../../../shared/services/organizationService";
-
-import { apiClient } from "../../../shared/lib/apiClient";
-
-import { AdminShell, Badge, Card, Note } from "../shared/admin-ui";
-import {
-  Pencil,
-  UserPlus,
-  Search,
+  Eye,
+  ListChecks,
+  MapPinned,
+  Plus,
   RefreshCw,
-  KeyRound,
+  Search,
+  UserPlus,
+  UserRound,
 } from "lucide-react";
 
-import UsersFormModal from "./UsersFormModal";
-import TenantAdminFormModal from "../tenant/TenantAdminFormModal";
-import AdminResetPasswordModal from "./AdminResetPasswordModal";
-import { searchParties } from "../../../shared/services/partyService";
+import { useAuthStore } from "../../../shared/store/authStore";
 
-/** ✅ Add this helper function for client-side search filtering */
-function filterUsersBySearch(users: any[], searchQuery: string): any[] {
-  if (!searchQuery.trim()) return users;
+import type { UserDto } from "../../../auth/userTypes";
 
-  const query = searchQuery.toLowerCase().trim();
-  return users.filter((u: any) => {
-    const fullNameStr = fullName(u).toLowerCase();
-    const usernameStr = safeStr(u?.userName).toLowerCase();
-    const emailStr = safeStr(u?.email).toLowerCase();
-    const positionStr = safeStr(u?.position).toLowerCase();
-    const roleStr = safeStr(u?.roleName).toLowerCase();
+import {
+  fetchPlatformUsers,
+  fetchUsers,
+} from "../../../shared/services/userService";
 
-    return (
-      fullNameStr.includes(query) ||
-      usernameStr.includes(query) ||
-      emailStr.includes(query) ||
-      positionStr.includes(query) ||
-      roleStr.includes(query)
-    );
+import { fetchOrganizations as fetchOrganizationsPaged } from "../../../shared/services/organizationService";
+
+import { AdminShell, Badge, Card } from "../shared/admin-ui";
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+const PAGE_SIZE = 20;
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+function safeStr(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value == null) {
+    return "";
+  }
+
+  return String(value);
+}
+
+function fullName(user: any): string {
+  const name = `${safeStr(user?.firstName)} ${safeStr(user?.lastName)}`.trim();
+
+  return name || safeStr(user?.userName) || safeStr(user?.email) || "—";
+}
+
+function initials(user: any): string {
+  const first = safeStr(user?.firstName).trim().charAt(0).toUpperCase();
+
+  const last = safeStr(user?.lastName).trim().charAt(0).toUpperCase();
+
+  const value = `${first}${last}`;
+
+  if (value) {
+    return value;
+  }
+
+  return safeStr(user?.userName).trim().charAt(0).toUpperCase() || "U";
+}
+
+function pickActive(user: any): boolean {
+  const value = user?.isActive ?? user?.active ?? user?.enabled;
+
+  return value === true || value === "true" || value === 1;
+}
+
+function pickVerified(user: any): boolean {
+  const value = user?.isVerified ?? user?.verified;
+
+  return value === true || value === "true" || value === 1;
+}
+
+function fmtDate(value?: string | null): string {
+  if (!value) {
+    return "—";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
   });
 }
 
-/** ---------------- helpers ---------------- */
-function safeStr(v: any) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
-function fullName(u: any) {
-  const n = `${safeStr(u?.firstName)} ${safeStr(u?.lastName)}`.trim();
-  return n || safeStr(u?.userName) || safeStr(u?.email) || "—";
-}
-function pickActive(u: any): boolean {
-  const v = u?.isActive ?? u?.active ?? u?.enabled;
-  return v === true || v === "true" || v === 1;
-}
-function pickVerified(u: any): boolean {
-  const v = u?.isVerified ?? u?.verified;
-  return v === true || v === "true" || v === 1;
-}
-function fmtDate(v?: string | null) {
-  if (!v) return "—";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return String(v);
-  return d.toLocaleString();
-}
+function filterUsersBySearch(users: any[], searchQuery: string): any[] {
+  const query = searchQuery.trim().toLowerCase();
 
-function isValidEmail(email: string) {
-  const v = email.trim();
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-}
-function isValidPhoneDigitsOnly(phone: string) {
-  if (!phone.trim()) return true;
-  return /^[0-9]+$/.test(phone.trim());
-}
+  if (!query) {
+    return users;
+  }
 
-function unwrapList<T = any>(data: any): T[] {
-  if (Array.isArray(data)) return data as T[];
-  if (Array.isArray(data?.content)) return data.content as T[];
-  if (Array.isArray(data?.items)) return data.items as T[];
-  return [];
+  return users.filter((user: any) => {
+    const searchable = [
+      fullName(user),
+
+      safeStr(user?.userName),
+
+      safeStr(user?.email),
+
+      safeStr(user?.phoneNumber),
+
+      safeStr(user?.position),
+
+      safeStr(user?.roleName),
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    return searchable.includes(query);
+  });
 }
 
 function normalizeUsersResponse(data: any): {
-  rows: any[];
+  rows: UserDto[];
   totalPages: number;
 } {
   const rows =
@@ -127,59 +146,51 @@ function normalizeUsersResponse(data: any): {
     (typeof data?.page?.totalPages === "number" && data.page.totalPages) ||
     0;
 
-  return { rows, totalPages };
+  return {
+    rows,
+    totalPages,
+  };
 }
 
-type CountyOption = { countyId: string; countyName: string };
-async function fetchCounties(): Promise<CountyOption[]> {
-  const { data } = await apiClient.get("/counties");
-  return unwrapList<CountyOption>(data);
-}
-
-const TENANT_ALLOWED_ROLES: RoleName[] = [
-  "AGENT",
-  "OBSERVER",
-  "SUPERVISOR",
-  "COORDINATOR",
-  "DATA_ENTRY",
-  "AUDITOR",
-];
-
-const HIGH_LEVEL_ROLES: RoleName[] = [
-  "SYSTEM_ADMIN",
-  "NEC_ADMIN",
-  "ADMIN",
-  "TENANT_ADMIN",
-];
-
-const ALL_ROLES: RoleName[] = [
-  "SYSTEM_ADMIN",
-  "NEC_ADMIN",
-  "ADMIN",
-  "TENANT_ADMIN",
-  "AGENT",
-  "OBSERVER",
-  "SUPERVISOR",
-  "COORDINATOR",
-  "DATA_ENTRY",
-  "AUDITOR",
-];
+// ============================================================================
+// COMPONENT
+// ============================================================================
 
 export default function UsersPage() {
-  const qc = useQueryClient();
+  const navigate = useNavigate();
 
-  const dashboardMode = useAuthStore((s) => s.dashboardMode);
-  const currentOrgId = useAuthStore((s) => s.currentOrgId);
+  const location = useLocation();
+
+  const queryClient = useQueryClient();
+
+  // ==========================================================================
+  // AUTH / ORGANIZATION CONTEXT
+  // ==========================================================================
+
+  const dashboardMode = useAuthStore((state) => state.dashboardMode);
+
+  const currentOrgId = useAuthStore((state) => state.currentOrgId);
 
   const isSystemMode = dashboardMode === "SYSTEM";
 
-  const [selectedOrgId, setSelectedOrgId] = useState<string>("");
+  const initialOrgId = safeStr(
+    (location.state as { orgId?: string } | null)?.orgId,
+  );
+
+  const [selectedOrgId, setSelectedOrgId] = useState(
+    isSystemMode ? initialOrgId : "",
+  );
 
   const isPlatformView = isSystemMode && !selectedOrgId.trim();
-  const effectiveOrgId = isSystemMode ? selectedOrgId : String(currentOrgId ?? "");
-  const hasOrgContext = !!effectiveOrgId.trim();
+
+  const effectiveOrgId = isSystemMode
+    ? selectedOrgId
+    : String(currentOrgId ?? "");
+
+  const hasOrgContext = Boolean(effectiveOrgId.trim());
 
   const canManagePlatform = isPlatformView && isSystemMode;
+
   const canManageTenant =
     !isPlatformView &&
     (dashboardMode === "SYSTEM" ||
@@ -188,134 +199,25 @@ export default function UsersPage() {
 
   const canManageUsers = canManagePlatform || canManageTenant;
 
-  const [q, setQ] = useState("");
+  // ==========================================================================
+  // LIST STATE
+  // ==========================================================================
+
+  const [search, setSearch] = useState("");
+
   const [page, setPage] = useState(0);
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<UserDto | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
 
-  const [tenantAdminOpen, setTenantAdminOpen] = useState(false);
+  // ==========================================================================
+  // ORGANIZATIONS
+  // ==========================================================================
 
-  const [resetPwOpen, setResetPwOpen] = useState(false);
-  const [resetPwUser, setResetPwUser] = useState<any | null>(null);
+  const organizationsQuery = useQuery({
+    queryKey: ["lookups", "orgs", "users"],
 
-  const editingRoleName = safeStr((editing as any)?.roleName);
-  const isProtectedTenantRoleEdit =
-    !!editing &&
-    !isPlatformView &&
-    !isSystemMode &&
-    HIGH_LEVEL_ROLES.includes(editingRoleName as RoleName);
-
-  const [form, setForm] = useState({
-    firstName: "",
-    lastName: "",
-    userName: "",
-    email: "",
-    position: "",
-    phoneNumber: "",
-    password: "",
-    roleName: "" as RoleName | "",
-    assignedCountyId: "",
-  });
-
-  const [touched, setTouched] = useState<{ [k: string]: boolean }>({});
-  const [phoneHasIllegalChar, setPhoneHasIllegalChar] = useState(false);
-
-  const [tenantAdminForm, setTenantAdminForm] = useState({
-    orgId: "",
-    partyId: "",
-    firstName: "",
-    lastName: "",
-    userName: "",
-    email: "",
-    position: "",
-    phoneNumber: "",
-    password: "",
-    roleName: "" as RoleName | "",
-  });
-  const [tenantAdminTouched, setTenantAdminTouched] = useState<{ [k: string]: boolean }>({});
-  const [tenantAdminPhoneHasIllegalChar, setTenantAdminPhoneHasIllegalChar] = useState(false);
-
-  function openCreate() {
-    if (!canManageUsers) return;
-    setEditing(null);
-    setTouched({});
-    setPhoneHasIllegalChar(false);
-    setForm({
-      firstName: "",
-      lastName: "",
-      userName: "",
-      email: "",
-      position: "",
-      phoneNumber: "",
-      password: "",
-      roleName: "",
-      assignedCountyId: "",
-    });
-    setModalOpen(true);
-  }
-
-  function openEdit(u: UserDto) {
-    if (!canManageUsers) return;
-
-    setEditing(u);
-    setTouched({});
-    setPhoneHasIllegalChar(false);
-
-    const role = safeStr((u as any).roleName ?? "");
-
-    setForm({
-      firstName: safeStr(u.firstName),
-      lastName: safeStr(u.lastName),
-      userName: safeStr(u.userName),
-      email: safeStr(u.email),
-      position: safeStr((u as any).position ?? ""),
-      phoneNumber: safeStr((u as any).phoneNumber ?? ""),
-      password: "",
-      roleName: (role as any) || "",
-      assignedCountyId: safeStr((u as any).assignedCountyId ?? ""),
-    });
-
-    setModalOpen(true);
-  }
-
-  function openTenantAdminCreate() {
-    if (!isSystemMode) return;
-    setTenantAdminTouched({});
-    setTenantAdminPhoneHasIllegalChar(false);
-    setTenantAdminForm({
-      orgId: "",
-      partyId: "",
-      firstName: "",
-      lastName: "",
-      userName: "",
-      email: "",
-      position: "",
-      phoneNumber: "",
-      password: "",
-      roleName: "",
-    });
-    setTenantAdminOpen(true);
-  }
-
-  function openResetPassword(u: any) {
-    if (!canManageUsers) return;
-    
-    const userRole = safeStr(u?.roleName);
-    if (userRole === "SYSTEM_ADMIN" || u?.systemAdmin === true) {
-      return;
-    }
-
-    if (!isPlatformView && !hasOrgContext) return;
-
-    setResetPwUser(u);
-    setResetPwOpen(true);
-  }
-
-  const orgsQ = useQuery({
-    queryKey: ["lookups", "orgs", "system"],
     queryFn: async () => {
-      const res = await fetchOrganizationsPaged({
+      const response = await fetchOrganizationsPaged({
         page: 0,
         size: 200,
         search: undefined,
@@ -323,806 +225,1147 @@ export default function UsersPage() {
         orgType: undefined,
         orgId: undefined,
       } as any);
-      return res.items as Organization[];
+
+      return response.items;
     },
+
     enabled: isSystemMode,
-    staleTime: 1000 * 60 * 10,
+
+    staleTime: 60_000,
+
     retry: 1,
   });
 
-  const orgOptions = useMemo(() => {
-    return (orgsQ.data ?? []).map((o) => ({
-      value: o.orgId,
-      label: o.subdomain ? `${o.orgName} (${o.subdomain})` : o.orgName,
+  const organizationOptions = useMemo(() => {
+    return (organizationsQuery.data ?? []).map((organization) => ({
+      value: organization.orgId,
+
+      label: organization.subdomain
+        ? `${organization.orgName} (${organization.subdomain})`
+        : organization.orgName,
     }));
-  }, [orgsQ.data]);
+  }, [organizationsQuery.data]);
 
-  const partiesQ = useQuery({
-    queryKey: ["lookups", "parties", "system", "tenantAdmin"],
-    queryFn: async () => {
-      const res = await searchParties({ page: 0, size: 200, q: undefined });
-      return res.items;
-    },
-    enabled: isSystemMode,
-    staleTime: 1000 * 60 * 10,
-    retry: 1,
-  });
+  // ==========================================================================
+  // USERS
+  // ==========================================================================
 
-  const partyOptions = useMemo(() => {
-    return (partiesQ.data ?? []).map((p) => ({
-      value: p.partyId,
-      label: p.abbreviation ? `${p.partyName} (${p.abbreviation})` : p.partyName,
-    }));
-  }, [partiesQ.data]);
-
-  const countiesQ = useQuery({
-    queryKey: ["lookups", "counties", effectiveOrgId],
-    queryFn: fetchCounties,
-    enabled: hasOrgContext && !isPlatformView,
-    staleTime: 1000 * 60 * 10,
-    retry: 1,
-  });
-
-  const countyOptions = useMemo(() => {
-    return (countiesQ.data ?? []).map((c) => ({
-      value: c.countyId,
-      label: c.countyName,
-    }));
-  }, [countiesQ.data]);
-
-  const countyNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    (countiesQ.data ?? []).forEach((c) => map.set(c.countyId, c.countyName));
-    return map;
-  }, [countiesQ.data]);
-
-  const roleOptions = useMemo(() => {
-    if (isSystemMode) return ALL_ROLES.map((r) => ({ value: r, label: r }));
-
-    if (editing && isProtectedTenantRoleEdit) {
-      const current = editingRoleName as RoleName;
-      const set = new Set<RoleName>(TENANT_ALLOWED_ROLES);
-      if (HIGH_LEVEL_ROLES.includes(current)) set.add(current);
-      return Array.from(set).map((r) => ({ value: r, label: r }));
-    }
-
-    return TENANT_ALLOWED_ROLES.map((r) => ({ value: r, label: r }));
-  }, [isSystemMode, editing, isProtectedTenantRoleEdit, editingRoleName]);
-
-  const errors = useMemo(() => {
-    const e: Record<string, string> = {};
-    const fn = form.firstName.trim();
-    const ln = form.lastName.trim();
-    const un = form.userName.trim();
-    const em = form.email.trim();
-    const rl = String(form.roleName || "").trim();
-
-    if (!fn) e.firstName = "Required";
-    if (!ln) e.lastName = "Required";
-    if (!un) e.userName = "Required";
-
-    if (!em) e.email = "Required";
-    else if (!isValidEmail(em)) e.email = "Invalid email";
-
-    if (phoneHasIllegalChar) e.phoneNumber = "Digits only.";
-
-    if (!editing) {
-      if (!form.password.trim()) e.password = "Required";
-      if (!rl) e.roleName = "Required";
-    } else {
-      if (!rl) e.roleName = "Required";
-    }
-
-    if (rl && isSystemMode && !ALL_ROLES.includes(rl as RoleName)) {
-      e.roleName = "Role not allowed";
-    }
-
-    if (
-      rl &&
-      !isSystemMode &&
-      !isProtectedTenantRoleEdit &&
-      HIGH_LEVEL_ROLES.includes(rl as RoleName)
-    ) {
-      e.roleName = "System-level role can only be assigned by SYSTEM admin";
-    }
-
-    return e;
-  }, [form, editing, isSystemMode, phoneHasIllegalChar, isProtectedTenantRoleEdit]);
-
-  const isValid = Object.keys(errors).length === 0;
-
-  const tenantAdminErrors = useMemo(() => {
-    const e: Record<string, string> = {};
-    const orgId = tenantAdminForm.orgId.trim();
-    const fn = tenantAdminForm.firstName.trim();
-    const ln = tenantAdminForm.lastName.trim();
-    const un = tenantAdminForm.userName.trim();
-    const em = tenantAdminForm.email.trim();
-    const rl = String(tenantAdminForm.roleName || "").trim();
-
-    if (!orgId) e.orgId = "Required";
-    if (!fn) e.firstName = "Required";
-    if (!ln) e.lastName = "Required";
-    if (!un) e.userName = "Required";
-
-    if (!em) e.email = "Required";
-    else if (!isValidEmail(em)) e.email = "Invalid email";
-
-    if (tenantAdminPhoneHasIllegalChar) e.phoneNumber = "Digits only.";
-
-    if (!tenantAdminForm.password.trim()) e.password = "Required";
-    if (!rl) e.roleName = "Required";
-
-    return e;
-  }, [tenantAdminForm, tenantAdminPhoneHasIllegalChar]);
-
-  const tenantAdminIsValid = Object.keys(tenantAdminErrors).length === 0;
-
-    /** ✅ Users query - FIXED to fetch all data and filter client-side */
-  const usersQ = useQuery({
+  const usersQuery = useQuery({
     queryKey: ["users", isPlatformView ? "platform" : effectiveOrgId],
+
     queryFn: async () => {
       if (isPlatformView) {
         return fetchPlatformUsers({
-          page,
-          size: 20,
-          q: q.trim() || undefined,
+          page: 0,
+          size: 1000,
+          q: undefined,
         });
       }
-      // ✅ FIXED: Fetch all tenant users and filter client-side
+
       return fetchUsers(String(effectiveOrgId), {
         page: 0,
         size: 1000,
         q: undefined,
       });
     },
+
     enabled: isPlatformView || hasOrgContext,
+
     staleTime: 10_000,
+
     retry: 1,
   });
 
-  const { rows, totalPages } = normalizeUsersResponse(usersQ.data);
+  const { rows } = normalizeUsersResponse(usersQuery.data);
 
-  // ✅ Filter rows based on search input (BOTH platform and tenant)
-  const filteredRows = useMemo(() => {
-    return filterUsersBySearch(rows, q);
-  }, [rows, q]);
+  // ==========================================================================
+  // FILTERED USERS
+  // ==========================================================================
 
-  // ✅ Calculate filtered pagination
-  const filteredTotalPages = useMemo(() => {
-    return Math.ceil(filteredRows.length / 20) || 1;
-  }, [filteredRows]);
+  const filteredUsers = useMemo(() => {
+    return filterUsersBySearch(rows, search);
+  }, [rows, search]);
 
-  // ✅ Get current page of filtered results
-  const paginatedRows = useMemo(() => {
-    const startIndex = page * 20;
-    const endIndex = startIndex + 20;
-    return filteredRows.slice(startIndex, endIndex);
-  }, [filteredRows, page]);
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / PAGE_SIZE));
 
+  const visibleUsers = useMemo(() => {
+    const start = page * PAGE_SIZE;
+
+    return filteredUsers.slice(start, start + PAGE_SIZE);
+  }, [filteredUsers, page]);
+
+  const selectedUser = useMemo(() => {
+    return rows.find((user) => user.userId === selectedUserId);
+  }, [rows, selectedUserId]);
+
+  // ==========================================================================
+  // REFRESH
+  // ==========================================================================
 
   const refreshNow = async () => {
-    await qc.invalidateQueries({ queryKey: ["users"] });
-    await usersQ.refetch();
+    await queryClient.invalidateQueries({
+      queryKey: ["users"],
+    });
+
+    await usersQuery.refetch();
   };
 
-  const saveM = useMutation({
-    mutationFn: async () => {
-      if (!canManageUsers) throw new Error("No permission.");
-      if (!isValid) throw new Error("Please fix validation errors.");
+  // ==========================================================================
+  // CONTEXT
+  // ==========================================================================
 
-      if (form.phoneNumber.trim() && !isValidPhoneDigitsOnly(form.phoneNumber)) {
-        throw new Error("Phone must contain digits only.");
-      }
+  function userRouteState() {
+    return {
+      orgId: isPlatformView ? undefined : effectiveOrgId,
 
-      if (isPlatformView) {
-        if (!canManagePlatform) throw new Error("Platform users: SYSTEM admin only.");
+      platform: isPlatformView,
+    };
+  }
 
-        if (!editing) {
-          const payload: UserCreateRequest = {
-            firstName: form.firstName.trim(),
-            lastName: form.lastName.trim(),
-            userName: form.userName.trim(),
-            email: form.email.trim(),
-            position: form.position.trim() || undefined,
-            phoneNumber: form.phoneNumber.trim() || undefined,
-            password: form.password.trim(),
-            roleName: form.roleName as RoleName,
-            assignedCountyId: null,
-          } as any;
+  // ==========================================================================
+  // CREATE
+  // ==========================================================================
 
-          return await createPlatformUser(payload);
-        }
+  function openCreateUser() {
+    if (!canManageUsers) {
+      return;
+    }
 
-        const payload: UserUpdateRequest = {
-          firstName: form.firstName.trim(),
-          lastName: form.lastName.trim(),
-          userName: form.userName.trim(),
-          email: form.email.trim(),
-          position: form.position.trim() || undefined,
-          phoneNumber: form.phoneNumber.trim() || undefined,
-          roleName: form.roleName as RoleName,
-        };
+    navigate("new", {
+      state: userRouteState(),
+    });
+  }
 
-        return await updatePlatformUser(editing.userId, payload);
-      }
+  // ==========================================================================
+  // CREATE TENANT ADMIN
+  // ==========================================================================
 
-      if (!hasOrgContext) throw new Error("Select an organization.");
+  function openTenantAdminCreate() {
+    if (!isSystemMode) {
+      return;
+    }
 
-      if (!isSystemMode && HIGH_LEVEL_ROLES.includes(form.roleName as RoleName)) {
-        throw new Error("System-level role can only be assigned by SYSTEM admin.");
-      }
+    navigate("/admin-security/tenant/admins/new", {
+      state: {
+        orgId: selectedOrgId.trim() || undefined,
+      },
+    });
+  }
 
-      if (!editing) {
-        const payload: UserCreateRequest = {
-          firstName: form.firstName.trim(),
-          lastName: form.lastName.trim(),
-          userName: form.userName.trim(),
-          email: form.email.trim(),
-          position: form.position.trim() || undefined,
-          phoneNumber: form.phoneNumber.trim() || undefined,
-          password: form.password.trim(),
-          roleName: form.roleName as RoleName,
-          assignedCountyId: form.assignedCountyId || null,
-        } as any;
+  // ==========================================================================
+  // USER ASSIGNMENTS LIST
+  // ==========================================================================
 
-        const created = await createUser(String(effectiveOrgId), payload);
-        await assignUserCounty(String(effectiveOrgId), created.userId, form.assignedCountyId || null);
-        return created;
-      }
+  function openAssignments() {
+    if (isPlatformView || !effectiveOrgId || !canManageTenant) {
+      return;
+    }
 
-      let payload: UserUpdateRequest;
+    navigate("/admin-security/user-assignments", {
+      state: {
+        orgId: effectiveOrgId,
+      },
+    });
+  }
 
-      if (isProtectedTenantRoleEdit) {
-        payload = {
-          firstName: form.firstName.trim(),
-          lastName: form.lastName.trim(),
-          userName: form.userName.trim(),
-          email: form.email.trim(),
-          position: form.position.trim() || undefined,
-          phoneNumber: form.phoneNumber.trim() || undefined,
-        } as UserUpdateRequest;
-      } else {
-        payload = {
-          firstName: form.firstName.trim(),
-          lastName: form.lastName.trim(),
-          userName: form.userName.trim(),
-          email: form.email.trim(),
-          position: form.position.trim() || undefined,
-          phoneNumber: form.phoneNumber.trim() || undefined,
-          roleName: form.roleName as RoleName,
-        };
-      }
+  // ==========================================================================
+  // DETAIL
+  // ==========================================================================
 
-      const updated = await updateUser(String(effectiveOrgId), editing.userId, payload);
+  function openUserDetail(user: UserDto) {
+    navigate(user.userId, {
+      state: userRouteState(),
+    });
+  }
 
-      await assignUserCounty(String(effectiveOrgId), editing.userId, form.assignedCountyId || null);
+  // ==========================================================================
+  // ASSIGN USER TO GEOGRAPHY
+  // ==========================================================================
 
-      return updated;
-    },
-    onSuccess: async () => {
-      await refreshNow();
-      setModalOpen(false);
-      setEditing(null);
-    },
-  });
+  function openGeographyAssignment() {
+    if (!selectedUser) {
+      return;
+    }
 
-  const createTenantAdminM = useMutation({
-    mutationFn: async () => {
-      if (!isSystemMode) throw new Error("SYSTEM only.");
-      if (!tenantAdminIsValid) throw new Error("Please fix validation errors.");
+    if (isPlatformView) {
+      return;
+    }
 
-      if (
-        tenantAdminForm.phoneNumber.trim() &&
-        !isValidPhoneDigitsOnly(tenantAdminForm.phoneNumber)
-      ) {
-        throw new Error("Phone must contain digits only.");
-      }
+    if (!effectiveOrgId) {
+      return;
+    }
 
-      const payload: UserCreateRequest = {
-        firstName: tenantAdminForm.firstName.trim(),
-        lastName: tenantAdminForm.lastName.trim(),
-        userName: tenantAdminForm.userName.trim(),
-        email: tenantAdminForm.email.trim(),
-        position: tenantAdminForm.position.trim() || undefined,
-        phoneNumber: tenantAdminForm.phoneNumber.trim() || undefined,
-        password: tenantAdminForm.password.trim(),
-        roleName: tenantAdminForm.roleName as RoleName,
-        partyId: tenantAdminForm.partyId.trim() || null,
-      } as any;
+    navigate("/admin-security/user-assignments/new", {
+      state: {
+        userId: selectedUser.userId,
 
-      return await createTenantAdmin(tenantAdminForm.orgId, payload);
-    },
-    onSuccess: async () => {
-      await refreshNow();
-      setTenantAdminOpen(false);
-    },
-  });
+        user: selectedUser,
 
-  const deleteM = useMutation({
-    mutationFn: async (u: UserDto) => {
-      if (!canManageUsers) throw new Error("No permission to delete users.");
+        orgId: effectiveOrgId,
+      },
+    });
+  }
 
-      const userRole = safeStr(u?.roleName);
-      if (userRole === "SYSTEM_ADMIN" || (u as any)?.systemAdmin === true) {
-        throw new Error("Cannot delete SYSTEM_ADMIN user");
-      }
+  // ==========================================================================
+  // ORGANIZATION CHANGE
+  // ==========================================================================
 
-      if (!canManageTenant) throw new Error("Select a tenant org to manage users.");
-      await deleteUser(String(effectiveOrgId), u.userId);
-    },
-    onSuccess: refreshNow,
-  });
+  function changeOrganization(value: string) {
+    setSelectedOrgId(value);
 
-  const activeM = useMutation({
-    mutationFn: async (args: { userId: string; value: boolean }) => {
-      if (!canManageUsers) throw new Error("No permission.");
+    setSelectedUserId("");
 
-      if (isPlatformView) {
-        if (!canManagePlatform) throw new Error("Platform users: SYSTEM admin only.");
-        await setPlatformUserActive(args.userId, args.value);
-        return;
-      }
+    setSearch("");
 
-      if (!canManageTenant) throw new Error("Select a tenant org to manage users.");
-      await setUserActive(String(effectiveOrgId), args.userId, args.value);
-    },
-    onSuccess: refreshNow,
-  });
+    setPage(0);
+  }
 
-  const verifiedM = useMutation({
-    mutationFn: async (args: { userId: string; value: boolean }) => {
-      if (!canManageUsers) throw new Error("No permission.");
+  // ==========================================================================
+  // SEARCH CHANGE
+  // ==========================================================================
 
-      if (isPlatformView) {
-        if (!canManagePlatform) throw new Error("Platform users: SYSTEM admin only.");
-        await setPlatformUserVerified(args.userId, args.value);
-        return;
-      }
+  function changeSearch(value: string) {
+    setSearch(value);
 
-      if (!canManageTenant) throw new Error("Select a tenant org to manage users.");
-      await setUserVerified(String(effectiveOrgId), args.userId, args.value);
-    },
-    onSuccess: refreshNow,
-  });
+    setPage(0);
+  }
 
-  const resetPwM = useMutation({
-    mutationFn: async (args: { userId: string; newPassword: string; sendEmail: boolean }) => {
-      if (!canManageUsers) throw new Error("No permission.");
+  // ==========================================================================
+  // CREATE BUTTON STATE
+  // ==========================================================================
 
-      const resetOrgId = isPlatformView ? undefined : String(effectiveOrgId);
-
-      await adminResetPassword(resetOrgId, args.userId, args.newPassword, args.sendEmail);
-    },
-    onSuccess: async () => {
-      await refreshNow();
-      setResetPwOpen(false);
-      setResetPwUser(null);
-    },
-  });
-
-  const addDisabledReason = isPlatformView
+  const createDisabledReason = isPlatformView
     ? canManagePlatform
       ? ""
-      : "Platform users: SYSTEM admin only."
+      : "Platform users can only be managed by SYSTEM admin."
     : !hasOrgContext
-    ? "Select organization first"
-    : !canManageTenant
-    ? "No permission"
-    : "";
+      ? "Select an organization first."
+      : !canManageTenant
+        ? "You do not have permission to create users."
+        : "";
+
+  // ==========================================================================
+  // ASSIGNMENTS LIST BUTTON STATE
+  // ==========================================================================
+
+  const assignmentsDisabledReason = isPlatformView
+    ? "Select an organization before viewing user assignments."
+    : !hasOrgContext
+      ? "Select an organization first."
+      : !canManageTenant
+        ? "You do not have permission to manage user assignments."
+        : "";
+
+  // ==========================================================================
+  // ASSIGNMENT BUTTON STATE
+  // ==========================================================================
+
+  const assignmentDisabledReason = isPlatformView
+    ? "Select an organization before assigning election geography."
+    : !hasOrgContext
+      ? "Select an organization first."
+      : !canManageTenant
+        ? "You do not have permission to assign users."
+        : !selectedUser
+          ? "Select a user first."
+          : "";
+
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
 
   return (
     <AdminShell
       title="Security • Users"
       subtitle={
         isSystemMode
-          ? "SYSTEM: platform users by default; select an org to manage tenant users."
-          : "Tenant-scoped users."
+          ? "Manage platform and organization users."
+          : "Manage organization users."
       }
-      right={<Badge>{isSystemMode ? (isPlatformView ? "Platform" : "Org") : "Tenant"}</Badge>}
+      right={
+        <Badge>
+          {isSystemMode
+            ? isPlatformView
+              ? "Platform"
+              : "Organization"
+            : "Tenant"}
+        </Badge>
+      }
     >
-      <Card
-        title="Users"
-        right={
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={refreshNow}
-              disabled={usersQ.isFetching || (!isPlatformView && !hasOrgContext)}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-blue-100 px-3 py-2 text-lg font-semibold hover:bg-slate-50 disabled:opacity-50"
+      <Card title="Users">
+        <div className="flex min-w-0 flex-col gap-3">
+          {/* ================================================================ */}
+          {/* ACTION ROW */}
+          {/* ================================================================ */}
+
+          <div
+            className="
+              flex
+              min-w-0
+              flex-wrap
+              items-center
+              justify-between
+              gap-2
+            "
+          >
+            <div
+              className="
+                min-w-0
+                text-sm
+                font-semibold
+                text-slate-600
+              "
             >
-              <RefreshCw size={18} />
-              Refresh
-            </button>
-
-            <button
-              type="button"
-              onClick={openCreate}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#0000CD] bg-(--org-primary) px-3 py-2 text-lg font-semibold text-white hover:bg-slate-500 disabled:opacity-50"
-              disabled={!!addDisabledReason || saveM.isPending}
-              title={addDisabledReason || "Add user"}
-            >
-              <UserPlus size={18} />
-              Add User
-            </button>
-
-            {isSystemMode ? (
-              <button
-                type="button"
-                onClick={openTenantAdminCreate}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-blue-600 px-3 py-2 text-lg font-semibold text-white hover:bg-slate-500 disabled:opacity-50"
-                disabled={createTenantAdminM.isPending}
-                title="SYSTEM: Create first tenant admin for a target org"
-              >
-                <UserPlus size={18} />
-                Add Tenant Admin
-              </button>
-            ) : null}
-          </div>
-        }
-      >
-        {isSystemMode ? (
-          <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <label className="block">
-              <div className="mb-1 flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-600">
-                  Organization (optional)
-                </div>
-              </div>
-              <select
-                value={selectedOrgId}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setSelectedOrgId(v);
-                  setPage(0);
-                  setQ("");
-                }}
-                disabled={orgsQ.isLoading || orgsQ.isError}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-(--org-primary)"
-              >
-                <option value="">
-                  {orgsQ.isLoading ? "Loading organizations…" : "— Platform Users (no org) —"}
-                </option>
-                {orgOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              {orgsQ.isError ? (
-                <div className="mt-1 text-sm font-semibold text-red-600">
-                  Failed to load organizations
-                </div>
-              ) : null}
-            </label>
-          </div>
-        ) : null}
-
-        {/* Filters */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex w-full items-center gap-2 sm:max-w-xl">
-            <div className="relative w-full">
-              <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                size={16}
-              />
-              <input
-                value={q}
-                onChange={(e) => {
-                  setQ(e.target.value);
-                  setPage(0);
-                }}
-                placeholder={isPlatformView ? "Search platform users..." : "Search tenant users..."}
-                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-base outline-none focus:ring-2 focus:ring-(--org-primary)"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setQ("");
-                setSelectedOrgId("");
-                setPage(0);
-              }}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50"
-            >
-              Clear
-            </button>
-          </div>
-        </div>
-
-        {/* Status messages */}
-        <div className="mt-3">
-          {!isPlatformView && !hasOrgContext ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              Select an organization to view tenant users.
-            </div>
-          ) : usersQ.isLoading ? (
-            <div className="text-sm text-slate-600">Loading users…</div>
-          ) : usersQ.isError ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              {(usersQ.error as any)?.message ?? "Failed to load users."}
-            </div>
-          ) : null}
-        </div>
-
-        {/* Table */}
-        <div className="mt-3">
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-            <table className="min-w-1100px w-full">
-              <thead className="sticky top-0 z-10 bg-slate-50">
-                <tr className="text-left">
-                  {[
-                    "Full Name",
-                    "Username",
-                    "Position",
-                    "Email",
-                    "Phone",
-                    "Role",
-                    "Assigned County",
-                    "Date Created",
-                    "Status",
-                    "Actions",
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      className="whitespace-nowrap border-b border-slate-200 px-3 py-2 text-base font-extrabold text-slate-700"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-
-              <tbody>
-                {paginatedRows.length === 0 && !usersQ.isLoading ? (
-                  <tr>
-                    <td colSpan={10} className="px-3 py-6 text-sm text-slate-600">
-                      {q.trim() ? "No users matching your search." : "No users found."}
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedRows.map((u: any) => {
-                    const active = pickActive(u);
-                    const verified = pickVerified(u);
-                    const userRole = safeStr(u?.roleName);
-                    const isSystemAdmin = userRole === "SYSTEM_ADMIN" || u?.systemAdmin === true;
-
-                    const countyName =
-                      countyNameById.get(safeStr(u.assignedCountyId)) ||
-                      safeStr(u.assignedCountyName) ||
-                      "—";
-
-                    return (
-                      <tr key={u.userId} className="hover:bg-slate-50">
-                        <td className="border-b border-slate-100 px-3 py-2">
-                          <div className="text-base font-bold text-slate-900">{fullName(u)}</div>
-                        </td>
-                        <td className="border-b border-slate-100 px-3 py-2 text-base font-semibold text-slate-800">
-                          @{u.userName}
-                        </td>
-                        <td className="border-b border-slate-100 px-3 py-2 text-base text-slate-700">
-                          {safeStr(u.position ?? "—")}
-                        </td>
-                        <td className="border-b border-slate-100 px-3 py-2 text-base text-slate-700">
-                          {u.email}
-                        </td>
-                        <td className="border-b border-slate-100 px-3 py-2 text-base text-slate-700">
-                          {safeStr(u.phoneNumber ?? "—")}
-                        </td>
-                        <td className="border-b border-slate-100 px-3 py-2 text-base text-slate-700">
-                          {safeStr(u.roleName ?? "—")}
-                        </td>
-                        <td className="border-b border-slate-100 px-3 py-2 text-base text-slate-700">
-                          {isPlatformView ? "—" : countyName}
-                        </td>
-                        <td className="border-b border-slate-100 px-3 py-2 text-base text-slate-700">
-                          {fmtDate(u.dateCreated)}
-                        </td>
-                        <td className="border-b border-slate-100 px-3 py-2">
-                          <div className="flex items-center gap-4">
-                            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                              <input
-                                type="checkbox"
-                                checked={active}
-                                disabled={!canManageUsers || activeM.isPending}
-                                onChange={(e) =>
-                                  activeM.mutate({
-                                    userId: u.userId,
-                                    value: e.target.checked,
-                                  })
-                                }
-                                className="h-4 w-4 accent-(--org-primary)"
-                              />
-                              <span className="font-semibold">Active</span>
-                            </label>
-
-                            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                              <input
-                                type="checkbox"
-                                checked={verified}
-                                disabled={!canManageUsers || verifiedM.isPending}
-                                onChange={(e) =>
-                                  verifiedM.mutate({
-                                    userId: u.userId,
-                                    value: e.target.checked,
-                                  })
-                                }
-                                className="h-4 w-4 accent-(--org-primary)"
-                              />
-                              <span className="font-semibold">Verified</span>
-                            </label>
-                          </div>
-                        </td>
-
-                        <td className="border-b border-slate-100 px-3 py-2">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              className="h-9 w-9 rounded-xl mr-2 border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
-                              title={
-                                !canManageUsers
-                                  ? "No permission"
-                                  : isSystemAdmin
-                                  ? "Cannot reset SYSTEM_ADMIN password"
-                                  : !isPlatformView && !hasOrgContext
-                                  ? "Select organization first"
-                                  : "Reset password"
-                              }
-                              disabled={
-                                !canManageUsers ||
-                                isSystemAdmin ||
-                                (!isPlatformView && !hasOrgContext) ||
-                                resetPwM.isPending
-                              }
-                              onClick={() => openResetPassword(u)}
-                            >
-                              <KeyRound size={20} className="mx-auto text-[#0000CD]" />
-                            </button>
-
-                            <button
-                              type="button"
-                              className="h-9 w-9 mr-2 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
-                              title="Edit"
-                              onClick={() => openEdit(u)}
-                              disabled={!canManageUsers}
-                            >
-                              <Pencil size={20} className="mx-auto text-[#008000]" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          <div className="mt-3 flex items-center justify-between">
-            <div className="text-sm text-slate-600">
-              Page <span className="font-bold">{page + 1}</span> of{" "}
-              <span className="font-bold">{Math.max(filteredTotalPages, 1)}</span>
-              {q.trim() && (
-                <span className="ml-2">({filteredRows.length} results)</span>
+              {selectedUser ? (
+                <>
+                  Selected:{" "}
+                  <span className="font-bold text-slate-900">
+                    {fullName(selectedUser)}
+                  </span>
+                </>
+              ) : (
+                "Select a user to assign election geography"
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div
+              className="
+                ml-auto
+                flex
+                shrink-0
+                flex-wrap
+                items-center
+                justify-end
+                gap-2
+              "
+            >
+              {/* CREATE USER */}
+
               <button
                 type="button"
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
-                disabled={page <= 0}
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                onClick={openCreateUser}
+                disabled={Boolean(createDisabledReason)}
+                title={createDisabledReason || "Create user"}
+                className="
+                  inline-flex
+                  min-h-10
+                  items-center
+                  justify-center
+                  gap-1.5
+                  rounded-lg
+                  bg-blue-600
+                  px-3
+                  py-2
+                  text-sm
+                  font-bold
+                  text-white
+                  shadow-sm
+                  transition
+                  hover:bg-blue-700
+                  disabled:cursor-not-allowed
+                  disabled:opacity-40
+                "
               >
-                Prev
+                <Plus size={17} />
+
+                <span className="hidden sm:inline">Create User</span>
+
+                <span className="sm:hidden">Create</span>
               </button>
+
+              {/* CREATE TENANT ADMIN */}
+
+              {isSystemMode ? (
+                <button
+                  type="button"
+                  onClick={openTenantAdminCreate}
+                  title="Create first tenant administrator"
+                  className="
+                    inline-flex
+                    min-h-10
+                    items-center
+                    justify-center
+                    gap-1.5
+                    rounded-lg
+                    border
+                    border-indigo-300
+                    bg-indigo-50
+                    px-3
+                    py-2
+                    text-sm
+                    font-bold
+                    text-indigo-700
+                    transition
+                    hover:bg-indigo-100
+                    disabled:cursor-not-allowed
+                    disabled:opacity-40
+                  "
+                >
+                  <UserPlus size={17} />
+
+                  <span className="hidden sm:inline">Create Tenant Admin</span>
+
+                  <span className="sm:hidden">Tenant Admin</span>
+                </button>
+              ) : null}
+
+              {/* USER ASSIGNMENTS */}
+
               <button
                 type="button"
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
-                disabled={filteredTotalPages === 0 || page >= filteredTotalPages - 1}
-                onClick={() => setPage((p) => p + 1)}
+                onClick={openAssignments}
+                disabled={Boolean(assignmentsDisabledReason)}
+                title={assignmentsDisabledReason || "View user assignments"}
+                className="
+                  inline-flex
+                  min-h-10
+                  items-center
+                  justify-center
+                  gap-1.5
+                  rounded-lg
+                  border
+                  border-slate-300
+                  bg-white
+                  px-3
+                  py-2
+                  text-sm
+                  font-bold
+                  text-slate-700
+                  transition
+                  hover:bg-slate-50
+                  disabled:cursor-not-allowed
+                  disabled:opacity-40
+                "
               >
-                Next
+                <ListChecks size={17} />
+
+                <span className="hidden sm:inline">Assignments</span>
+
+                <span className="sm:hidden">Assigned</span>
+              </button>
+
+              {/* ASSIGN GEOGRAPHY */}
+
+              <button
+                type="button"
+                onClick={openGeographyAssignment}
+                disabled={Boolean(assignmentDisabledReason)}
+                title={
+                  assignmentDisabledReason ||
+                  `Assign ${fullName(selectedUser)} to election geography`
+                }
+                className="
+                  inline-flex
+                  min-h-10
+                  items-center
+                  justify-center
+                  gap-1.5
+                  rounded-lg
+                  border
+                  border-blue-300
+                  bg-blue-50
+                  px-3
+                  py-2
+                  text-sm
+                  font-bold
+                  text-blue-700
+                  transition
+                  hover:bg-blue-100
+                  disabled:cursor-not-allowed
+                  disabled:opacity-40
+                "
+              >
+                <MapPinned size={17} />
+
+                <span className="hidden sm:inline">Assign Geography</span>
+
+                <span className="sm:hidden">Assign</span>
+              </button>
+
+              {/* REFRESH */}
+
+              <button
+                type="button"
+                onClick={refreshNow}
+                disabled={
+                  usersQuery.isFetching || (!isPlatformView && !hasOrgContext)
+                }
+                className="
+                  inline-flex
+                  min-h-10
+                  items-center
+                  justify-center
+                  gap-1.5
+                  rounded-lg
+                  border
+                  border-slate-300
+                  bg-white
+                  px-3
+                  py-2
+                  text-sm
+                  font-semibold
+                  text-slate-700
+                  transition
+                  hover:bg-slate-50
+                  disabled:cursor-not-allowed
+                  disabled:opacity-40
+                "
+              >
+                <RefreshCw
+                  size={16}
+                  className={usersQuery.isFetching ? "animate-spin" : ""}
+                />
+
+                <span className="hidden sm:inline">Refresh</span>
               </button>
             </div>
           </div>
-        </div>
 
-        {/* Notes */}
-        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <Note
-            title="Tenant protected roles"
-            bullets={[
-              "In NEC/Tenant dashboards, SYSTEM_ADMIN / NEC_ADMIN / ADMIN / PARTY_ADMIN are system-level roles.",
-              "Tenant admins cannot assign them (Create), and they become read-only during edit if the user already has one.",
-              "During protected edits, roleName is not sent in updates.",
-            ]}
-          />
-          <Note
-            title="Platform vs Tenant Users"
-            bullets={[
-              "Platform users: No org-id required. Reset password enabled (except SYSTEM_ADMIN).",
-              "Tenant users: Org-id required. Reset password enabled after selecting org (except SYSTEM_ADMIN).",
-              "SYSTEM_ADMIN users cannot be reset for security.",
-              "Reset password can send email notification automatically.",
-              "Search filters by Full Name, Username, Email, Position, and Role.",
-            ]}
-          />
+          {/* ================================================================ */}
+          {/* FILTERS */}
+          {/* ================================================================ */}
+
+          <section
+            className="
+              rounded-xl
+              border
+              border-slate-200
+              bg-white
+              p-2.5
+            "
+          >
+            <div
+              className={
+                isSystemMode
+                  ? `
+                      grid
+                      min-w-0
+                      grid-cols-1
+                      gap-2
+                      sm:grid-cols-2
+                    `
+                  : `
+                      grid
+                      min-w-0
+                      grid-cols-1
+                      gap-2
+                    `
+              }
+            >
+              {/* SEARCH */}
+
+              <div className="relative min-w-0">
+                <Search
+                  size={17}
+                  className="
+                    pointer-events-none
+                    absolute
+                    left-3
+                    top-1/2
+                    -translate-y-1/2
+                    text-slate-400
+                  "
+                />
+
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(event) => changeSearch(event.target.value)}
+                  placeholder="Search name, username, email, role..."
+                  className="
+                    min-h-10
+                    w-full
+                    rounded-lg
+                    border
+                    border-slate-300
+                    bg-white
+                    py-2
+                    pl-9
+                    pr-3
+                    text-sm
+                    text-slate-900
+                    outline-none
+                    placeholder:text-slate-400
+                    focus:border-blue-500
+                    focus:ring-2
+                    focus:ring-blue-100
+                  "
+                />
+              </div>
+
+              {/* ORGANIZATION */}
+
+              {isSystemMode ? (
+                <select
+                  value={selectedOrgId}
+                  onChange={(event) => changeOrganization(event.target.value)}
+                  disabled={
+                    organizationsQuery.isLoading || organizationsQuery.isError
+                  }
+                  className="
+                          min-h-10
+                          w-full
+                          rounded-lg
+                          border
+                          border-slate-300
+                          bg-white
+                          px-2.5
+                          text-sm
+                          text-slate-900
+                          outline-none
+                          focus:border-blue-500
+                          focus:ring-2
+                          focus:ring-blue-100
+                          disabled:cursor-not-allowed
+                          disabled:bg-slate-100
+                        "
+                  aria-label="Organization"
+                >
+                  <option value="">
+                    {organizationsQuery.isLoading
+                      ? "Loading organizations…"
+                      : "Platform Users"}
+                  </option>
+
+                  {organizationOptions.map((organization) => (
+                    <option key={organization.value} value={organization.value}>
+                      {organization.label}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+            </div>
+
+            {selectedUser ? (
+              <div
+                className="
+                        mt-2
+                        flex
+                        min-w-0
+                        items-center
+                        gap-2
+                        border-t
+                        border-slate-100
+                        pt-2
+                        text-xs
+                        text-slate-500
+                      "
+              >
+                <span className="font-semibold">Selected user:</span>
+
+                <span
+                  className="
+                          min-w-0
+                          truncate
+                          font-bold
+                          text-slate-700
+                        "
+                >
+                  {fullName(selectedUser)}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedUserId("")}
+                  className="
+                          ml-auto
+                          shrink-0
+                          font-semibold
+                          text-blue-600
+                          hover:text-blue-700
+                        "
+                >
+                  Clear selection
+                </button>
+              </div>
+            ) : null}
+          </section>
+
+          {/* ================================================================ */}
+          {/* LOADING */}
+          {/* ================================================================ */}
+
+          {usersQuery.isLoading ? (
+            <div
+              className="
+                      rounded-xl
+                      border
+                      border-slate-200
+                      bg-white
+                      p-5
+                      text-center
+                      text-sm
+                      text-slate-500
+                    "
+            >
+              Loading users…
+            </div>
+          ) : null}
+
+          {/* ================================================================ */}
+          {/* ERROR */}
+          {/* ================================================================ */}
+
+          {usersQuery.isError ? (
+            <div
+              className="
+                      rounded-xl
+                      border
+                      border-red-200
+                      bg-red-50
+                      p-4
+                      text-sm
+                      font-semibold
+                      text-red-700
+                    "
+            >
+              {(usersQuery.error as any)?.message ?? "Failed to load users."}
+            </div>
+          ) : null}
+
+          {/* ================================================================ */}
+          {/* EMPTY */}
+          {/* ================================================================ */}
+
+          {!usersQuery.isLoading &&
+          !usersQuery.isError &&
+          filteredUsers.length === 0 ? (
+            <div
+              className="
+                      rounded-xl
+                      border
+                      border-dashed
+                      border-slate-300
+                      bg-white
+                      px-4
+                      py-8
+                      text-center
+                    "
+            >
+              <UserRound size={30} className="mx-auto text-slate-400" />
+
+              <div
+                className="
+                        mt-2
+                        text-base
+                        font-bold
+                        text-slate-700
+                      "
+              >
+                No users found
+              </div>
+
+              <div
+                className="
+                        mt-1
+                        text-sm
+                        text-slate-500
+                      "
+              >
+                {search.trim()
+                  ? "No users match the current search."
+                  : "There are no users to display."}
+              </div>
+            </div>
+          ) : null}
+
+          {/* ================================================================ */}
+          {/* LIST */}
+          {/* ================================================================ */}
+
+          {!usersQuery.isLoading &&
+          !usersQuery.isError &&
+          visibleUsers.length > 0 ? (
+            <section className="entity-list">
+              {/* ====================================================== */}
+              {/* DESKTOP HEADER */}
+              {/* ====================================================== */}
+
+              <div
+                className="
+                        hidden
+                        border-b
+                        border-slate-200
+                        bg-slate-50
+                        px-4
+                        py-2
+                        text-xs
+                        font-bold
+                        uppercase
+                        tracking-wide
+                        text-slate-500
+
+                        md:grid
+                        md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_minmax(0,1.15fr)_minmax(0,0.8fr)_110px_95px_90px]
+                        md:items-center
+                        md:gap-4
+                      "
+              >
+                <div>User</div>
+
+                <div>Position</div>
+
+                <div>Email</div>
+
+                <div>Role</div>
+
+                <div>Created</div>
+
+                <div className="text-center">Status</div>
+
+                <div className="text-right">Action</div>
+              </div>
+
+              {/* ====================================================== */}
+              {/* RECORDS */}
+              {/* ====================================================== */}
+
+              {visibleUsers.map((user) => {
+                const active = pickActive(user);
+
+                const verified = pickVerified(user);
+
+                const selected = selectedUserId === user.userId;
+
+                return (
+                  <div
+                    key={user.userId}
+                    className={[
+                      "group border-b border-slate-200 bg-white last:border-b-0",
+                      selected ? "bg-blue-50/50" : "hover:bg-slate-50",
+                    ].join(" ")}
+                  >
+                    {/* ================================================== */}
+                    {/* MOBILE */}
+                    {/* ================================================== */}
+
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() =>
+                        setSelectedUserId(selected ? "" : user.userId)
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedUserId(selected ? "" : user.userId);
+                        }
+                      }}
+                      className="
+                        cursor-pointer
+                        px-3.5
+                        py-3
+                        outline-none
+                        md:hidden
+                      "
+                      aria-label={`Select ${fullName(user)}`}
+                    >
+                      <div className="flex min-w-0 items-start gap-3">
+                        {user.profileImageUrl ? (
+                          <img
+                            src={user.profileImageUrl}
+                            alt=""
+                            className="h-11 w-11 shrink-0 rounded-full border border-slate-200 object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-extrabold text-blue-700">
+                            {initials(user)}
+                          </div>
+                        )}
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex min-w-0 items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="truncate text-base font-bold text-slate-900">
+                                {fullName(user)}
+                              </div>
+
+                              <div className="mt-0.5 truncate text-xs font-semibold text-slate-500">
+                                @{user.userName}
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openUserDetail(user);
+                              }}
+                              className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                              aria-label={`View ${fullName(user)}`}
+                            >
+                              <Eye size={15} />
+                              View
+                            </button>
+                          </div>
+
+                          <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold text-slate-700">
+                                {safeStr(user.position) || "No position"}
+                              </div>
+
+                              <div className="mt-0.5 truncate text-xs text-slate-500">
+                                {user.email}
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="inline-flex rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-700">
+                                {safeStr(user.roleName) || "No role"}
+                              </span>
+
+                              <span
+                                className={
+                                  active
+                                    ? "inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700"
+                                    : "inline-flex items-center gap-1 text-[11px] font-bold text-slate-500"
+                                }
+                              >
+                                <span
+                                  className={
+                                    active
+                                      ? "h-2 w-2 rounded-full bg-emerald-500"
+                                      : "h-2 w-2 rounded-full bg-slate-400"
+                                  }
+                                />
+                                {active ? "Active" : "Inactive"}
+                              </span>
+                            </div>
+                          </div>
+
+                          {verified ? (
+                            <div className="mt-2 text-xs font-semibold text-blue-600">
+                              Verified account
+                            </div>
+                          ) : null}
+
+                          {selected ? (
+                            <div className="mt-2 text-xs font-bold text-blue-700">
+                              Selected for assignment
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ================================================== */}
+                    {/* TABLET / DESKTOP */}
+                    {/* ================================================== */}
+
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() =>
+                        setSelectedUserId(selected ? "" : user.userId)
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedUserId(selected ? "" : user.userId);
+                        }
+                      }}
+                      className="
+                        hidden
+                        min-w-0
+                        cursor-pointer
+                        px-4
+                        py-3
+                        outline-none
+                        md:grid
+                        md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_minmax(0,1.15fr)_minmax(0,0.8fr)_110px_95px_90px]
+                        md:items-center
+                        md:gap-4
+                      "
+                      aria-label={`Select ${fullName(user)}`}
+                    >
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        {user.profileImageUrl ? (
+                          <img
+                            src={user.profileImageUrl}
+                            alt=""
+                            className="h-10 w-10 shrink-0 rounded-full border border-slate-200 object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-extrabold text-blue-700">
+                            {initials(user)}
+                          </div>
+                        )}
+
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-bold text-slate-900 lg:text-base">
+                            {fullName(user)}
+                          </div>
+
+                          <div className="mt-0.5 truncate text-xs font-medium text-slate-500">
+                            @{user.userName}
+                          </div>
+
+                          {selected ? (
+                            <div className="mt-0.5 text-[11px] font-bold text-blue-700">
+                              Selected
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div
+                        className="min-w-0 truncate text-sm font-semibold text-slate-700"
+                        title={safeStr(user.position)}
+                      >
+                        {safeStr(user.position) || "—"}
+                      </div>
+
+                      <div
+                        className="min-w-0 truncate text-sm text-slate-700"
+                        title={safeStr(user.email)}
+                      >
+                        {user.email}
+                      </div>
+
+                      <div className="min-w-0 truncate text-sm font-semibold text-slate-700">
+                        {safeStr(user.roleName) || "—"}
+                      </div>
+
+                      <div className="text-sm text-slate-600">
+                        {fmtDate(user.dateCreated)}
+                      </div>
+
+                      <div className="flex justify-center">
+                        <span
+                          className={
+                            active
+                              ? "inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700"
+                              : "inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600"
+                          }
+                        >
+                          {active ? "Active" : "Inactive"}
+                        </span>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openUserDetail(user);
+                          }}
+                          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                          aria-label={`View ${fullName(user)}`}
+                        >
+                          <Eye size={15} />
+                          View
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+          ) : null}
+
+          {/* ================================================================ */}
+          {/* PAGINATION */}
+          {/* ================================================================ */}
+
+          {filteredUsers.length > 0 ? (
+            <section
+              className="
+                      flex
+                      min-w-0
+                      flex-col
+                      gap-2
+                      rounded-xl
+                      border
+                      border-slate-200
+                      bg-white
+                      p-2.5
+
+                      sm:flex-row
+                      sm:items-center
+                      sm:justify-between
+                    "
+            >
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((current) => Math.max(0, current - 1))}
+                  disabled={page <= 0 || usersQuery.isFetching}
+                  className="
+                          min-h-10
+                          rounded-lg
+                          border
+                          border-slate-300
+                          bg-white
+                          px-3
+                          py-2
+                          text-sm
+                          font-semibold
+                          text-slate-700
+                          hover:bg-slate-50
+                          disabled:cursor-not-allowed
+                          disabled:opacity-40
+                        "
+                >
+                  Previous
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPage((current) =>
+                      current + 1 < totalPages ? current + 1 : current,
+                    )
+                  }
+                  disabled={page + 1 >= totalPages || usersQuery.isFetching}
+                  className="
+                          min-h-10
+                          rounded-lg
+                          border
+                          border-slate-300
+                          bg-white
+                          px-3
+                          py-2
+                          text-sm
+                          font-semibold
+                          text-slate-700
+                          hover:bg-slate-50
+                          disabled:cursor-not-allowed
+                          disabled:opacity-40
+                        "
+                >
+                  Next
+                </button>
+              </div>
+
+              <div
+                className="
+                        flex
+                        flex-wrap
+                        items-center
+                        gap-2
+                        text-xs
+                        font-semibold
+                        text-slate-600
+                        sm:justify-end
+                        sm:text-sm
+                      "
+              >
+                <span>
+                  Page {page + 1} of {totalPages}
+                </span>
+
+                <span className="hidden text-slate-300 sm:inline">•</span>
+
+                <span>
+                  {filteredUsers.length} user
+                  {filteredUsers.length === 1 ? "" : "s"}
+                </span>
+              </div>
+            </section>
+          ) : null}
         </div>
       </Card>
-
-      <UsersFormModal
-        open={modalOpen}
-        editing={editing}
-        onClose={() => {
-          if (saveM.isPending) return;
-          setModalOpen(false);
-          setEditing(null);
-        }}
-        saveM={saveM}
-        canManageUsers={canManageUsers}
-        isValid={isValid}
-        errors={errors}
-        touched={touched}
-        setTouched={setTouched}
-        form={form}
-        setForm={setForm}
-        phoneHasIllegalChar={phoneHasIllegalChar}
-        setPhoneHasIllegalChar={setPhoneHasIllegalChar}
-        roleOptions={roleOptions}
-        isProtectedTenantRoleEdit={isProtectedTenantRoleEdit}
-        countyOptions={countyOptions}
-        countiesQ={countiesQ}
-        isPlatformView={isPlatformView}
-      />
-
-      <TenantAdminFormModal
-        open={tenantAdminOpen}
-        onClose={() => {
-          if (createTenantAdminM.isPending) return;
-          setTenantAdminOpen(false);
-        }}
-        createM={createTenantAdminM}
-        isValid={tenantAdminIsValid}
-        errors={tenantAdminErrors}
-        touched={tenantAdminTouched}
-        setTouched={setTenantAdminTouched}
-        form={tenantAdminForm}
-        setForm={setTenantAdminForm}
-        phoneHasIllegalChar={tenantAdminPhoneHasIllegalChar}
-        setPhoneHasIllegalChar={setTenantAdminPhoneHasIllegalChar}
-        orgOptions={orgOptions}
-        partyOptions={partyOptions}
-        partiesQ={partiesQ}
-      />
-
-      <AdminResetPasswordModal
-        open={resetPwOpen}
-        user={resetPwUser}
-        onClose={() => {
-          if (resetPwM.isPending) return;
-          setResetPwOpen(false);
-          setResetPwUser(null);
-        }}
-        isSaving={resetPwM.isPending}
-        errorText={
-          resetPwM.isError ? ((resetPwM.error as any)?.message ?? "Reset failed.") : ""
-        }
-        disabledReason={
-          !canManageUsers
-            ? "No permission to manage users."
-            : !isPlatformView && !hasOrgContext
-            ? "Select an organization first."
-            : ""
-        }
-        onSubmit={(newPassword, sendEmail) => {
-          if (!resetPwUser?.userId) return;
-          resetPwM.mutate({ userId: resetPwUser.userId, newPassword, sendEmail });
-        }}
-      />
     </AdminShell>
   );
 }
-
-

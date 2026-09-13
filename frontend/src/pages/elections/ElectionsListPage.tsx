@@ -645,7 +645,7 @@ export default function ElectionsListPage() {
                   focus:border-blue-500
                   focus:ring-2
                   focus:ring-blue-100
-                  lg:text-base
+                  lg:text-sm
                 "
               >
                 <option value="">All Types</option>
@@ -684,7 +684,7 @@ export default function ElectionsListPage() {
                   focus:border-blue-500
                   focus:ring-2
                   focus:ring-blue-100
-                  lg:text-base
+                  lg:text-sm
                 "
               >
                 <option value="">All Lifecycle</option>
@@ -959,11 +959,11 @@ export default function ElectionsListPage() {
                     text-slate-500
 
                     md:grid
-                    md:grid-cols-[minmax(0,1.5fr)_80px_minmax(130px,0.9fr)_115px_100px_minmax(140px,0.9fr)_145px_24px]
+                    md:grid-cols-[minmax(0,1.5fr)_80px_minmax(130px,0.9fr)_115px_100px_minmax(140px,0.9fr)_95px_110px_145px_24px]
                     md:items-center
                     md:gap-3
 
-                    lg:text-sm
+                    lg:text-xs
                   "
                 >
                   <div>Election</div>
@@ -977,6 +977,10 @@ export default function ElectionsListPage() {
                   <div>Active</div>
 
                   <div>Available</div>
+
+                  <div>Ballot Spare</div>
+
+                  <div>Enforcement</div>
 
                   <div>Created</div>
 
@@ -1083,6 +1087,24 @@ export default function ElectionsListPage() {
                               label="Starts"
                               value={fmtDateShort(election.startAt)}
                             />
+
+                            <MobileMetric
+                              label="Ballot Spare"
+                              value={
+                                election.ballotSparePercent == null
+                                  ? "—"
+                                  : `${election.ballotSparePercent}%`
+                              }
+                            />
+
+                            <MobileMetric
+                              label="Enforcement"
+                              value={
+                                election.enforceBallotsGteRegistered
+                                  ? "Enforced"
+                                  : "—"
+                              }
+                            />
                           </div>
                         </div>
 
@@ -1098,7 +1120,7 @@ export default function ElectionsListPage() {
                               py-4
 
                               md:grid
-                              md:grid-cols-[minmax(0,1.5fr)_80px_minmax(130px,0.9fr)_115px_100px_minmax(140px,0.9fr)_145px_24px]
+                              md:grid-cols-[minmax(0,1.5fr)_80px_minmax(130px,0.9fr)_115px_100px_minmax(140px,0.9fr)_95px_110px_145px_24px]
                               md:items-center
                               md:gap-3
                             "
@@ -1112,7 +1134,7 @@ export default function ElectionsListPage() {
                                   text-base
                                   font-bold
                                   text-slate-900
-                                  lg:text-lg
+                                  lg:text-base
                                 "
                               title={election.electionName}
                             >
@@ -1120,7 +1142,7 @@ export default function ElectionsListPage() {
                             </div>
 
                             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500 lg:text-sm">
-                              <span>View details</span>
+                              {/* <span>View details</span> */}
 
                               {election.archiveDue && (
                                 <>
@@ -1136,7 +1158,7 @@ export default function ElectionsListPage() {
 
                           {/* YEAR */}
 
-                          <div className="text-base font-bold text-slate-900 lg:text-lg">
+                          <div className="text-base font-bold text-slate-900 lg:text-base">
                             {election.year}
                           </div>
 
@@ -1149,7 +1171,7 @@ export default function ElectionsListPage() {
                                 text-sm
                                 font-semibold
                                 text-slate-700
-                                lg:text-base
+                                lg:text-sm
                               "
                             title={typeLabel}
                           >
@@ -1184,9 +1206,31 @@ export default function ElectionsListPage() {
                             {available ? fmtDateShort(available) : "—"}
                           </div>
 
+                          {/* BALLOT SPARE */}
+
+                          <div className="text-sm font-semibold text-slate-700 lg:text-base">
+                            {election.ballotSparePercent == null
+                              ? "—"
+                              : `${election.ballotSparePercent}%`}
+                          </div>
+
+                          {/* BALLOT ENFORCEMENT */}
+
+                          <div>
+                            {election.enforceBallotsGteRegistered ? (
+                              <span className="inline-flex rounded-full border border-blue-200 bg-green-50 px-2 py-1 text-xs font-bold text-green-700 lg:text-sm">
+                                Enforced
+                              </span>
+                            ) : (
+                              <span className="text-sm font-medium text-slate-400 lg:text-base">
+                                —
+                              </span>
+                            )}
+                          </div>
+
                           {/* CREATED */}
 
-                          <div className="text-sm font-medium leading-5 text-slate-600 lg:text-base">
+                          <div className="text-xs font-medium leading-5 text-slate-600 lg:text-xs">
                             {fmtDate(created)}
                           </div>
 

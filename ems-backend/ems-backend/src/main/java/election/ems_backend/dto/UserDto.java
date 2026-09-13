@@ -23,9 +23,13 @@ public class UserDto {
     private boolean isActive;
     private boolean isVerified;
     private  String roleName;
+
     private UUID partyId;              // nullable
-    private UUID assignedCountyId;     // nullable
+    private String partyName;
+
     private UUID defaultOrgId;         // nullable
+    private String organizationName;
+
     private LocalDateTime lastLogin;   // nullable
     private LocalDateTime dateCreated;
     private LocalDateTime dateUpdated;

@@ -77,25 +77,20 @@ export type FileUploadDto = {
 // ============================================================================
 // SINGLE MULTIPART UPLOAD
 //
-// Storage provider is intentionally NOT supplied by the frontend.
+// orgId and uploadedBy remain optional for backward compatibility.
 //
-// Backend determines:
+// Existing forms may continue supplying them.
 //
-// LOCAL
+// Newer flows may omit them because the backend can resolve the authenticated
+// user and tenant organization through TenantContext.
 //
-// or
-//
-// S3
-//
-// based on:
-//
-// app.storage.provider
+// Platform system-user uploads may omit orgId entirely.
 // ============================================================================
 
 export async function uploadFileMultipart(args: {
-  orgId: string;
+  orgId?: string;
 
-  uploadedBy: string;
+  uploadedBy?: string;
 
   relatedTable: string;
 
@@ -107,9 +102,20 @@ export async function uploadFileMultipart(args: {
 }): Promise<FileUploadDto> {
   const form = new FormData();
 
-  form.append("orgId", args.orgId);
+  /*
+   * Backward compatibility:
+   *
+   * Existing tenant forms may still provide orgId and uploadedBy.
+   *
+   * Platform system-user uploads may omit orgId.
+   */
+  if (args.orgId) {
+    form.append("orgId", args.orgId);
+  }
 
-  form.append("uploadedBy", args.uploadedBy);
+  if (args.uploadedBy) {
+    form.append("uploadedBy", args.uploadedBy);
+  }
 
   form.append("fileType", args.fileType);
 
@@ -130,7 +136,6 @@ export async function uploadFileMultipart(args: {
     `/file-uploads/${encodeURIComponent(
       args.relatedTable,
     )}/${encodeURIComponent(args.relatedId)}/upload`,
-
     form,
   );
 
@@ -142,9 +147,9 @@ export async function uploadFileMultipart(args: {
 // ============================================================================
 
 export async function uploadEntityPhoto(args: {
-  orgId: string;
+  orgId?: string;
 
-  uploadedBy: string;
+  uploadedBy?: string;
 
   relatedTable: string;
 
@@ -172,9 +177,9 @@ export async function uploadEntityPhoto(args: {
 // ============================================================================
 
 export async function uploadPartyLogo(args: {
-  orgId: string;
+  orgId?: string;
 
-  uploadedBy: string;
+  uploadedBy?: string;
 
   partyId: string;
 
@@ -198,13 +203,24 @@ export async function uploadPartyLogo(args: {
 // ============================================================================
 // USER PROFILE PHOTO
 //
-// Existing public API retained.
+// Tenant user:
+// - orgId may still be supplied by existing frontend code.
+// - uploadedBy may still be supplied by existing frontend code.
+//
+// Platform user:
+// - orgId may be omitted.
+// - backend resolves context through TenantContext.
+//
+// FileUploadService synchronizes:
+//
+// SystemUser.profileImageUrl
+// SystemUser.profileImageUpload
 // ============================================================================
 
 export async function uploadUserProfilePhoto(args: {
-  orgId: string;
+  orgId?: string;
 
-  uploadedBy: string;
+  uploadedBy?: string;
 
   userId: string;
 
@@ -236,19 +252,15 @@ export async function listEntityFiles(args: {
 
   relatedId: string;
 }): Promise<FileUploadDto[]> {
-  const { data } = await apiClient.get<FileUploadDto[]>(
-    "/file-uploads",
+  const { data } = await apiClient.get<FileUploadDto[]>("/file-uploads", {
+    params: {
+      orgId: args.orgId,
 
-    {
-      params: {
-        orgId: args.orgId,
+      relatedTable: args.relatedTable,
 
-        relatedTable: args.relatedTable,
-
-        relatedId: args.relatedId,
-      },
+      relatedId: args.relatedId,
     },
-  );
+  });
 
   return Array.isArray(data) ? data : [];
 }
@@ -271,17 +283,14 @@ export async function getFileUpload(fileId: string): Promise<FileUploadDto> {
 
 export async function deleteFileUpload(
   fileId: string,
+
   requesterId: string,
 ): Promise<void> {
-  await apiClient.delete(
-    `/file-uploads/${encodeURIComponent(fileId)}`,
-
-    {
-      params: {
-        requesterId,
-      },
+  await apiClient.delete(`/file-uploads/${encodeURIComponent(fileId)}`, {
+    params: {
+      requesterId,
     },
-  );
+  });
 }
 
 // ============================================================================
@@ -310,7 +319,6 @@ export async function fetchFileBlob(fileId: string): Promise<Blob> {
 
   const response = await apiClient.get(
     `/file-uploads/${encodeURIComponent(fileId)}/content`,
-
     {
       responseType: "blob",
     },

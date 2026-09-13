@@ -60,86 +60,29 @@ import java.util.*;
 @Slf4j
 public class FileUploadServiceImplementation implements FileUploadService {
 
-    // =========================================================================
-    // FILE UPLOAD
-    // =========================================================================
-
     private final FileUploadRepository fileUploadRepository;
-
-
-    // =========================================================================
-    // CORE RELATED ENTITIES
-    // =========================================================================
-
     private final OrganizationRepository orgRepo;
-
     private final SystemUserRepository userRepo;
-
     private final PartyRepository partyRepository;
-
     private final CandidateRepository candidateRepository;
-
     private final VoterRegistrationRepository voterRegistrationRepository;
 
-
-    // =========================================================================
-    // EXISTING FILE-RELATED ENTITIES
-    // =========================================================================
-
     private final TallySheetRepository tallyRepo;
-
     private final VoteSubmissionRepository submissionRepo;
-
     private final ObserverReportRepository observerRepo;
-
     private final ChatMessageRepository chatRepo;
-
-
-    // =========================================================================
-    // STORAGE
-    // =========================================================================
 
     private final FileStorageService storage;
 
+    private static final String RELATED_TABLE_SUBMISSION = "vote_submission";
+    private static final String RELATED_TABLE_PARTY = "party";
+    private static final String RELATED_TABLE_CANDIDATE = "candidate";
+    private static final String RELATED_TABLE_ORGANIZATION = "organization";
+    private static final String RELATED_TABLE_SYSTEM_USERS = "system_users";
+    private static final String RELATED_TABLE_VOTER_REGISTRATION = "voter_registration";
+    private static final String RELATED_TABLE_OBSERVER_REPORT = "observer_report";
 
-    // =========================================================================
-    // CONSTANTS
-    // =========================================================================
-
-    private static final String RELATED_TABLE_SUBMISSION =
-            "vote_submission";
-
-
-    private static final String RELATED_TABLE_PARTY =
-            "party";
-
-
-    private static final String RELATED_TABLE_CANDIDATE =
-            "candidate";
-
-
-    private static final String RELATED_TABLE_ORGANIZATION =
-            "organization";
-
-
-    private static final String RELATED_TABLE_SYSTEM_USERS =
-            "system_users";
-
-
-    private static final String RELATED_TABLE_VOTER_REGISTRATION =
-            "voter_registration";
-
-
-    private static final String RELATED_TABLE_OBSERVER_REPORT =
-            "observer_report";
-
-
-    // =========================================================================
-    // MAPPER
-    // =========================================================================
-
-    private final FileUploadMapper mapper =
-            new FileUploadMapper();
+    private final FileUploadMapper mapper = new FileUploadMapper();
 
 
     // =========================================================================
@@ -237,6 +180,10 @@ public class FileUploadServiceImplementation implements FileUploadService {
             UUID uploadedBy
     ) {
 
+        // =========================================================================
+        // VALIDATE METADATA
+        // =========================================================================
+
         if (meta == null) {
 
             throw new ResponseStatusException(
@@ -246,19 +193,42 @@ public class FileUploadServiceImplementation implements FileUploadService {
         }
 
 
-        Organization org =
-                orgRepo
-                        .findById(
-                                meta.getOrgId()
-                        )
-                        .orElseThrow(
-                                () ->
-                                        new ResponseStatusException(
-                                                HttpStatus.NOT_FOUND,
-                                                "Organization not found"
-                                        )
-                        );
+        String relatedTable =
+                normalizeRelatedTable(
+                        meta.getRelatedTable()
+                );
 
+
+        // =========================================================================
+        // RESOLVE ORGANIZATION
+        //
+        // Tenant uploads have an organization.
+        //
+        // Platform / SYSTEM uploads may have organization = null.
+        // =========================================================================
+
+        Organization org = null;
+
+        if (meta.getOrgId() != null) {
+
+            org =
+                    orgRepo
+                            .findById(
+                                    meta.getOrgId()
+                            )
+                            .orElseThrow(
+                                    () ->
+                                            new ResponseStatusException(
+                                                    HttpStatus.NOT_FOUND,
+                                                    "Organization not found"
+                                            )
+                            );
+        }
+
+
+        // =========================================================================
+        // RESOLVE UPLOADER
+        // =========================================================================
 
         SystemUser user =
                 userRepo
@@ -274,18 +244,22 @@ public class FileUploadServiceImplementation implements FileUploadService {
                         );
 
 
-        String relatedTable =
-                normalizeRelatedTable(
-                        meta.getRelatedTable()
-                );
-
+        // =========================================================================
+        // VALIDATE RELATED ENTITY
+        // =========================================================================
 
         requireRelatedExistsAndSameOrg(
                 relatedTable,
                 meta.getRelatedId(),
-                org.getOrgId()
+                org != null
+                        ? org.getOrgId()
+                        : null
         );
 
+
+        // =========================================================================
+        // VALIDATE FILE
+        // =========================================================================
 
         if (
                 file == null ||
@@ -311,6 +285,10 @@ public class FileUploadServiceImplementation implements FileUploadService {
         }
 
 
+        // =========================================================================
+        // CONTENT TYPE
+        // =========================================================================
+
         String contentType =
                 safeContentType(
                         meta.getMimeType() != null
@@ -326,29 +304,9 @@ public class FileUploadServiceImplementation implements FileUploadService {
         );
 
 
-        String sha =
-                safeSha256(
-                        file
-                );
-
-
-        /*
-         * Preserve the existing org-level duplicate protection.
-         */
-        if (
-                sha != null &&
-                        fileUploadRepository.existsActiveByOrgAndSha(
-                                org.getOrgId(),
-                                sha
-                        )
-        ) {
-
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Duplicate file for this organization (same SHA-256)"
-            );
-        }
-
+        // =========================================================================
+        // ORIGINAL FILE NAME
+        // =========================================================================
 
         String original =
                 Objects.requireNonNullElse(
@@ -356,6 +314,115 @@ public class FileUploadServiceImplementation implements FileUploadService {
                         "upload.bin"
                 );
 
+
+        // =========================================================================
+        // FILE TYPE
+        //
+        // FileType represents the purpose of the file.
+        //
+        // Examples:
+        //
+        // user profile      -> PHOTO
+        // candidate photo   -> PHOTO
+        // party logo        -> PHOTO / LOGO if supported
+        // tally sheet       -> TALLY_SHEET
+        // =========================================================================
+
+        FileType resolvedFileType =
+                meta.getFileType() != null
+                        ? meta.getFileType()
+                        : guessType(
+                        contentType,
+                        original
+                );
+
+
+        // =========================================================================
+        // SHA-256
+        // =========================================================================
+
+        String sha =
+                safeSha256(
+                        file
+                );
+
+
+        // =========================================================================
+        // EXACT ENTITY DUPLICATE CHECK
+        //
+        // A duplicate exists ONLY when all are the same:
+        //
+        // organization
+        // relatedTable
+        // relatedId
+        // fileType
+        // sha256
+        //
+        // Therefore:
+        //
+        // Candidate A using the same image as User A = ALLOWED
+        //
+        // Party A using the same image as Candidate A = ALLOWED
+        //
+        // Vote Submission A using the same image as User A = ALLOWED
+        //
+        // User A uploading the exact same profile image again = REUSE
+        // =========================================================================
+
+        if (sha != null) {
+
+            List<FileUpload> existingExactUploads =
+                    org != null
+                            ? fileUploadRepository
+                            .findActiveExactEntityDuplicate(
+                                    org.getOrgId(),
+                                    relatedTable,
+                                    meta.getRelatedId(),
+                                    resolvedFileType,
+                                    sha
+                            )
+                            : fileUploadRepository
+                            .findActiveExactPlatformEntityDuplicate(
+                                    relatedTable,
+                                    meta.getRelatedId(),
+                                    resolvedFileType,
+                                    sha
+                            );
+
+
+            if (!existingExactUploads.isEmpty()) {
+
+                FileUpload existing =
+                        existingExactUploads.get(0);
+
+
+                /*
+                 * Exact same file already belongs to the exact same entity.
+                 *
+                 * Do not:
+                 *
+                 * - store another physical copy
+                 * - create another FileUpload row
+                 *
+                 * Re-sync the related media field in case its reference is stale.
+                 */
+                syncRelatedMediaField(
+                        relatedTable,
+                        meta.getRelatedId(),
+                        existing
+                );
+
+
+                return mapper.toDTO(
+                        existing
+                );
+            }
+        }
+
+
+        // =========================================================================
+        // STORAGE FILE NAME
+        // =========================================================================
 
         String extension =
                 getExtension(
@@ -374,6 +441,10 @@ public class FileUploadServiceImplementation implements FileUploadService {
                 );
 
 
+        // =========================================================================
+        // STORE PHYSICAL FILE
+        // =========================================================================
+
         String fileUrl;
 
 
@@ -383,10 +454,13 @@ public class FileUploadServiceImplementation implements FileUploadService {
         ) {
 
             log.debug(
-                    "Storing file: org={}, relatedTable={}, relatedId={}, name={}, size={}",
-                    org.getOrgId(),
+                    "Storing file: org={}, relatedTable={}, relatedId={}, fileType={}, name={}, size={}",
+                    org != null
+                            ? org.getOrgId()
+                            : null,
                     relatedTable,
                     meta.getRelatedId(),
+                    resolvedFileType,
                     storedName,
                     file.getSize()
             );
@@ -421,6 +495,10 @@ public class FileUploadServiceImplementation implements FileUploadService {
         }
 
 
+        // =========================================================================
+        // CREATE FILE UPLOAD ENTITY
+        // =========================================================================
+
         FileUpload entity =
                 new FileUpload();
 
@@ -441,12 +519,7 @@ public class FileUploadServiceImplementation implements FileUploadService {
 
 
         entity.setFileType(
-                meta.getFileType() != null
-                        ? meta.getFileType()
-                        : guessType(
-                        contentType,
-                        original
-                )
+                resolvedFileType
         );
 
 
@@ -489,29 +562,48 @@ public class FileUploadServiceImplementation implements FileUploadService {
         );
 
 
+        // =========================================================================
+        // SAVE FILE UPLOAD
+        // =========================================================================
+
         FileUpload saved =
                 persistWithConflictHandling(
                         entity
                 );
 
 
-        /*
-         * Existing tally-sheet behavior remains intact.
-         */
+        // =========================================================================
+        // EXISTING TALLY-SHEET MIRROR
+        // =========================================================================
+
         maybeMirrorToTallySheet(
                 saved
         );
 
 
-        /*
-         * Synchronize only the related entity's media field.
-         */
+        // =========================================================================
+        // SYNC RELATED ENTITY
+        //
+        // Examples:
+        //
+        // system_users:
+        // - profileImageUrl
+        // - profileImageUpload
+        //
+        // Other supported related entities continue using their existing
+        // synchronization behavior.
+        // =========================================================================
+
         syncRelatedMediaField(
                 relatedTable,
                 meta.getRelatedId(),
                 saved
         );
 
+
+        // =========================================================================
+        // RESPONSE
+        // =========================================================================
 
         return mapper.toDTO(
                 saved

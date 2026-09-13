@@ -79,11 +79,6 @@ public class SystemUser extends BaseAuditedEntity {
     @JoinColumn(name = "party_id", foreignKey = @ForeignKey(name = "fk_user_party"))
     private Party party;
 
-    // County assignment
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "assigned_county", foreignKey = @ForeignKey(name = "fk_user_county"))
-    private County assignedCounty;
-
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "default_org_id", foreignKey = @ForeignKey(name = "fk_user_default_org"))
     private Organization defaultOrg;

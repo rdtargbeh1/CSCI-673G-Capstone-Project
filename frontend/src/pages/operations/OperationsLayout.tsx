@@ -1,26 +1,40 @@
-/**
- * OPERATIONS LAYOUT
- *
- * PURPOSE:
- * - A task-focused workspace for day-to-day work (especially election day):
- *   - Vote Submissions: create/verify/flag/reject + evidence checks
- *   - Observer Reports: submissions from observers
- *   - Notifications: operational alerts and actions
- *
- * DATA SOURCES (SQL):
- * - vote_submission, vote_submission_contest, tally_sheet, file_upload
- * - observer_report
- * - notification
- * - audit_log (optional feed)
- */
+// src/pages/operations/OperationsLayout.tsx
 
 import { Outlet } from "react-router-dom";
+
 import { OpsTabs } from "./shared/ops-ui";
+
+// ============================================================================
+// OPERATIONS LAYOUT
+//
+// Purpose:
+//
+// Provides the shared Operations module layout.
+//
+// Responsibilities:
+//
+// - Keeps the Operations navigation visible.
+// - Renders the current Operations page through <Outlet />.
+// - Does not define individual Operations routes.
+//
+// Individual Operations routes are maintained in:
+//
+// src/pages/operations/shared/OperationsTab.tsx
+// ============================================================================
 
 export default function OperationsLayout() {
   return (
     <div className="flex flex-col gap-4">
+      {/* ==================================================================== */}
+      {/* OPERATIONS NAVIGATION */}
+      {/* ==================================================================== */}
+
       <OpsTabs />
+
+      {/* ==================================================================== */}
+      {/* CURRENT OPERATIONS PAGE */}
+      {/* ==================================================================== */}
+
       <Outlet />
     </div>
   );

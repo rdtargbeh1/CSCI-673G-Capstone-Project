@@ -67,74 +67,143 @@ public class SystemUserServiceImplementation implements SystemUserService {
 
     /* ======================= CREATE ======================= */
 
-
-    /* ======================= CREATE ======================= */
-
     @Override
     @org.springframework.transaction.annotation.Transactional
     public UserDto createInTenant(UserCreateRequest req) {
 
         // 1) Determine if caller is platform SYSTEM_ADMIN from TenantContext
         TenantContext ctx = TenantContext.get();
-        final boolean callerIsSystemAdmin = (ctx != null && ctx.isSystemAdmin());
+        final boolean callerIsSystemAdmin =
+                (ctx != null && ctx.isSystemAdmin());
 
-        // 2) Resolve current tenant from TenantContext (X-Org-Id header or subdomain)
+        // 2) Resolve current tenant from TenantContext
+        //    (X-Org-Id header or subdomain)
         UUID orgId = requireTenant();
-        Organization tenant = organizationRepository.findById(orgId)
-                .orElseThrow(() -> new NoSuchElementException("Organization not found"));
+
+        Organization tenant =
+                organizationRepository.findById(orgId)
+                        .orElseThrow(
+                                () ->
+                                        new NoSuchElementException(
+                                                "Organization not found"
+                                        )
+                        );
 
         // 3) Uniqueness checks
-        ensureUniqueEmail(req.getEmail(), null);
-        ensureUniqueUsername(req.getUserName(), null);
+        ensureUniqueEmail(
+                req.getEmail(),
+                null
+        );
+
+        ensureUniqueUsername(
+                req.getUserName(),
+                null
+        );
 
         // 4) Base platform role
-        UserRole role = loadRole(req.getRoleName());
+        UserRole role =
+                loadRole(
+                        req.getRoleName()
+                );
 
         // Only platform system admin can create ADMIN users
-        if (role.getRoleName() == RoleName.ADMIN && !callerIsSystemAdmin) {
-            throw new IllegalArgumentException("Only system admin can create ADMIN users");
+        if (
+                role.getRoleName() == RoleName.ADMIN &&
+                        !callerIsSystemAdmin
+        ) {
+
+            throw new IllegalArgumentException(
+                    "Only system admin can create ADMIN users"
+            );
         }
 
         // 5) Default organization
         Organization defaultOrg;
-        if (req.getDefaultOrgId() != null) {
-            defaultOrg = organizationRepository.findById(req.getDefaultOrgId())
-                    .orElseThrow(() -> new NoSuchElementException("Default organization not found"));
 
-            if (!callerIsSystemAdmin && !defaultOrg.getOrgId().equals(tenant.getOrgId())) {
-                throw new IllegalArgumentException("Org admin cannot assign user to another organization");
+        if (
+                req.getDefaultOrgId() != null
+        ) {
+
+            defaultOrg =
+                    organizationRepository
+                            .findById(
+                                    req.getDefaultOrgId()
+                            )
+                            .orElseThrow(
+                                    () ->
+                                            new NoSuchElementException(
+                                                    "Default organization not found"
+                                            )
+                            );
+
+            if (
+                    !callerIsSystemAdmin &&
+                            !defaultOrg
+                                    .getOrgId()
+                                    .equals(
+                                            tenant.getOrgId()
+                                    )
+            ) {
+
+                throw new IllegalArgumentException(
+                        "Org admin cannot assign user to another organization"
+                );
             }
+
         } else {
-            defaultOrg = tenant;
+
+            defaultOrg =
+                    tenant;
         }
 
-        // 6) Neutral user (no party, no county yet)
-        String encodedPassword = encoder.encode(req.getPassword());
+        // 6) Neutral user
+        //    Geography assignment is handled separately.
+        String encodedPassword =
+                encoder.encode(
+                        req.getPassword()
+                );
 
+        /*
+         * Profile image is NOT resolved here.
+         *
+         * The user must exist first so FileUpload can use:
+         *
+         * relatedTable = "system_users"
+         * relatedId    = saved.userId
+         *
+         * FileUploadService will synchronize:
+         *
+         * SystemUser.profileImageUrl
+         * SystemUser.profileImageUpload
+         *
+         * after the profile image is uploaded.
+         */
+        SystemUser entity =
+                mapper.toEntity(
+                        req,
+                        role,
+                        null,          // party
+                        null,          // county
+                        defaultOrg,
+                        encodedPassword,
+                        null           // profile image handled by FileUploadService
+                );
 
-        // Resolve optional profile image upload (preferred over a raw URL)
-        FileUpload profileImageUpload = null;
-        if (req.getProfileImageUploadId() != null) {
-            profileImageUpload = fileUploadRepository.findById(req.getProfileImageUploadId())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile image upload not found"));
-        }
-
-        SystemUser entity = mapper.toEntity(
-                req,
-                role,
-                null,          // party
-                null,          // county
-                defaultOrg,
-                encodedPassword,
-                profileImageUpload
-        );
-
-        SystemUser saved = systemUserRepository.save(entity);
+        SystemUser saved =
+                systemUserRepository.save(
+                        entity
+                );
 
         // 7) Add user to org_membership for THIS tenant
-        ensureMembership(tenant.getOrgId(), saved.getUserId(), role.getRoleName().name());
+        ensureMembership(
+                tenant.getOrgId(),
+                saved.getUserId(),
+                role.getRoleName().name()
+        );
 
-        return mapper.toDTO(saved);
+        return mapper.toDTO(
+                saved
+        );
     }
 
 
@@ -142,40 +211,125 @@ public class SystemUserServiceImplementation implements SystemUserService {
 
     @Override
     @org.springframework.transaction.annotation.Transactional
-    public UserDto updateInTenant(UUID userId, UserUpdateRequest req) {
-        UUID orgId = requireTenant();
-        SystemUser u = loadTenantUser(orgId, userId);
+    public UserDto updateInTenant(
+            UUID userId,
+            UserUpdateRequest req
+    ) {
 
-        if (req.getEmail() != null && !u.getEmail().equalsIgnoreCase(req.getEmail())) {
-            ensureUniqueEmail(req.getEmail(), u.getUserId());
+        UUID orgId =
+                requireTenant();
+
+        SystemUser u =
+                loadTenantUser(
+                        orgId,
+                        userId
+                );
+
+        if (
+                req.getEmail() != null &&
+                        !u.getEmail()
+                                .equalsIgnoreCase(
+                                        req.getEmail()
+                                )
+        ) {
+
+            ensureUniqueEmail(
+                    req.getEmail(),
+                    u.getUserId()
+            );
         }
-        if (req.getUserName() != null && !u.getUserName().equalsIgnoreCase(req.getUserName())) {
-            ensureUniqueUsername(req.getUserName(), u.getUserId());
+
+        if (
+                req.getUserName() != null &&
+                        !u.getUserName()
+                                .equalsIgnoreCase(
+                                        req.getUserName()
+                                )
+        ) {
+
+            ensureUniqueUsername(
+                    req.getUserName(),
+                    u.getUserId()
+            );
         }
 
-        FileUpload profileImageUpload = null;
-        if (req.getProfileImageUploadId() != null) {
-            profileImageUpload = fileUploadRepository.findById(req.getProfileImageUploadId())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile image upload not found"));
-        }
+        /*
+         * Keep the user's current profile-image relationship unchanged.
+         *
+         * New/replacement profile images are handled exclusively through
+         * FileUploadService.
+         *
+         * FileUploadService will update both:
+         *
+         * SystemUser.profileImageUrl
+         * SystemUser.profileImageUpload
+         *
+         * when a new image is uploaded for:
+         *
+         * relatedTable = "system_users"
+         * relatedId    = userId
+         */
+        mapper.applyUpdate(
+                req,
+                u,
+                u.getProfileImageUpload()
+        );
 
-        // ✅ IMPORTANT: pass profileImageUpload
-        mapper.applyUpdate(req, u, profileImageUpload);
+        if (
+                req.getRoleName() != null
+        ) {
 
-        if (req.getRoleName() != null) {
-            UserRole role = loadRole(req.getRoleName());
-            if (role.getRoleName() == RoleName.ADMIN && !callerIsPlatformAdmin()) {
-                throw new IllegalArgumentException("Not allowed to assign ADMIN within a tenant");
+            UserRole role =
+                    loadRole(
+                            req.getRoleName()
+                    );
+
+            if (
+                    role.getRoleName() == RoleName.ADMIN &&
+                            !callerIsPlatformAdmin()
+            ) {
+
+                throw new IllegalArgumentException(
+                        "Not allowed to assign ADMIN within a tenant"
+                );
             }
-            u.setRole(role);
-            syncMembershipRole(orgId, userId, role.getRoleName().name());
+
+            u.setRole(
+                    role
+            );
+
+            syncMembershipRole(
+                    orgId,
+                    userId,
+                    role.getRoleName().name()
+            );
         }
 
-        if (req.getPartyId() != null) u.setParty(loadParty(req.getPartyId()));
-        if (req.getAssignedCountyId() != null) u.setAssignedCounty(loadCounty(req.getAssignedCountyId()));
-        if (req.getDefaultOrgId() != null) u.setDefaultOrg(loadOrg(req.getDefaultOrgId()));
+        if (
+                req.getPartyId() != null
+        ) {
 
-        return mapper.toDTO(u);
+            u.setParty(
+                    loadParty(
+                            req.getPartyId()
+                    )
+            );
+        }
+
+        if (
+                req.getDefaultOrgId() != null
+        ) {
+
+            u.setDefaultOrg(
+                    loadOrg(
+                            req.getDefaultOrgId()
+                    )
+            );
+        }
+
+        return mapper.toDTO(
+                u
+        );
     }
 
 
@@ -211,8 +365,6 @@ public class SystemUserServiceImplementation implements SystemUserService {
         return createInTenant(req);
     }
 
-
-
     @Override
     @org.springframework.transaction.annotation.Transactional
     public UserDto createPlatformAdmin(UserCreateRequest req) {
@@ -243,23 +395,19 @@ public class SystemUserServiceImplementation implements SystemUserService {
                         req.getPassword()
                 );
 
-        FileUpload profileImageUpload = null;
-
-        if (req.getProfileImageUploadId() != null) {
-
-            profileImageUpload =
-                    fileUploadRepository
-                            .findById(
-                                    req.getProfileImageUploadId()
-                            )
-                            .orElseThrow(() ->
-                                    new ResponseStatusException(
-                                            HttpStatus.NOT_FOUND,
-                                            "Profile image upload not found"
-                                    )
-                            );
-        }
-
+        /*
+         * Profile image is not resolved during user creation.
+         *
+         * The SystemUser must exist first so FileUpload can reference:
+         *
+         * relatedTable = "system_users"
+         * relatedId    = saved.userId
+         *
+         * FileUploadService is responsible for synchronizing:
+         *
+         * SystemUser.profileImageUrl
+         * SystemUser.profileImageUpload
+         */
         SystemUser entity =
                 mapper.toEntity(
                         req,
@@ -268,7 +416,7 @@ public class SystemUserServiceImplementation implements SystemUserService {
                         null,                   // county
                         null,                   // default organization
                         encodedPassword,
-                        profileImageUpload
+                        null                    // profile image handled by FileUploadService
                 );
 
         entity.setSystemUser(true);
@@ -290,7 +438,9 @@ public class SystemUserServiceImplementation implements SystemUserService {
                         entity
                 );
 
-        return mapper.toDTO(saved);
+        return mapper.toDTO(
+                saved
+        );
     }
 
 
@@ -340,7 +490,6 @@ public class SystemUserServiceImplementation implements SystemUserService {
         }
 
         // 6) Apply assignment
-        user.setAssignedCounty(county);          // James Doe → Nimba County
         membership.setRoleName(normalizedRole);  // Role in this tenant → COORDINATOR
 
         // JPA will flush changes at transaction commit, but you can be explicit:
@@ -665,7 +814,6 @@ public class SystemUserServiceImplementation implements SystemUserService {
     public void assignCountyInTenant(UUID userId, UUID countyId) {
         UUID orgId = requireTenant();
         SystemUser u = loadTenantUser(orgId, userId);
-        u.setAssignedCounty(countyId == null ? null : loadCounty(countyId));
     }
 
     @Override

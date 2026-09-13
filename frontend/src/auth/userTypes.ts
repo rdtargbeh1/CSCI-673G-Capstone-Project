@@ -17,7 +17,6 @@ export interface UserDto {
   roleName: string; // Role (e.g., Admin, Agent)
 
   partyId?: string | null; // Nullable party association
-  assignedCountyId?: string | null; // Nullable assigned county
   defaultOrgId?: string | null; // Nullable default organization
 
   profileImageUrl?: string | null;
@@ -48,7 +47,6 @@ export interface UserCreateRequest {
   roleName: RoleName;
 
   partyId?: string | null;
-  assignedCountyId?: string | null;
   defaultOrgId?: string | null;
 }
 
@@ -69,7 +67,6 @@ export interface UserUpdateRequest {
   roleName: RoleName; // ✅ REQUIRED
 
   partyId?: string | null;
-  assignedCountyId?: string | null;
   defaultOrgId?: string | null;
 }
 
@@ -92,11 +89,13 @@ export interface OrgMembershipDto {
 export type RoleName =
   | "SYSTEM_ADMIN"
   | "NEC_ADMIN"
-  | "ADMIN"
   | "TENANT_ADMIN"
-  | "AGENT"
+  | "ADMIN"
+  | "TALLY_OFFICER"
+  | "AUDITOR"
+  | "COORDINATOR"
   | "OBSERVER"
   | "SUPERVISOR"
-  | "COORDINATOR"
-  | "DATA_ENTRY"
-  | "AUDITOR";
+  | "FIELD_OFFICER"
+  | "PRESIDING_OFFICER"
+  | "DATA_ENTRY";

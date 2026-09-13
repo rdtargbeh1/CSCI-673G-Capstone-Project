@@ -46,7 +46,6 @@ public class UserUpdateRequest {
     //    @NotNull
     private RoleName roleName;
     private UUID partyId;                    // optional
-    private UUID assignedCountyId;           // optional
     private UUID defaultOrgId;
 
 

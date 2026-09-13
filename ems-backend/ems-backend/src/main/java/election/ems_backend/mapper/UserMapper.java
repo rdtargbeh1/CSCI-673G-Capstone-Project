@@ -28,8 +28,9 @@ public class UserMapper {
         // role enum -> String
         dto.setRoleName(user.getRole() != null ? user.getRole().getRoleName().name() :null);
         dto.setPartyId(user.getParty() != null ? user.getParty().getPartyId() : null);
-        dto.setAssignedCountyId(user.getAssignedCounty() != null ? user.getAssignedCounty().getCountyId() : null);
+        dto.setPartyName(user.getParty() != null ? user.getParty().getPartyName() : null);
         dto.setDefaultOrgId(user.getDefaultOrg() != null ? user.getDefaultOrg().getOrgId() : null);
+        dto.setOrganizationName(user.getDefaultOrg() != null ? user.getDefaultOrg().getOrgName() : null);
 
         dto.setLastLogin(user.getLastLogin());
         dto.setDateCreated(user.getDateCreated());
@@ -89,7 +90,6 @@ public class UserMapper {
         u.setPassword(encodedPassword); // already encoded by service
         u.setRole(role);
         u.setParty(party);
-        u.setAssignedCounty(county);
         u.setDefaultOrg(defaultOrg);
 
         if (profileImageUpload != null) {
