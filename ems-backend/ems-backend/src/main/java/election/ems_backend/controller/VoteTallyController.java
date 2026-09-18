@@ -1,6 +1,7 @@
 package election.ems_backend.controller;
 
 import election.ems_backend.dto.VoteTallyDto;
+import election.ems_backend.security.AuthorizationService;
 import election.ems_backend.service.VoteTallyService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -30,6 +31,7 @@ import java.util.UUID;
 public class VoteTallyController {
 
     private final VoteTallyService voteTallyService;
+    private final AuthorizationService authz;
 
     /**
      * Search aggregated vote tallies for an org + election,
@@ -80,6 +82,13 @@ public class VoteTallyController {
     public List<VoteTallyDto> recompute(@PathVariable("orgId") UUID orgId,
                                         @PathVariable("electionId") UUID electionId,
                                         @RequestParam(value = "recomputedByUserId", required = false) UUID recomputedByUserId) {
+
+        /*
+         * Recompute is not a read operation: it deletes the existing aggregate
+         * rows and writes a freshly derived tally set. Keep it restricted to
+         * the same central administrative authority used for election setup.
+         */
+        authz.requireNecAdminOrPlatformAdmin();
 
         if (recomputedByUserId == null) {
             // convenience overload – system recompute (no explicit user)

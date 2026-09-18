@@ -25,7 +25,6 @@ public final class CandidateElectionStatsPartySpecs {
         };
     }
 
-
     public static Specification<CandidateElectionStatsParty> contestEquals(UUID contestId) {
         return (root, query, cb) -> {
             if (contestId == null) return null;

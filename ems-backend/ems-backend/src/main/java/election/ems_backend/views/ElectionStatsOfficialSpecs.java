@@ -30,4 +30,5 @@ public final class ElectionStatsOfficialSpecs {
             return cb.equal(p, contestId);
         };
     }
+
 }

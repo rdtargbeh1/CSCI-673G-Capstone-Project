@@ -1,5 +1,6 @@
 package election.ems_backend.controller;
 
+import election.ems_backend.dto.PollingPlaceBulkCreateRequest;
 import election.ems_backend.dto.PollingPlaceCreateRequest;
 import election.ems_backend.dto.PollingPlaceDto;
 import election.ems_backend.dto.PollingPlaceUpdateRequest;
@@ -35,6 +36,14 @@ public class PollingPlaceController {
         return pollingPlaceService.create(req);
     }
 
+    @PostMapping("/bulk")
+    public List<PollingPlaceDto> createBulk(
+            @Valid @RequestBody PollingPlaceBulkCreateRequest request
+    ) {
+        authz.requireNecAdminOrPlatformAdmin();
+        return pollingPlaceService.createBulk(request);
+    }
+
     @PutMapping("/{id}")
     public PollingPlaceDto update(@PathVariable UUID id,
                                   @Valid @RequestBody PollingPlaceUpdateRequest req) {
@@ -46,8 +55,11 @@ public class PollingPlaceController {
      * Get a single polling place by its ID.
      */
     @GetMapping("/{id}")
-    public PollingPlaceDto get(@PathVariable("id") UUID id) {
-        return pollingPlaceService.get(id);
+    public PollingPlaceDto get(
+            @PathVariable("id") UUID id,
+            @RequestParam(required = false) UUID electionId
+    ) {
+        return pollingPlaceService.get(id, electionId);
     }
 
     /**
@@ -57,8 +69,11 @@ public class PollingPlaceController {
      *   GET /api/polling-places/by-center/{centerId}
      */
     @GetMapping("/by-center/{centerId}")
-    public List<PollingPlaceDto> listByCenter(@PathVariable("centerId") UUID centerId) {
-        return pollingPlaceService.listByCenter(centerId);
+    public List<PollingPlaceDto> listByCenter(
+            @PathVariable("centerId") UUID centerId,
+            @RequestParam(required = false) UUID electionId
+    ) {
+        return pollingPlaceService.listByCenter(centerId, electionId);
     }
 
     @PutMapping("/{id}/active")
@@ -87,9 +102,10 @@ public class PollingPlaceController {
             @RequestParam(required = false) UUID countyId,
             @RequestParam(required = false) UUID districtId,
             @RequestParam(required = false) UUID centerId,
-            @RequestParam(required = false) Boolean active
+            @RequestParam(required = false) Boolean active,
+            @RequestParam(required = false) UUID electionId
     ) {
-        return pollingPlaceService.list(page, size, q, countyId, districtId, centerId, active);
+        return pollingPlaceService.list(page, size, q, countyId, districtId, centerId, active, electionId);
     }
 
 

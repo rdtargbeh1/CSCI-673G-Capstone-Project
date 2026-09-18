@@ -4,39 +4,127 @@ import election.ems_backend.views.entity.DistrictStatsOfficial;
 import jakarta.persistence.criteria.Path;
 import org.springframework.data.jpa.domain.Specification;
 
+import java.util.Set;
 import java.util.UUID;
 
 public final class DistrictStatsOfficialSpecs {
-    private DistrictStatsOfficialSpecs() {}
 
-    public static Specification<DistrictStatsOfficial> electionEquals(UUID electionId) {
+    private DistrictStatsOfficialSpecs() {
+    }
+
+
+    public static Specification<DistrictStatsOfficial> electionEquals(
+            UUID electionId
+    ) {
         return (root, query, cb) -> {
-            if (electionId == null) return null;
-            Path<UUID> p = root.get("id").get("electionId");
-            return cb.equal(p, electionId);
+
+            if (electionId == null) {
+                return null;
+            }
+
+            Path<UUID> p =
+                    root.get("id").get("electionId");
+
+            return cb.equal(
+                    p,
+                    electionId
+            );
         };
     }
 
-    public static Specification<DistrictStatsOfficial> contestEquals(UUID contestId) {
+
+    public static Specification<DistrictStatsOfficial> contestEquals(
+            UUID contestId
+    ) {
         return (root, query, cb) -> {
-            if (contestId == null) return null;
-            Path<UUID> p = root.get("id").get("contestId");
-            return cb.equal(p, contestId);
+
+            if (contestId == null) {
+                return null;
+            }
+
+            Path<UUID> p =
+                    root.get("id").get("contestId");
+
+            return cb.equal(
+                    p,
+                    contestId
+            );
         };
     }
 
-    public static Specification<DistrictStatsOfficial> districtEquals(UUID districtId) {
+
+    public static Specification<DistrictStatsOfficial> districtEquals(
+            UUID districtId
+    ) {
         return (root, query, cb) -> {
-            if (districtId == null) return null;
-            Path<UUID> p = root.get("id").get("districtId");
-            return cb.equal(p, districtId);
+
+            if (districtId == null) {
+                return null;
+            }
+
+            Path<UUID> p =
+                    root.get("id").get("districtId");
+
+            return cb.equal(
+                    p,
+                    districtId
+            );
         };
     }
 
-    public static Specification<DistrictStatsOfficial> countyEquals(UUID countyId) {
+
+    public static Specification<DistrictStatsOfficial> countyEquals(
+            UUID countyId
+    ) {
         return (root, query, cb) -> {
-            if (countyId == null) return null;
-            return cb.equal(root.get("countyId"), countyId);
+
+            if (countyId == null) {
+                return null;
+            }
+
+            return cb.equal(
+                    root.get("countyId"),
+                    countyId
+            );
+        };
+    }
+
+
+    // ========================================================================
+    // OPERATIONAL SCOPE FILTERS
+    // ========================================================================
+
+    public static Specification<DistrictStatsOfficial> countyIn(
+            Set<UUID> countyIds
+    ) {
+        return (root, query, cb) -> {
+
+            if (countyIds == null || countyIds.isEmpty()) {
+                return cb.disjunction();
+            }
+
+            return root
+                    .get("countyId")
+                    .in(countyIds);
+        };
+    }
+
+
+    public static Specification<DistrictStatsOfficial> districtIn(
+            Set<UUID> districtIds
+    ) {
+        return (root, query, cb) -> {
+
+            if (districtIds == null || districtIds.isEmpty()) {
+                return cb.disjunction();
+            }
+
+            Path<UUID> districtPath =
+                    root.get("id").get("districtId");
+
+            return districtPath.in(
+                    districtIds
+            );
         };
     }
 }

@@ -9,17 +9,16 @@ import java.util.List;
 import java.util.UUID;
 
 public interface DistrictService {
-
     DistrictDto create(DistrictRequest req);
     DistrictDto update(UUID districtId, DistrictRequest req);
     void delete(UUID districtId);
-    DistrictDto get(UUID districtId);
-    List<DistrictDto> listByCounty(UUID countyId);
 
-    /**
-     * Optional filters:
-     * - q: name contains (case-insensitive)
-     * - countyId: restrict to a county
-     */
+    DistrictDto get(UUID districtId);
+    DistrictDto get(UUID districtId, UUID electionId);
+
+    List<DistrictDto> listByCounty(UUID countyId);
+    List<DistrictDto> listByCounty(UUID countyId, UUID electionId);
+
     Page<DistrictDto> list(String q, UUID countyId, Pageable pageable);
+    Page<DistrictDto> list(String q, UUID countyId, UUID electionId, Pageable pageable);
 }

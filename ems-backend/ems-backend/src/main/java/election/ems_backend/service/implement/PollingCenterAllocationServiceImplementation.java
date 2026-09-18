@@ -7,6 +7,9 @@ import election.ems_backend.dto.PollingCenterAllocationUpdateRequest;
 import election.ems_backend.entity.Election;
 import election.ems_backend.entity.PollingCenterAllocation;
 import election.ems_backend.mapper.PollingCenterAllocationMapper;
+import election.ems_backend.policy.OperationResourcePolicy;
+import election.ems_backend.policy.OperationRolePolicy;
+import election.ems_backend.policy.OperationScopeSpecifications;
 import election.ems_backend.repository.*;
 import election.ems_backend.service.PollingCenterAllocationService;
 import election.ems_backend.utility.PollingCenterAllocationSpecs;
@@ -15,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -39,6 +43,10 @@ public class PollingCenterAllocationServiceImplementation implements PollingCent
     private final NecResultGeoRepository geoRepo; // to keep projection in sync
 
     private final PollingCenterAllocationMapper mapper;
+
+    private final OperationRolePolicy operationRolePolicy;
+    private final OperationResourcePolicy operationResourcePolicy;
+    private final OperationScopeSpecifications operationScopeSpecifications;
 
     @Override
     @Transactional
@@ -206,8 +214,29 @@ public class PollingCenterAllocationServiceImplementation implements PollingCent
     @Override
     @Transactional(readOnly = true)
     public PollingCenterAllocationDto get(UUID id) {
-        return repository.findById(id).map(mapper::toDTO)
+        PollingCenterAllocation entity = repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Allocation not found"));
+
+        if (operationRolePolicy.isOperationalRole()) {
+            UUID electionId = entity.getElection().getElectionId();
+            UUID districtId = entity.getPollingCenter().getDistrict().getDistrictId();
+            UUID countyId = entity.getPollingCenter().getDistrict().getCounty().getCountyId();
+            UUID centerId = entity.getPollingCenter().getCenterId();
+
+            if (!operationResourcePolicy.canViewAllocation(
+                    electionId,
+                    countyId,
+                    districtId,
+                    centerId,
+                    null
+            )) {
+                throw new AccessDeniedException(
+                        "User does not have access to this polling center allocation"
+                );
+            }
+        }
+
+        return mapper.toDTO(entity);
     }
 
     @Override
@@ -218,6 +247,20 @@ public class PollingCenterAllocationServiceImplementation implements PollingCent
                 .and(PollingCenterAllocationSpecs.countyEquals(countyId))
                 .and(PollingCenterAllocationSpecs.districtEquals(districtId))
                 .and(PollingCenterAllocationSpecs.centerEquals(centerId));
+
+        if (operationRolePolicy.isOperationalRole()) {
+            if (electionId == null) {
+                throw new ResponseStatusException(
+                        BAD_REQUEST,
+                        "electionId is required for operational users"
+                );
+            }
+
+            spec = spec.and(
+                    operationScopeSpecifications.pollingCenterAllocations(electionId)
+            );
+        }
+
         return repository.findAll(spec, pageable).map(mapper::toDTO);
     }
 

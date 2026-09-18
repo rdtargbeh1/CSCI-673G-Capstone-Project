@@ -9,6 +9,9 @@ import election.ems_backend.entity.SystemUser;
 import election.ems_backend.entity.TallySheet;
 import election.ems_backend.entity.VoteSubmission;
 import election.ems_backend.mapper.TallySheetMapper;
+import election.ems_backend.policy.OperationResourcePolicy;
+import election.ems_backend.policy.OperationRolePolicy;
+import election.ems_backend.policy.OperationSubmissionActionPolicy;
 import election.ems_backend.repository.OrganizationRepository;
 import election.ems_backend.repository.SystemUserRepository;
 import election.ems_backend.repository.TallySheetRepository;
@@ -19,6 +22,7 @@ import election.ems_backend.service.TallySheetService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -40,6 +44,10 @@ public class TallySheetServiceImplementation implements TallySheetService {
     private final FileUploadService fileUploadService;   // ✅ add
     private final SystemUserRepository userRepo;
 
+    private final OperationRolePolicy operationRolePolicy;
+    private final OperationResourcePolicy operationResourcePolicy;
+    private final OperationSubmissionActionPolicy submissionActionPolicy;
+
     @Autowired
     private FileStorageService storage;
 
@@ -58,6 +66,15 @@ public class TallySheetServiceImplementation implements TallySheetService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Organization not found"));
         VoteSubmission sub = submissionRepo.findById(submissionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found"));
+
+        /*
+         * Tally-sheet evidence belongs to the parent submission.
+         * Operational users may upload evidence only where they may edit
+         * that submission under the existing Operations action matrix.
+         */
+        if (operationRolePolicy.isOperationalRole()) {
+            submissionActionPolicy.requireEdit(sub);
+        }
 
         // Org consistency guard
         if (!sub.getOrganization().getOrgId().equals(org.getOrgId())) {
@@ -116,6 +133,10 @@ public class TallySheetServiceImplementation implements TallySheetService {
         VoteSubmission sub = submissionRepo.findById(req.getSubmissionId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Submission not found"));
 
+        if (operationRolePolicy.isOperationalRole()) {
+            submissionActionPolicy.requireEdit(sub);
+        }
+
         if (!sub.getOrganization().getOrgId().equals(org.getOrgId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Submission belongs to a different organization");
         }
@@ -142,6 +163,12 @@ public class TallySheetServiceImplementation implements TallySheetService {
     public TallySheetDto setOcr(UUID uploadId, String ocrJson) {
         TallySheet t = repo.findById(uploadId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tally sheet not found"));
+
+        if (operationRolePolicy.isOperationalRole()) {
+            VoteSubmission submission = requireSubmission(t);
+            submissionActionPolicy.requireAmend(submission);
+        }
+
         t.setOcrExtracted(ocrJson);
         return mapper.toDTO(repo.save(t));
     }
@@ -149,6 +176,19 @@ public class TallySheetServiceImplementation implements TallySheetService {
     @Override
     @Transactional(readOnly = true)
     public List<TallySheetDto> listBySubmission(UUID submissionId) {
+        VoteSubmission submission = submissionRepo.findById(submissionId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Submission not found"
+                ));
+
+        if (operationRolePolicy.isOperationalRole()
+                && !operationResourcePolicy.canViewTallySheet(submission)) {
+            throw new AccessDeniedException(
+                    "User does not have access to tally sheets for this submission"
+            );
+        }
+
         return repo.findBySubmission_SubmissionIdOrderByDateUploadedDesc(submissionId)
                 .stream().map(mapper::toDTO).toList();
     }
@@ -156,21 +196,55 @@ public class TallySheetServiceImplementation implements TallySheetService {
     @Override
     @Transactional
     public void delete(UUID uploadId) {
-        if (!repo.existsById(uploadId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tally sheet not found");
+        TallySheet tallySheet = repo.findById(uploadId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Tally sheet not found"
+                ));
+
+        if (operationRolePolicy.isOperationalRole()) {
+            VoteSubmission submission = requireSubmission(tallySheet);
+            submissionActionPolicy.requireDelete(submission);
         }
-        repo.deleteById(uploadId);
+
+        repo.delete(tallySheet);
     }
 
     @Override
     @Transactional(readOnly = true)
     public TallySheetDto get(UUID uploadId) {
-        return repo.findById(uploadId)
-                .map(mapper::toDTO)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tally sheet not found"));
+        TallySheet tallySheet = repo.findById(uploadId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Tally sheet not found"
+                ));
+
+        if (operationRolePolicy.isOperationalRole()) {
+            VoteSubmission submission = requireSubmission(tallySheet);
+
+            if (!operationResourcePolicy.canViewTallySheet(submission)) {
+                throw new AccessDeniedException(
+                        "User does not have access to this tally sheet"
+                );
+            }
+        }
+
+        return mapper.toDTO(tallySheet);
     }
 
     // ---------- helpers ----------
+
+    private VoteSubmission requireSubmission(TallySheet tallySheet) {
+        if (tallySheet == null || tallySheet.getSubmission() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Tally sheet is not linked to a vote submission"
+            );
+        }
+
+        return tallySheet.getSubmission();
+    }
+
     private static String sha256(MultipartFile file) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");

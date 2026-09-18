@@ -364,12 +364,26 @@ public class NECResultServiceImplementation implements NECResultService {
     }
 
     private UUID resolveSystemActorUserId() {
-        return systemUserRepository.findByUserNameIgnoreCase("SYSTEM")
-                .orElseThrow(() -> new IllegalStateException(
-                        "SYSTEM user not found in system_user table. Create username='SYSTEM' for automated actions."
-                ))
-                .getUserId();
+
+        List<SystemUser> systemAdmins =
+                systemUserRepository.findActiveSystemAdministrators();
+
+        if (systemAdmins.isEmpty()) {
+            throw new IllegalStateException(
+                    "No active SYSTEM_ADMIN platform user exists for automated NEC result actions."
+            );
+        }
+
+        return systemAdmins.getFirst().getUserId();
     }
+
+//    private UUID resolveSystemActorUserId() {
+//        return systemUserRepository.findByUserNameIgnoreCase("SYSTEM")
+//                .orElseThrow(() -> new IllegalStateException(
+//                        "SYSTEM user not found in system_user table. Create username='SYSTEM' for automated actions."
+//                ))
+//                .getUserId();
+//    }
 
     // inside NECResultServiceImplementation
 

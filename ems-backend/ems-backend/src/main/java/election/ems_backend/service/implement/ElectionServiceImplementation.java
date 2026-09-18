@@ -11,7 +11,7 @@ import election.ems_backend.mapper.ElectionMapper;
 import election.ems_backend.repository.ElectionRepository;
 import election.ems_backend.repository.StatsRepository;
 import election.ems_backend.security.AuthorizationService;
-import election.ems_backend.security.ElectionAccessPolicy;
+import election.ems_backend.policy.ElectionAccessPolicy;
 import election.ems_backend.service.ElectionService;
 import election.ems_backend.service.ElectionStatsProjection;
 import election.ems_backend.utility.ElectionSpecs;
@@ -30,7 +30,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 

@@ -1,4 +1,6 @@
-package election.ems_backend.security;
+package election.ems_backend.policy;
+
+import election.ems_backend.security.AuthorizationService;
 
 import election.ems_backend.entity.Contest;
 import election.ems_backend.entity.Election;
@@ -1048,3 +1050,6 @@ public class ElectionAccessPolicy {
                 .orElse(null);
     }
 }
+
+
+

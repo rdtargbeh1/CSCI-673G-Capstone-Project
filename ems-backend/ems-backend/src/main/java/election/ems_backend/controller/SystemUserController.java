@@ -134,7 +134,7 @@ public class SystemUserController {
     public void adminResetPassword(
             @PathVariable UUID userId,
             @RequestBody @Valid AdminResetPasswordRequest body) {
-        authz.requireAny("TENANT_ADMIN", "ADMIN", "SYSTEM_ADMIN");
+        authz.requireAny("TENANT_ADMIN", "ADMIN", "SYSTEM_ADMIN", "NEC_ADMIN");
 
         systemUserService.adminResetPasswordInTenant(
                 userId,

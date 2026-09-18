@@ -49,6 +49,7 @@ public class PollingCenterAllocationController {
     public ResponseEntity<List<PollingCenterAllocationDto>> bulkCreate(
             @Valid @RequestBody PollingCenterAllocationBulkRequest request
     ) {
+        authz.requireNecAdminOrPlatformAdmin();
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(allocationService.bulkCreate(request));
     }

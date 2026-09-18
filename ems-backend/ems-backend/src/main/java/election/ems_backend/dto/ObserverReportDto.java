@@ -15,10 +15,15 @@ import java.util.UUID;
 @Builder
 public class ObserverReportDto {
     private UUID reportId;
+
     private UUID orgId;
     private String orgName;
+    private UUID electionId;
+    private String electionName;
+
     private UUID observerId;
     private String observerName;
+
     private UUID countyId;
     private String countyName;
     private UUID districtId;
@@ -26,6 +31,7 @@ public class ObserverReportDto {
     private UUID centerId;
     private String centerCode;
     private String centerName;
+
     private String type;
     private String description;
     private String visibility;

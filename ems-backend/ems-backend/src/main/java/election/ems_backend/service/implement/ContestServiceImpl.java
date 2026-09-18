@@ -9,12 +9,16 @@ import election.ems_backend.enums.ContestScopeType;
 import election.ems_backend.enums.ContestStatus;
 import election.ems_backend.enums.ContestVoteMethod;
 import election.ems_backend.mapper.ContestMapper;
+import election.ems_backend.policy.OperationResourcePolicy;
+import election.ems_backend.policy.OperationRolePolicy;
+import election.ems_backend.policy.OperationScopeSpecifications;
 import election.ems_backend.repository.ContestOptionRepository;
 import election.ems_backend.repository.ContestRepository;
 import election.ems_backend.security.AuthorizationService;
 import election.ems_backend.service.ContestService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -32,6 +36,11 @@ public class ContestServiceImpl implements ContestService {
     private final ContestRepository contestRepo;
     private final ContestOptionRepository contestOptionRepository;
     private final AuthorizationService authz;
+
+    private final OperationRolePolicy operationRolePolicy;
+    private final OperationResourcePolicy operationResourcePolicy;
+    private final OperationScopeSpecifications operationScopeSpecifications;
+
     private final ContestMapper contestMapper = new ContestMapper();
 
 
@@ -88,15 +97,41 @@ public class ContestServiceImpl implements ContestService {
     @Override
     @Transactional(readOnly = true)
     public ContestDto getContest(UUID contestId) {
-        return contestRepo.findById(contestId)
-                .map(contestMapper::toDTO)
+        Contest contest = contestRepo.findById(contestId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Contest not found"));
+
+        /*
+         * Existing administrative behavior is preserved.
+         * Operational users must be assigned to the contest's election and,
+         * for scoped contests, to the relevant county/district reference area.
+         */
+        if (operationRolePolicy.isOperationalRole()
+                && !operationResourcePolicy.canViewContest(
+                contest.getElectionId(),
+                contest.getCountyId(),
+                contest.getDistrictId()
+        )) {
+            throw new AccessDeniedException(
+                    "User does not have access to this contest"
+            );
+        }
+
+        return contestMapper.toDTO(contest);
     }
 
 
     @Override
     @Transactional(readOnly = true)
     public List<ContestDto> listByElection(UUID electionId) {
+
+        if (operationRolePolicy.isOperationalRole()) {
+            return contestRepo
+                    .findAll(operationScopeSpecifications.contests(electionId))
+                    .stream()
+                    .map(contestMapper::toDTO)
+                    .collect(Collectors.toList());
+        }
+
         return contestRepo.findByElectionId(electionId)
                 .stream()
                 .map(contestMapper::toDTO)

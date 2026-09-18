@@ -59,4 +59,5 @@ public class TallySheetController {
     public void delete(@PathVariable UUID uploadId) {
         service.delete(uploadId);
     }
+
 }

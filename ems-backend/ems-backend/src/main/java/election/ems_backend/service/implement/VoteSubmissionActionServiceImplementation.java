@@ -8,6 +8,8 @@ import election.ems_backend.entity.VoteSubmission;
 import election.ems_backend.entity.VoteSubmissionAction;
 import election.ems_backend.enums.VoteSubmissionActionType;
 import election.ems_backend.mapper.VoteSubmissionActionMapper;
+import election.ems_backend.policy.OperationResourcePolicy;
+import election.ems_backend.policy.OperationRolePolicy;
 import election.ems_backend.repository.SystemUserRepository;
 import election.ems_backend.repository.VoteSubmissionActionRepository;
 import election.ems_backend.repository.VoteSubmissionRepository;
@@ -20,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
@@ -42,6 +45,10 @@ public class VoteSubmissionActionServiceImplementation {
     private final SystemUserRepository systemUserRepository;
 
     private final VoteSubmissionActionMapper mapper;
+
+    private final OperationRolePolicy operationRolePolicy;
+
+    private final OperationResourcePolicy operationResourcePolicy;
 
     // ========================================================================
     // RECORD ACTION
@@ -229,6 +236,18 @@ public class VoteSubmissionActionServiceImplementation {
                                 )
                         );
 
+        if (operationRolePolicy.isOperationalRole()) {
+            VoteSubmission submission =
+                    action.getSubmission();
+
+            if (submission == null
+                    || !operationResourcePolicy.canViewVoteSubmissionAction(submission)) {
+                throw new AccessDeniedException(
+                        "User does not have access to this submission action"
+                );
+            }
+        }
+
         return mapper.toDto(
                 action
         );
@@ -267,6 +286,29 @@ public class VoteSubmissionActionServiceImplementation {
                         safePage,
                         safeSize
                 );
+
+        /*
+         * Submission-action history inherits authorization from its parent
+         * VoteSubmission.
+         *
+         * The current oversight endpoint does not carry election/geographic
+         * scope parameters. Therefore operational users must anchor this search
+         * to one submission, which can be authorized before the repository
+         * query executes. Administrative/non-operational behavior remains
+         * unchanged.
+         */
+        if (operationRolePolicy.isOperationalRole()) {
+
+            if (submissionId == null) {
+                throw new AccessDeniedException(
+                        "Operational users must search submission actions by submissionId"
+                );
+            }
+
+            requireSubmissionHistoryAccess(
+                    submissionId
+            );
+        }
 
         Page<VoteSubmissionAction> result;
 
@@ -374,6 +416,12 @@ public class VoteSubmissionActionServiceImplementation {
             );
         }
 
+        if (operationRolePolicy.isOperationalRole()) {
+            requireSubmissionHistoryAccess(
+                    submissionId
+            );
+        }
+
         return actionRepository
                 .findBySubmission_SubmissionIdOrderByActionTimeDesc(
                         submissionId
@@ -396,6 +444,12 @@ public class VoteSubmissionActionServiceImplementation {
         if (submissionId == null) {
             throw new IllegalArgumentException(
                     "submissionId is required."
+            );
+        }
+
+        if (operationRolePolicy.isOperationalRole()) {
+            requireSubmissionHistoryAccess(
+                    submissionId
             );
         }
 
@@ -422,12 +476,48 @@ public class VoteSubmissionActionServiceImplementation {
             );
         }
 
+        if (operationRolePolicy.isOperationalRole()) {
+            requireSubmissionHistoryAccess(
+                    submissionId
+            );
+        }
+
         return actionRepository
                 .countBySubmission_SubmissionIdAndActionType(
                         submissionId,
                         actionType
                 );
     }
+
+    // ========================================================================
+    // SUBMISSION-HISTORY ACCESS
+    // ========================================================================
+
+    private VoteSubmission requireSubmissionHistoryAccess(
+            UUID submissionId
+    ) {
+
+        VoteSubmission submission =
+                submissionRepository
+                        .findById(
+                                submissionId
+                        )
+                        .orElseThrow(() ->
+                                new IllegalArgumentException(
+                                        "Vote submission not found: " +
+                                                submissionId
+                                )
+                        );
+
+        if (!operationResourcePolicy.canViewVoteSubmissionAction(submission)) {
+            throw new AccessDeniedException(
+                    "User does not have access to this submission history"
+            );
+        }
+
+        return submission;
+    }
+
 
     // ========================================================================
     // CERTIFICATION

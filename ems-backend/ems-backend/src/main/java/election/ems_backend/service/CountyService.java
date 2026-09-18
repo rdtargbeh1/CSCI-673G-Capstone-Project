@@ -9,13 +9,12 @@ import java.util.UUID;
 
 public interface CountyService {
     CountyDto create(CountyRequest req);
-
     CountyDto update(UUID countyId, CountyRequest req);
-
     void delete(UUID countyId);
 
     CountyDto get(UUID countyId);
+    CountyDto get(UUID countyId, UUID electionId);
 
     Page<CountyDto> list(String q, Pageable pageable);
-
+    Page<CountyDto> list(String q, UUID electionId, Pageable pageable);
 }

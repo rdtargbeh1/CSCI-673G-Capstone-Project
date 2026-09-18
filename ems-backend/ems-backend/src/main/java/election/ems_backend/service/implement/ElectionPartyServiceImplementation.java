@@ -7,6 +7,8 @@ import election.ems_backend.entity.Election;
 import election.ems_backend.entity.ElectionParty;
 import election.ems_backend.entity.Party;
 import election.ems_backend.mapper.ElectionPartyMapper;
+import election.ems_backend.policy.OperationResourcePolicy;
+import election.ems_backend.policy.OperationRolePolicy;
 import election.ems_backend.repository.ElectionPartyRepository;
 import election.ems_backend.repository.ElectionRepository;
 import election.ems_backend.repository.PartyRepository;
@@ -14,6 +16,7 @@ import election.ems_backend.service.ElectionPartyService;
 import election.ems_backend.utility.ElectionPartyId;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -32,6 +35,9 @@ public class ElectionPartyServiceImplementation implements ElectionPartyService 
     private final ElectionRepository electionRepository;
     private final PartyRepository partyRepository;
     private final ElectionPartyMapper mapper;
+
+    private final OperationRolePolicy operationRolePolicy;
+    private final OperationResourcePolicy operationResourcePolicy;
 
 
     @Override
@@ -117,6 +123,14 @@ public class ElectionPartyServiceImplementation implements ElectionPartyService 
 
     @Override
     public List<ElectionPartyDto> listPartiesForElection(UUID electionId) {
+
+        if (operationRolePolicy.isOperationalRole()
+                && !operationResourcePolicy.canViewElectionParty(electionId)) {
+            throw new AccessDeniedException(
+                    "User does not have access to election parties for this election"
+            );
+        }
+
         List<ElectionParty> list = electionPartyRepository
                 .findByElection_ElectionIdOrderByBallotOrderAscParty_PartyNameAsc(electionId);
 

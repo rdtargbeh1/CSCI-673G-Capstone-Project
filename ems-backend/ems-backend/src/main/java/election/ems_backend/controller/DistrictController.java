@@ -23,39 +23,100 @@ public class DistrictController {
     private final AuthorizationService authz;
 
     @PostMapping
-    public ResponseEntity<DistrictDto> create(@Valid @RequestBody DistrictRequest req) {
+    public ResponseEntity<DistrictDto> create(
+            @Valid @RequestBody DistrictRequest req
+    ) {
         authz.requireNecAdminOrPlatformAdmin();
-        return ResponseEntity.ok(service.create(req));
+
+        return ResponseEntity.ok(
+                service.create(req)
+        );
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<DistrictDto> update(@PathVariable UUID id,
-                                              @Valid @RequestBody DistrictRequest req) {
+    public ResponseEntity<DistrictDto> update(
+            @PathVariable UUID id,
+            @Valid @RequestBody DistrictRequest req
+    ) {
         authz.requireNecAdminOrPlatformAdmin();
-        return ResponseEntity.ok(service.update(id, req));
+
+        return ResponseEntity.ok(
+                service.update(id, req)
+        );
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<DistrictDto> get(@PathVariable UUID id) {
-        return ResponseEntity.ok(service.get(id));
+    public ResponseEntity<DistrictDto> get(
+            @PathVariable UUID id,
+            @RequestParam(
+                    value = "electionId",
+                    required = false
+            ) UUID electionId
+    ) {
+        return ResponseEntity.ok(
+                service.get(
+                        id,
+                        electionId
+                )
+        );
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable UUID id) {
+    public ResponseEntity<Void> delete(
+            @PathVariable UUID id
+    ) {
         authz.requireNecAdminOrPlatformAdmin();
+
         service.delete(id);
-        return ResponseEntity.noContent().build();
+
+        return ResponseEntity
+                .noContent()
+                .build();
     }
 
     @GetMapping
-    public ResponseEntity<Page<DistrictDto>> list(@RequestParam(value = "q", required = false) String q,
-                                                  @RequestParam(value = "countyId", required = false) UUID countyId,
-                                                  Pageable pageable) {
-        return ResponseEntity.ok(service.list(q, countyId, pageable));
+    public ResponseEntity<Page<DistrictDto>> list(
+            @RequestParam(
+                    value = "q",
+                    required = false
+            ) String q,
+
+            @RequestParam(
+                    value = "countyId",
+                    required = false
+            ) UUID countyId,
+
+            @RequestParam(
+                    value = "electionId",
+                    required = false
+            ) UUID electionId,
+
+            Pageable pageable
+    ) {
+        return ResponseEntity.ok(
+                service.list(
+                        q,
+                        countyId,
+                        electionId,
+                        pageable
+                )
+        );
     }
 
     @GetMapping("/by-county/{countyId}")
-    public ResponseEntity<List<DistrictDto>> listByCounty(@PathVariable UUID countyId) {
-        return ResponseEntity.ok(service.listByCounty(countyId));
+    public ResponseEntity<List<DistrictDto>> listByCounty(
+            @PathVariable UUID countyId,
+
+            @RequestParam(
+                    value = "electionId",
+                    required = false
+            ) UUID electionId
+    ) {
+        return ResponseEntity.ok(
+                service.listByCounty(
+                        countyId,
+                        electionId
+                )
+        );
     }
 }

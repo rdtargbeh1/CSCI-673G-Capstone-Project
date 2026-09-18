@@ -1,6 +1,8 @@
-
 package election.ems_backend.views.service;
 
+import election.ems_backend.enums.AssignmentScope;
+import election.ems_backend.policy.OperationAccessPolicy;
+import election.ems_backend.policy.OperationRolePolicy;
 import election.ems_backend.utility.SecurityUtils;
 import election.ems_backend.views.DistrictStatsOfficialSpecs;
 import election.ems_backend.views.dto.DistrictStatsOfficialDto;
@@ -15,6 +17,7 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,66 +25,223 @@ import java.util.UUID;
 
 /**
  * Service for v_district_stats_official.
- * Returns only aggregated official (published) NEC stats.
+ * Returns only aggregated official published NEC stats.
  *
- * NOTE: contestId is OPTIONAL:
- * - contestId == null => return rows for ALL contests (no contest filter applied)
+ * contestId is optional:
+ * - contestId == null => all contests
  */
 @Service
 @RequiredArgsConstructor
 public class DistrictStatsOfficialService {
 
-    private static final Logger log = LoggerFactory.getLogger(DistrictStatsOfficialService.class);
+    private static final Logger log =
+            LoggerFactory.getLogger(
+                    DistrictStatsOfficialService.class
+            );
 
     private final DistrictStatsOfficialRepository repo;
     private final ElectionValidationService electionValidationService;
     private final TenantGucService tenantGucService;
     private final MeterRegistry meterRegistry;
-    private final DistrictStatsOfficialMapper mapper = new DistrictStatsOfficialMapper();
+
+    private final OperationRolePolicy operationRolePolicy;
+    private final OperationAccessPolicy operationAccessPolicy;
+
+    private final DistrictStatsOfficialMapper mapper =
+            new DistrictStatsOfficialMapper();
+
 
     @Transactional(readOnly = true)
     @Cacheable(
             value = "districtStatsOfficial",
-            key = "T(java.lang.String).valueOf(#electionId)"
-                    + " + ':' + (#contestId==null?'':#contestId)"
-                    + " + ':' + (#countyId==null?'':#countyId)"
-                    + " + ':' + (#districtId==null?'':#districtId)"
-                    + " + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort"
+            key =
+                    "T(java.lang.String).valueOf(#electionId)"
+                            + " + ':' + (#contestId==null?'':#contestId)"
+                            + " + ':' + (#countyId==null?'':#countyId)"
+                            + " + ':' + (#districtId==null?'':#districtId)"
+                            + " + ':' + #pageable.pageNumber"
+                            + " + ':' + #pageable.pageSize"
+                            + " + ':' + #pageable.sort",
+            condition = "!@operationRolePolicy.isOperationalRole()"
     )
     public Page<DistrictStatsOfficialDto> listOfficialDistricts(
             UUID electionId,
-            UUID contestId,   // ✅ OPTIONAL now
+            UUID contestId,
             UUID countyId,
             UUID districtId,
             Pageable pageable
     ) {
-        log.debug("listOfficialDistricts called electionId={} contestId={} countyId={} districtId={} page={} size={}",
-                electionId, contestId, countyId, districtId, pageable.getPageNumber(), pageable.getPageSize());
 
-        if (electionId == null) throw new IllegalArgumentException("electionId is required");
+        log.debug(
+                "listOfficialDistricts called electionId={} contestId={} " +
+                        "countyId={} districtId={} page={} size={}",
+                electionId,
+                contestId,
+                countyId,
+                districtId,
+                pageable.getPageNumber(),
+                pageable.getPageSize()
+        );
 
-        electionValidationService.ensureExists(electionId);
-
-        // Keep your existing tenant scoping behavior (if applicable in your deployment).
-        UUID derivedOrgId = SecurityUtils.getOrgIdFromContext();
-        if (derivedOrgId != null) {
-            tenantGucService.applyForTransaction(derivedOrgId, false, false);
-        } else {
-            // explicit cast so compiler picks the UUID overload if you have overloaded methods
-            tenantGucService.applyForTransaction((UUID) null, false, false);
+        if (electionId == null) {
+            throw new IllegalArgumentException(
+                    "electionId is required"
+            );
         }
 
-        Specification<DistrictStatsOfficial> spec = Specification
-                .where(DistrictStatsOfficialSpecs.electionEquals(electionId))
-                // ✅ contest filter applied ONLY if contestId != null (spec must return null when contestId is null)
-                .and(DistrictStatsOfficialSpecs.contestEquals(contestId))
-                .and(DistrictStatsOfficialSpecs.countyEquals(countyId))
-                .and(DistrictStatsOfficialSpecs.districtEquals(districtId));
+        electionValidationService.ensureExists(
+                electionId
+        );
 
-        Page<DistrictStatsOfficial> page = repo.findAll(spec, pageable);
 
-        meterRegistry.gauge("api.stats.official.district.result_size", page.getContent(), c -> (double) c.size());
+        /*
+         * Preserve existing tenant GUC behavior.
+         */
+        UUID derivedOrgId =
+                SecurityUtils.getOrgIdFromContext();
 
-        return page.map(mapper::toDto);
+        if (derivedOrgId != null) {
+
+            tenantGucService.applyForTransaction(
+                    derivedOrgId,
+                    false,
+                    false
+            );
+
+        } else {
+
+            tenantGucService.applyForTransaction(
+                    (UUID) null,
+                    false,
+                    false
+            );
+        }
+
+
+        Specification<DistrictStatsOfficial> spec =
+                Specification
+                        .where(
+                                DistrictStatsOfficialSpecs
+                                        .electionEquals(
+                                                electionId
+                                        )
+                        )
+                        .and(
+                                DistrictStatsOfficialSpecs
+                                        .contestEquals(
+                                                contestId
+                                        )
+                        )
+                        .and(
+                                DistrictStatsOfficialSpecs
+                                        .countyEquals(
+                                                countyId
+                                        )
+                        )
+                        .and(
+                                DistrictStatsOfficialSpecs
+                                        .districtEquals(
+                                                districtId
+                                        )
+                        );
+
+
+        /*
+         * Operational authorization.
+         *
+         * ORGANIZATION
+         *     -> all districts
+         *
+         * MULTI_COUNTY / COUNTY
+         *     -> all districts inside assigned counties
+         *
+         * DISTRICT
+         *     -> assigned districts only
+         *
+         * CENTER / PLACE
+         *     -> denied because district aggregates include
+         *        data outside those lower-level assignments
+         */
+        if (operationRolePolicy.isOperationalRole()) {
+
+            if (!operationAccessPolicy.hasOperationalAccess(
+                    electionId
+            )) {
+
+                throw new AccessDeniedException(
+                        "User does not have operational access to this election"
+                );
+            }
+
+            AssignmentScope scope =
+                    operationAccessPolicy.currentScope(
+                            electionId
+                    );
+
+            if (scope == null) {
+
+                throw new AccessDeniedException(
+                        "User has no active election assignment scope"
+                );
+            }
+
+            switch (scope) {
+
+                case ORGANIZATION -> {
+                    /*
+                     * Existing election filter is sufficient.
+                     */
+                }
+
+                case MULTI_COUNTY, COUNTY ->
+                        spec = spec.and(
+                                DistrictStatsOfficialSpecs
+                                        .countyIn(
+                                                operationAccessPolicy
+                                                        .assignedCountyIds(
+                                                                electionId
+                                                        )
+                                        )
+                        );
+
+                case DISTRICT ->
+                        spec = spec.and(
+                                DistrictStatsOfficialSpecs
+                                        .districtIn(
+                                                operationAccessPolicy
+                                                        .assignedDistrictIds(
+                                                                electionId
+                                                        )
+                                        )
+                        );
+
+                case CENTER, PLACE ->
+                        throw new AccessDeniedException(
+                                "Current assignment scope cannot view district-level aggregate results"
+                        );
+
+                default ->
+                        throw new AccessDeniedException(
+                                "Unsupported operational scope for district-level results"
+                        );
+            }
+        }
+
+
+        Page<DistrictStatsOfficial> page =
+                repo.findAll(
+                        spec,
+                        pageable
+                );
+
+        meterRegistry.gauge(
+                "api.stats.official.district.result_size",
+                page.getContent(),
+                content -> (double) content.size()
+        );
+
+        return page.map(
+                mapper::toDto
+        );
     }
 }

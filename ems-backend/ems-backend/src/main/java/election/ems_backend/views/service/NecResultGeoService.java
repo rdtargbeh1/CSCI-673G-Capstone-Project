@@ -85,5 +85,4 @@ public class NecResultGeoService {
         return page.map(mapper::toDto);
     }
 
-
 }

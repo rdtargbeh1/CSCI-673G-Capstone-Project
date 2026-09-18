@@ -7,6 +7,9 @@ import election.ems_backend.entity.SystemUser;
 import election.ems_backend.entity.VoteTally;
 import election.ems_backend.enums.VoteStatus;
 import election.ems_backend.mapper.VoteTallyMapper;
+import election.ems_backend.enums.AssignmentScope;
+import election.ems_backend.policy.OperationAccessPolicy;
+import election.ems_backend.policy.OperationRolePolicy;
 import election.ems_backend.repository.*;
 import election.ems_backend.service.AdvisoryLockNotAcquiredException;
 import election.ems_backend.service.VoteTallyService;
@@ -19,6 +22,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -57,6 +61,9 @@ public class VoteTallyServiceImplementation implements VoteTallyService {
     private final ElectionRepository electionRepo;
     private final ContestRepository contestRepository;
 
+    private final OperationRolePolicy operationRolePolicy;
+    private final OperationAccessPolicy operationAccessPolicy;
+
     private final JdbcTemplate jdbc;
 
     private final VoteTallyMapper mapper = new VoteTallyMapper();
@@ -75,6 +82,40 @@ public class VoteTallyServiceImplementation implements VoteTallyService {
                                      UUID partyId,
                                      UUID contestId,
                                      Pageable pageable) {
+
+        /*
+         * VoteTally is an election-wide aggregate. The entity does not carry
+         * county/district/center/place dimensions, so lower-scope operational
+         * users cannot be safely filtered to only their assignment here.
+         *
+         * Administrative/non-operational behavior remains unchanged.
+         * Operational users may read this election-wide aggregate only when
+         * their effective assignment scope for the election is ORGANIZATION.
+         */
+        if (operationRolePolicy.isOperationalRole()) {
+
+            if (orgId == null || electionId == null) {
+                throw new AccessDeniedException(
+                        "Organization and election are required for operational vote-tally access"
+                );
+            }
+
+            if (!Objects.equals(
+                    operationAccessPolicy.currentOrgId(),
+                    orgId
+            )) {
+                throw new AccessDeniedException(
+                        "User does not have access to vote tallies for this organization"
+                );
+            }
+
+            if (!operationAccessPolicy.hasOperationalAccess(electionId)
+                    || operationAccessPolicy.currentScope(electionId) != AssignmentScope.ORGANIZATION) {
+                throw new AccessDeniedException(
+                        "Election-wide vote tallies require ORGANIZATION operational scope"
+                );
+            }
+        }
 
         Specification<VoteTally> spec = Specification
                 .where(VoteTallySpecs.orgEquals(orgId))

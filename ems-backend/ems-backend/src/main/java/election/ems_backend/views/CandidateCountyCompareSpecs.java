@@ -4,56 +4,148 @@ import election.ems_backend.views.entity.CandidateCountyCompare;
 import jakarta.persistence.criteria.Path;
 import org.springframework.data.jpa.domain.Specification;
 
+import java.util.Set;
 import java.util.UUID;
 
 public final class CandidateCountyCompareSpecs {
-    private CandidateCountyCompareSpecs() {}
 
-    public static Specification<CandidateCountyCompare> electionEquals(UUID electionId) {
-        return (root, query, cb) -> {
-            if (electionId == null) return null;
-            Path<UUID> p = root.get("id").get("electionId");
-            return cb.equal(p, electionId);
-        };
-    }
-
-    public static Specification<CandidateCountyCompare> contestEquals(UUID contestId) {
-        return (root, query, cb) -> {
-            if (contestId == null) return null;
-            Path<UUID> p = root.get("id").get("contestId");
-            return cb.equal(p, contestId);
-        };
+    private CandidateCountyCompareSpecs() {
     }
 
 
-    public static Specification<CandidateCountyCompare> countyEquals(UUID countyId) {
+    public static Specification<CandidateCountyCompare> electionEquals(
+            UUID electionId
+    ) {
         return (root, query, cb) -> {
-            if (countyId == null) return null;
-            Path<UUID> p = root.get("id").get("countyId");
-            return cb.equal(p, countyId);
-        };
-    }
 
-    public static Specification<CandidateCountyCompare> candidateEquals(UUID candidateId) {
-        return (root, query, cb) -> {
-            if (candidateId == null) return null;
-            Path<UUID> p = root.get("id").get("candidateId");
-            return cb.equal(p, candidateId);
-        };
-    }
+            if (electionId == null) {
+                return null;
+            }
 
-    public static Specification<CandidateCountyCompare> orgEquals(UUID orgId) {
-        return (root, query, cb) -> {
-            if (orgId == null) return null;
-            return cb.equal(root.get("id").get("orgId"), orgId);
+            Path<UUID> p =
+                    root.get("id").get("electionId");
+
+            return cb.equal(
+                    p,
+                    electionId
+            );
         };
     }
 
 
-    public static Specification<CandidateCountyCompare> partyEquals(UUID partyId) {
+    public static Specification<CandidateCountyCompare> contestEquals(
+            UUID contestId
+    ) {
         return (root, query, cb) -> {
-            if (partyId == null) return null;
-            return cb.equal(root.get("partyId"), partyId);
+
+            if (contestId == null) {
+                return null;
+            }
+
+            Path<UUID> p =
+                    root.get("id").get("contestId");
+
+            return cb.equal(
+                    p,
+                    contestId
+            );
+        };
+    }
+
+
+    public static Specification<CandidateCountyCompare> countyEquals(
+            UUID countyId
+    ) {
+        return (root, query, cb) -> {
+
+            if (countyId == null) {
+                return null;
+            }
+
+            Path<UUID> p =
+                    root.get("id").get("countyId");
+
+            return cb.equal(
+                    p,
+                    countyId
+            );
+        };
+    }
+
+
+    public static Specification<CandidateCountyCompare> candidateEquals(
+            UUID candidateId
+    ) {
+        return (root, query, cb) -> {
+
+            if (candidateId == null) {
+                return null;
+            }
+
+            Path<UUID> p =
+                    root.get("id").get("candidateId");
+
+            return cb.equal(
+                    p,
+                    candidateId
+            );
+        };
+    }
+
+
+    public static Specification<CandidateCountyCompare> orgEquals(
+            UUID orgId
+    ) {
+        return (root, query, cb) -> {
+
+            if (orgId == null) {
+                return null;
+            }
+
+            return cb.equal(
+                    root.get("id").get("orgId"),
+                    orgId
+            );
+        };
+    }
+
+
+    public static Specification<CandidateCountyCompare> partyEquals(
+            UUID partyId
+    ) {
+        return (root, query, cb) -> {
+
+            if (partyId == null) {
+                return null;
+            }
+
+            return cb.equal(
+                    root.get("partyId"),
+                    partyId
+            );
+        };
+    }
+
+
+    // ========================================================================
+    // OPERATIONAL SCOPE FILTER
+    // ========================================================================
+
+    public static Specification<CandidateCountyCompare> countyIn(
+            Set<UUID> countyIds
+    ) {
+        return (root, query, cb) -> {
+
+            if (countyIds == null || countyIds.isEmpty()) {
+                return cb.disjunction();
+            }
+
+            Path<UUID> countyPath =
+                    root.get("id").get("countyId");
+
+            return countyPath.in(
+                    countyIds
+            );
         };
     }
 }

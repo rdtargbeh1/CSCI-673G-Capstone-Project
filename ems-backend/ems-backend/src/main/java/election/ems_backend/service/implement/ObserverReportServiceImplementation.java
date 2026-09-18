@@ -5,6 +5,9 @@ import election.ems_backend.dto.*;
 import election.ems_backend.entity.*;
 import election.ems_backend.enums.*;
 import election.ems_backend.mapper.ObserverReportMapper;
+import election.ems_backend.policy.OperationObserverReportPolicy;
+import election.ems_backend.policy.OperationRolePolicy;
+import election.ems_backend.policy.OperationScopeSpecifications;
 import election.ems_backend.repository.*;
 import election.ems_backend.service.FileUploadService;
 import election.ems_backend.service.NotificationService;
@@ -35,6 +38,7 @@ public class ObserverReportServiceImplementation implements ObserverReportServic
 
     private final ObserverReportRepository repo;
     private final OrganizationRepository orgRepo;
+    private final ElectionRepository electionRepo;
     private final SystemUserRepository userRepo;
     private final CountyRepository countyRepo;
     private final DistrictRepository districtRepository;
@@ -42,6 +46,9 @@ public class ObserverReportServiceImplementation implements ObserverReportServic
     private final FileUploadService fileUploadService;
     private final NotificationService notificationService;
     private final NotificationRepository notificationRepository;
+    private final OperationRolePolicy operationRolePolicy;
+    private final OperationScopeSpecifications operationScopeSpecifications;
+    private final OperationObserverReportPolicy operationObserverReportPolicy;
 
     private static final Logger log = LoggerFactory.getLogger(ObserverReportServiceImplementation.class);
     private final ObserverReportMapper mapper = new ObserverReportMapper();
@@ -51,6 +58,10 @@ public class ObserverReportServiceImplementation implements ObserverReportServic
     public ObserverReportDto create(ObserverReportCreateRequest req, List<MultipartFile> files) {
         Organization org = orgRepo.findById(req.getOrgId())
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Organization not found"));
+
+        Election election = electionRepo.findById(req.getElectionId())
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Election not found"));
+
         SystemUser observer = userRepo.findById(req.getObserverId())
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Observer not found"));
 
@@ -87,7 +98,7 @@ public class ObserverReportServiceImplementation implements ObserverReportServic
         }
 
         ObserverReport saved = repo.save(
-                mapper.toEntity(req, org, observer, county,  center, district)
+                mapper.toEntity(req, org, election, observer, county, center, district)
         );
 
         // --- FILE UPLOADS (optional evidence) ---
@@ -193,6 +204,17 @@ public class ObserverReportServiceImplementation implements ObserverReportServic
         ObserverReport entity = repo.findById(reportId)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Report not found"));
 
+        /*
+         * Preserve the existing administrative delete behavior.
+         *
+         * Operational users are subject to the ObserverReport role + election
+         * assignment + geographic scope policy before the existing delete
+         * workflow continues.
+         */
+        if (operationRolePolicy.isOperationalRole()) {
+            operationObserverReportPolicy.requireDelete(entity);
+        }
+
         repo.delete(entity);
 
         // --- NOTIFY observer (deleted) ---
@@ -284,6 +306,7 @@ public class ObserverReportServiceImplementation implements ObserverReportServic
             LocalDateTime from,
             LocalDateTime to,
             String q,
+            UUID electionId,
             Pageable pageable,
             SystemUser currentUser,
             UUID orgId
@@ -301,6 +324,21 @@ public class ObserverReportServiceImplementation implements ObserverReportServic
 
         // ✅ Use visibleToTenant spec - Own org ALL + other orgs NEC_VERIFIED+SHARED/PUBLIC
         Specification<ObserverReport> spec = ObserverReportSpecs.visibleToTenant(orgId);
+
+        // 🔐 Operational users are additionally restricted by election assignment scope.
+        // Administrative users keep the existing tenant visibility behavior unchanged.
+        if (operationRolePolicy.isOperationalRole()) {
+            if (electionId == null) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Election ID required for operational users"
+                );
+            }
+
+            spec = spec.and(
+                    operationScopeSpecifications.observerReports(electionId)
+            );
+        }
 
         // ✅ Apply optional filters
         spec = spec

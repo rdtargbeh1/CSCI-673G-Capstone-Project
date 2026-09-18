@@ -45,8 +45,11 @@ public class PollingCenterController {
     }
 
     @GetMapping("/{id}")
-    public PollingCenterDto get(@PathVariable UUID id) {
-        return service.get(id);
+    public PollingCenterDto get(
+            @PathVariable UUID id,
+            @RequestParam(required = false) UUID electionId
+    ) {
+        return service.get(id, electionId);
     }
 
     @GetMapping
@@ -54,9 +57,10 @@ public class PollingCenterController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) UUID countyId,
             @RequestParam(required = false) UUID districtId,
+            @RequestParam(required = false) UUID electionId,
             @PageableDefault(size = 50, sort = "centerName") Pageable pageable
     ) {
-        return service.search(q, countyId, districtId, pageable);
+        return service.search(q, countyId, districtId, electionId, pageable);
     }
 
 

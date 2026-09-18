@@ -52,6 +52,7 @@ public interface ObserverReportService {
             LocalDateTime from,
             LocalDateTime to,
             String q,
+            UUID electionId,
             Pageable pageable,
             SystemUser currentUser,
             UUID orgId
@@ -86,7 +87,7 @@ public interface ObserverReportService {
 //    ObserverReportDto verifyReport(UUID reportId, ObserverReportVerificationRequest req, SystemUser currentUser);
 
     ObserverReportDto resolveReport(UUID reportId, ObserverReportResolveRequest req,
-            SystemUser currentUser
+                                    SystemUser currentUser
     );
 
 }

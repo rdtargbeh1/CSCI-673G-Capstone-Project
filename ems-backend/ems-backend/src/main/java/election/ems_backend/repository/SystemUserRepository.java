@@ -109,4 +109,15 @@ public interface SystemUserRepository extends JpaRepository<SystemUser, UUID>, J
         """)
     List<SystemUser> findByRole_RoleName(@Param("roleName") String roleName);
 
+    @Query("""
+    select u
+    from SystemUser u
+    join u.role r
+    where u.isSystemUser = true
+      and u.isActive = true
+      and r.roleName = 'SYSTEM_ADMIN'
+    order by u.dateCreated asc
+    """)
+    List<SystemUser> findActiveSystemAdministrators();
+
 }

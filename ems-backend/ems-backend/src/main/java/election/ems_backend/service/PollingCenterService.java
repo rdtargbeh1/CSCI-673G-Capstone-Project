@@ -12,7 +12,10 @@ public interface PollingCenterService {
     PollingCenterDto create(PollingCenterCreateRequest req);
     PollingCenterDto update(UUID id, PollingCenterUpdateRequest req);
     void delete(UUID id);
+
     PollingCenterDto get(UUID id);
+    PollingCenterDto get(UUID id, UUID electionId);
 
     Page<PollingCenterDto> search(String q, UUID countyId, UUID districtId, Pageable pageable);
+    Page<PollingCenterDto> search(String q, UUID countyId, UUID districtId, UUID electionId, Pageable pageable);
 }

@@ -4,6 +4,7 @@ import election.ems_backend.views.entity.CandidateCenterStatsOfficial;
 import jakarta.persistence.criteria.Path;
 import org.springframework.data.jpa.domain.Specification;
 
+import java.util.Set;
 import java.util.UUID;
 
 public final class CandidateCenterStatsOfficialSpecs {
@@ -59,6 +60,34 @@ public final class CandidateCenterStatsOfficialSpecs {
         return (root, query, cb) -> {
             if (partyId == null) return null;
             return cb.equal(root.get("partyId"), partyId);
+        };
+    }
+
+    public static Specification<CandidateCenterStatsOfficial> countyIn(Set<UUID> countyIds) {
+        return (root, query, cb) -> {
+            if (countyIds == null || countyIds.isEmpty()) {
+                return cb.disjunction();
+            }
+            return root.get("countyId").in(countyIds);
+        };
+    }
+
+    public static Specification<CandidateCenterStatsOfficial> districtIn(Set<UUID> districtIds) {
+        return (root, query, cb) -> {
+            if (districtIds == null || districtIds.isEmpty()) {
+                return cb.disjunction();
+            }
+            return root.get("districtId").in(districtIds);
+        };
+    }
+
+    public static Specification<CandidateCenterStatsOfficial> centerIn(Set<UUID> centerIds) {
+        return (root, query, cb) -> {
+            if (centerIds == null || centerIds.isEmpty()) {
+                return cb.disjunction();
+            }
+            Path<UUID> p = root.get("id").get("centerId");
+            return p.in(centerIds);
         };
     }
 }

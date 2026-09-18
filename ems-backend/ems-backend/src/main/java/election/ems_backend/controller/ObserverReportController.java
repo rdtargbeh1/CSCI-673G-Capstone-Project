@@ -1,4 +1,3 @@
-
 package election.ems_backend.controller;
 
 import election.ems_backend.dto.*;
@@ -222,6 +221,7 @@ public class ObserverReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
             @RequestParam(required = false) String q,
             @RequestParam(required = false) UUID orgId,
+            @RequestParam(required = false) UUID electionId,
             @PageableDefault(size = 20, sort = "timestamp", direction = Sort.Direction.DESC) Pageable pageable,
             Authentication authentication
     ) {
@@ -272,6 +272,7 @@ public class ObserverReportController {
                 from,
                 to,
                 q,
+                electionId,
                 pageable,
                 currentUser,
                 resolvedOrgId
@@ -472,5 +473,3 @@ public class ObserverReportController {
 
 
 }
-
-

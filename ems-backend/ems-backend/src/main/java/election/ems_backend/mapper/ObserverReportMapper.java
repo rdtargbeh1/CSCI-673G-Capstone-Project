@@ -21,6 +21,7 @@ public class ObserverReportMapper {
     public ObserverReportDto toDTO(ObserverReport r) {
         if (r == null) return null;
         Organization org = r.getOrganization();
+        Election election = r.getElection();
         SystemUser obs   = r.getObserver();
         County county    = r.getCounty();
         District district =  r.getDistrict();
@@ -46,6 +47,8 @@ public class ObserverReportMapper {
                 .reportId(r.getReportId())
                 .orgId(org != null ? org.getOrgId() : null)
                 .orgName(org != null ? org.getOrgName() : null)
+                .electionId(election != null ? election.getElectionId() : null)
+                .electionName(election != null ? election.getElectionName() : null)
                 .observerId(obs != null ? obs.getUserId() : null)
                 .observerName(observerFullName)
                 .countyId(county != null ? county.getCountyId() : null)
@@ -73,26 +76,67 @@ public class ObserverReportMapper {
                 .build();
     }
 
-    public ObserverReport toEntity(ObserverReportCreateRequest req,
-                                   Organization org, SystemUser observer,
-                                   County county, PollingCenter center, District district) {
+    public ObserverReport toEntity(
+            ObserverReportCreateRequest req,
+            Organization org,
+            Election election,
+            SystemUser observer,
+            County county,
+            PollingCenter center,
+            District district
+    ) {
         ObserverReport r = new ObserverReport();
+
         r.setOrganization(org);
+        r.setElection(election);
         r.setObserver(observer);
         r.setCounty(county);
         r.setDistrict(district);
         r.setPollingCenter(center);
-        r.setType(ReportType.valueOf(req.getType())); // validate upstream if needed
-        r.setDescription(req.getDescription());
-        r.setVisibility(ObserverReportVisibility.PRIVATE);
-        r.setVerificationStatus(ObserverReportVerificationStatus.PENDING);
-        r.setMediaUrl(req.getMediaUrl());
-        if (req.getTimestamp() != null) r.setTimestamp(req.getTimestamp());
+
+        r.setType(
+                ReportType.valueOf(
+                        req.getType()
+                )
+        );
+
+        r.setDescription(
+                req.getDescription()
+        );
+
+        r.setVisibility(
+                ObserverReportVisibility.PRIVATE
+        );
+
+        r.setVerificationStatus(
+                ObserverReportVerificationStatus.PENDING
+        );
+
+        r.setMediaUrl(
+                req.getMediaUrl()
+        );
+
+        if (req.getTimestamp() != null) {
+            r.setTimestamp(
+                    req.getTimestamp()
+            );
+        }
+
         r.setResolved(false);
 
-        if (req.getLatitude() != null && req.getLongitude() != null) {
-            r.setGpsLocation(point(req.getLongitude(), req.getLatitude()));
+        if (
+                req.getLatitude() != null
+                        &&
+                        req.getLongitude() != null
+        ) {
+            r.setGpsLocation(
+                    point(
+                            req.getLongitude(),
+                            req.getLatitude()
+                    )
+            );
         }
+
         return r;
     }
 

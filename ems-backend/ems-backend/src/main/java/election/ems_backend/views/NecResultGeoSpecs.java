@@ -5,63 +5,200 @@ import jakarta.persistence.criteria.Path;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.time.OffsetDateTime;
+import java.util.Set;
 import java.util.UUID;
 
 public final class NecResultGeoSpecs {
-    private NecResultGeoSpecs() {}
 
-    public static Specification<NecResultGeo> electionEquals(UUID electionId) {
+    private NecResultGeoSpecs() {
+    }
+
+
+    public static Specification<NecResultGeo> electionEquals(
+            UUID electionId
+    ) {
         return (root, query, cb) -> {
-            if (electionId == null) return null;
-            Path<UUID> p = root.get("electionId");
-            return cb.equal(p, electionId);
+
+            if (electionId == null) {
+                return null;
+            }
+
+            Path<UUID> p =
+                    root.get("electionId");
+
+            return cb.equal(
+                    p,
+                    electionId
+            );
         };
     }
 
-    public static Specification<NecResultGeo> contestEquals(UUID contestId) {
+
+    public static Specification<NecResultGeo> contestEquals(
+            UUID contestId
+    ) {
         return (root, query, cb) -> {
-            if (contestId == null) return null;
-            return cb.equal(root.get("contestId"), contestId);
+
+            if (contestId == null) {
+                return null;
+            }
+
+            return cb.equal(
+                    root.get("contestId"),
+                    contestId
+            );
         };
     }
 
-    public static Specification<NecResultGeo> countyEquals(UUID countyId) {
+
+    public static Specification<NecResultGeo> countyEquals(
+            UUID countyId
+    ) {
         return (root, query, cb) -> {
-            if (countyId == null) return null;
-            Path<UUID> p = root.get("countyId");
-            return cb.equal(p, countyId);
+
+            if (countyId == null) {
+                return null;
+            }
+
+            Path<UUID> p =
+                    root.get("countyId");
+
+            return cb.equal(
+                    p,
+                    countyId
+            );
         };
     }
 
-    public static Specification<NecResultGeo> districtEquals(UUID districtId) {
+
+    public static Specification<NecResultGeo> districtEquals(
+            UUID districtId
+    ) {
         return (root, query, cb) -> {
-            if (districtId == null) return null;
-            Path<UUID> p = root.get("districtId");
-            return cb.equal(p, districtId);
+
+            if (districtId == null) {
+                return null;
+            }
+
+            Path<UUID> p =
+                    root.get("districtId");
+
+            return cb.equal(
+                    p,
+                    districtId
+            );
         };
     }
 
-    public static Specification<NecResultGeo> centerEquals(UUID centerId) {
+
+    public static Specification<NecResultGeo> centerEquals(
+            UUID centerId
+    ) {
         return (root, query, cb) -> {
-            if (centerId == null) return null;
-            Path<UUID> p = root.get("centerId");
-            return cb.equal(p, centerId);
+
+            if (centerId == null) {
+                return null;
+            }
+
+            Path<UUID> p =
+                    root.get("centerId");
+
+            return cb.equal(
+                    p,
+                    centerId
+            );
         };
     }
 
-    public static Specification<NecResultGeo> uploadedAfter(OffsetDateTime from) {
+
+    public static Specification<NecResultGeo> uploadedAfter(
+            OffsetDateTime from
+    ) {
         return (root, query, cb) -> {
-            if (from == null) return null;
-            Path<OffsetDateTime> p = root.get("uploadTime");
-            return cb.greaterThanOrEqualTo(p, from);
+
+            if (from == null) {
+                return null;
+            }
+
+            Path<OffsetDateTime> p =
+                    root.get("uploadTime");
+
+            return cb.greaterThanOrEqualTo(
+                    p,
+                    from
+            );
         };
     }
 
-    public static Specification<NecResultGeo> uploadedBefore(OffsetDateTime to) {
+
+    public static Specification<NecResultGeo> uploadedBefore(
+            OffsetDateTime to
+    ) {
         return (root, query, cb) -> {
-            if (to == null) return null;
-            Path<OffsetDateTime> p = root.get("uploadTime");
-            return cb.lessThanOrEqualTo(p, to);
+
+            if (to == null) {
+                return null;
+            }
+
+            Path<OffsetDateTime> p =
+                    root.get("uploadTime");
+
+            return cb.lessThanOrEqualTo(
+                    p,
+                    to
+            );
+        };
+    }
+
+
+    // ========================================================================
+    // OPERATIONAL SCOPE FILTERS
+    // ========================================================================
+
+    public static Specification<NecResultGeo> countyIn(
+            Set<UUID> countyIds
+    ) {
+        return (root, query, cb) -> {
+
+            if (countyIds == null || countyIds.isEmpty()) {
+                return cb.disjunction();
+            }
+
+            return root
+                    .get("countyId")
+                    .in(countyIds);
+        };
+    }
+
+
+    public static Specification<NecResultGeo> districtIn(
+            Set<UUID> districtIds
+    ) {
+        return (root, query, cb) -> {
+
+            if (districtIds == null || districtIds.isEmpty()) {
+                return cb.disjunction();
+            }
+
+            return root
+                    .get("districtId")
+                    .in(districtIds);
+        };
+    }
+
+
+    public static Specification<NecResultGeo> centerIn(
+            Set<UUID> centerIds
+    ) {
+        return (root, query, cb) -> {
+
+            if (centerIds == null || centerIds.isEmpty()) {
+                return cb.disjunction();
+            }
+
+            return root
+                    .get("centerId")
+                    .in(centerIds);
         };
     }
 }

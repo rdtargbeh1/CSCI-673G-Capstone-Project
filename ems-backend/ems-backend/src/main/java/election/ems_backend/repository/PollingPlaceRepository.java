@@ -10,14 +10,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface PollingPlaceRepository
-        extends JpaRepository<PollingPlace, UUID>, JpaSpecificationExecutor<PollingPlace> {
-
+public interface PollingPlaceRepository extends JpaRepository<PollingPlace, UUID>, JpaSpecificationExecutor<PollingPlace> {
     boolean existsByPollingCenter_CenterIdAndPlaceNumber(UUID centerId, Integer placeNumber);
-
     Optional<PollingPlace> findByCode(String code);
-
     List<PollingPlace> findByPollingCenter_CenterIdOrderByPlaceNumberAsc(UUID centerId);
-
-
 }

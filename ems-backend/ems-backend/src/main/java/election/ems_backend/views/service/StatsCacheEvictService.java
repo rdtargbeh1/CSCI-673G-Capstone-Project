@@ -1,6 +1,5 @@
 package election.ems_backend.views.service;
 
-
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,116 +13,415 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentMap;
 
 /**
- * Centralized cache eviction service.
+ * Centralized cache eviction service for election/result statistics.
  *
- * Use these methods from write-paths (vote_submission create/update/delete,
- * polling_center_allocation changes, candidate/party updates, etc.) to prevent
- * serving stale aggregated statistics.
+ * Result cache keys currently use two major formats:
  *
- * Two types of eviction supported:
- *  - evictAllStatsCaches(): clears all stats caches (simple, safe).
- *  - targeted evictions (evictOrgElectionCaches / evictOrgElectionCenterCaches):
- *      attempt to evict only cache entries whose key starts with the computed prefix
- *      (keys created by services follow the pattern: "<orgId>:<electionId>:...").
+ * Party / tenant views:
  *
- * Note: targeted eviction uses the native Caffeine cache's asMap() when available;
- * if a cache implementation does not expose a map of keys, the method falls back to
- * clearing the entire cache for safety.
+ *     <orgId>:<electionId>:...
+ *
+ * Official views:
+ *
+ *     <electionId>:...
+ *
+ * Operational users are not cached by the result services, but cached
+ * administrator/non-operational results must still be invalidated when
+ * underlying result data changes.
  */
 @Service
 @RequiredArgsConstructor
 public class StatsCacheEvictService {
 
-    private static final Logger log = LoggerFactory.getLogger(StatsCacheEvictService.class);
+    private static final Logger log =
+            LoggerFactory.getLogger(
+                    StatsCacheEvictService.class
+            );
 
     private final CacheManager cacheManager;
 
-    // Keep this in sync with @Cacheable value names used across services
+
+    /*
+     * Keep synchronized with @Cacheable value names used by
+     * result/statistics services.
+     */
     private static final String[] CACHE_NAMES = new String[] {
+
             "candidateCenterStatsOfficial",
             "candidateDistrictStatsOfficial",
             "candidateCountyStatsOfficial",
             "candidateElectionStatsOfficial",
+
             "candidateCenterStatsParty",
             "candidateDistrictStatsParty",
             "candidateCountyStatsParty",
             "candidateElectionStatsParty",
+
             "centerStatsParty",
             "centerStatsOfficial",
+
             "districtStatsParty",
             "districtStatsOfficial",
+
             "countyStatsParty",
             "countyStatsOfficial",
+
             "electionStatsParty",
             "electionStatsOfficial",
+
             "necResultGeo",
+
             "candidateCountyCompare"
     };
 
+
     /**
-     * Evict all entries from all stats caches. Simple and safe; use when writes affect many keys
-     * or when you cannot compute targeted keys.
+     * Clears every known statistics/result cache.
+     *
+     * Use this when:
+     *
+     * - many result dimensions may have changed
+     * - the affected organization/election cannot be determined
+     * - a large recomputation occurred
+     * - targeted eviction cannot be expressed safely
      */
     @Transactional
     public void evictAllStatsCaches() {
-        log.debug("Evicting ALL stats caches");
+
+        log.debug(
+                "Evicting all statistics caches"
+        );
+
         for (String cacheName : CACHE_NAMES) {
-            org.springframework.cache.Cache c = cacheManager.getCache(cacheName);
-            if (c != null) {
-                try {
-                    c.clear();
-                } catch (Exception ex) {
-                    log.warn("Failed to clear cache '{}' via clear(); attempting fallback removal: {}", cacheName, ex.getMessage());
-                    tryEvictAllEntriesFallback(c);
-                }
+
+            org.springframework.cache.Cache cache =
+                    cacheManager.getCache(
+                            cacheName
+                    );
+
+            if (cache == null) {
+                continue;
+            }
+
+            try {
+
+                cache.clear();
+
+            } catch (Exception ex) {
+
+                log.warn(
+                        "Failed to clear cache '{}' directly; attempting fallback: {}",
+                        cacheName,
+                        ex.getMessage()
+                );
+
+                tryEvictAllEntriesFallback(
+                        cache
+                );
             }
         }
     }
 
 
-
     /**
-     * Attempt to evict cache entries for a specific org + election across all stats caches.
-     * This looks for keys that start with the "<orgId>:<electionId>:" prefix which is the
-     * canonical key pattern used by the @Cacheable services.
+     * Evicts cached statistics for one organization/election.
      *
-     * If the cache implementation is not Caffeine (or does not expose an asMap view),
-     * the method will fall back to clearing the entire cache for safety.
+     * Handles both cache-key families:
+     *
+     * Party/tenant:
+     *
+     *     <orgId>:<electionId>:...
+     *
+     * Official:
+     *
+     *     <electionId>:...
+     *
+     * Therefore a write affecting an election cannot leave the official
+     * cache stale simply because the write originated from a tenant org.
      */
     @Transactional
-    public void evictOrgElectionCaches(UUID orgId, UUID electionId) {
-        Objects.requireNonNull(orgId, "orgId is required");
-        Objects.requireNonNull(electionId, "electionId is required");
+    public void evictOrgElectionCaches(
+            UUID orgId,
+            UUID electionId
+    ) {
 
-        final String prefix = orgId.toString() + ":" + electionId.toString() + ":";
+        Objects.requireNonNull(
+                orgId,
+                "orgId is required"
+        );
 
-        log.debug("Evicting stats caches for prefix={}", prefix);
-        for (String cacheName : CACHE_NAMES) {
-            org.springframework.cache.Cache c = cacheManager.getCache(cacheName);
-            if (c == null) continue;
-            try {
-                Object nativeCache = c.getNativeCache();
-                // Caffeine's Cache has asMap() we can iterate/remove keys from
-                if (nativeCache instanceof com.github.benmanes.caffeine.cache.Cache) {
-                    ConcurrentMap<Object, Object> map = ((com.github.benmanes.caffeine.cache.Cache<Object, Object>) nativeCache).asMap();
-                    Set<Object> keys = map.keySet();
-                    for (Object k : keys) {
-                        if (k instanceof String && ((String) k).startsWith(prefix)) {
-                            log.trace("Evicting key {} from cache {}", k, cacheName);
-                            map.remove(k);
-                        }
+        Objects.requireNonNull(
+                electionId,
+                "electionId is required"
+        );
+
+
+        final String orgElectionPrefix =
+                orgId + ":" + electionId + ":";
+
+        final String officialElectionPrefix =
+                electionId + ":";
+
+
+        log.debug(
+                "Evicting statistics caches for orgId={} electionId={}",
+                orgId,
+                electionId
+        );
+
+
+        evictMatchingKeys(
+                key ->
+                        key.startsWith(
+                                orgElectionPrefix
+                        )
+                                ||
+                                key.startsWith(
+                                        officialElectionPrefix
+                                )
+        );
+    }
+
+
+    /**
+     * Evicts cached entries affected by a change involving one center.
+     *
+     * IMPORTANT:
+     *
+     * Center IDs are not always the third cache-key segment. Existing
+     * result cache keys may look like:
+     *
+     *     org:election:contest:county:district:center:...
+     *
+     * or:
+     *
+     *     election:contest:county:district:center:...
+     *
+     * Therefore prefixing:
+     *
+     *     org:election:center:
+     *
+     * is not reliable.
+     *
+     * This method first restricts the key to the requested election/org,
+     * then checks whether the center UUID appears as an exact key segment.
+     */
+    @Transactional
+    public void evictOrgElectionCenterCaches(
+            UUID orgId,
+            UUID electionId,
+            UUID centerId
+    ) {
+
+        Objects.requireNonNull(
+                orgId,
+                "orgId is required"
+        );
+
+        Objects.requireNonNull(
+                electionId,
+                "electionId is required"
+        );
+
+        Objects.requireNonNull(
+                centerId,
+                "centerId is required"
+        );
+
+
+        final String orgElectionPrefix =
+                orgId + ":" + electionId + ":";
+
+        final String officialElectionPrefix =
+                electionId + ":";
+
+        final String centerToken =
+                centerId.toString();
+
+
+        log.debug(
+                "Evicting statistics caches for orgId={} electionId={} centerId={}",
+                orgId,
+                electionId,
+                centerId
+        );
+
+
+        evictMatchingKeys(
+                key -> {
+
+                    boolean electionMatch =
+                            key.startsWith(
+                                    orgElectionPrefix
+                            )
+                                    ||
+                                    key.startsWith(
+                                            officialElectionPrefix
+                                    );
+
+                    if (!electionMatch) {
+                        return false;
                     }
-                } else {
-                    // Fallback: clear entire cache if we can't target keys
-                    log.debug("Cache '{}' does not expose Caffeine native cache; clearing whole cache as fallback", cacheName);
-                    c.clear();
+
+                    return containsExactSegment(
+                            key,
+                            centerToken
+                    );
                 }
+        );
+    }
+
+
+    /**
+     * Evicts every cache entry associated with an election.
+     *
+     * This covers:
+     *
+     * Official cache keys:
+     *
+     *     <electionId>:...
+     *
+     * Tenant cache keys:
+     *
+     *     <orgId>:<electionId>:...
+     *
+     * Since the organization ID is unknown here, the election ID is matched
+     * as an exact cache-key segment rather than only as the first segment.
+     */
+    @Transactional
+    public void evictByElection(
+            UUID electionId
+    ) {
+
+        Objects.requireNonNull(
+                electionId,
+                "electionId is required"
+        );
+
+
+        final String electionToken =
+                electionId.toString();
+
+
+        log.debug(
+                "Evicting statistics caches for electionId={}",
+                electionId
+        );
+
+
+        evictMatchingKeys(
+                key ->
+                        containsExactSegment(
+                                key,
+                                electionToken
+                        )
+        );
+    }
+
+
+    /**
+     * Applies a key-matching predicate to every known cache.
+     *
+     * If the underlying cache exposes Caffeine's map, matching entries
+     * are removed individually.
+     *
+     * If targeted access is unavailable, the whole cache is cleared
+     * because retaining potentially stale election results is less safe
+     * than broader eviction.
+     */
+    private void evictMatchingKeys(
+            java.util.function.Predicate<String> matcher
+    ) {
+
+        for (String cacheName : CACHE_NAMES) {
+
+            org.springframework.cache.Cache cache =
+                    cacheManager.getCache(
+                            cacheName
+                    );
+
+            if (cache == null) {
+                continue;
+            }
+
+
+            try {
+
+                Object nativeCache =
+                        cache.getNativeCache();
+
+
+                if (nativeCache instanceof
+                        com.github.benmanes.caffeine.cache.Cache<?, ?> caffeine) {
+
+                    @SuppressWarnings("unchecked")
+                    ConcurrentMap<Object, Object> map =
+                            (ConcurrentMap<Object, Object>)
+                                    caffeine.asMap();
+
+
+                    Set<Object> keys =
+                            map.keySet();
+
+
+                    for (Object rawKey : keys) {
+
+                        if (!(rawKey instanceof String key)) {
+                            continue;
+                        }
+
+                        if (!matcher.test(key)) {
+                            continue;
+                        }
+
+
+                        log.trace(
+                                "Evicting key '{}' from cache '{}'",
+                                key,
+                                cacheName
+                        );
+
+
+                        map.remove(
+                                rawKey
+                        );
+                    }
+
+                } else {
+
+                    /*
+                     * Unknown cache implementation.
+                     *
+                     * Clear the entire individual cache rather than
+                     * risk leaving stale aggregate results.
+                     */
+                    log.debug(
+                            "Cache '{}' does not expose a Caffeine map; clearing whole cache",
+                            cacheName
+                    );
+
+                    cache.clear();
+                }
+
             } catch (Exception ex) {
-                log.warn("Failed targeted eviction for cache '{}': {}, clearing whole cache as fallback", cacheName, ex.getMessage());
+
+                log.warn(
+                        "Targeted eviction failed for cache '{}': {}. Clearing whole cache.",
+                        cacheName,
+                        ex.getMessage()
+                );
+
                 try {
-                    c.clear();
-                } catch (Exception e) {
-                    log.error("Failed to clear cache '{}' during fallback eviction: {}", cacheName, e.getMessage());
+
+                    cache.clear();
+
+                } catch (Exception clearException) {
+
+                    log.error(
+                            "Unable to clear cache '{}' during eviction fallback: {}",
+                            cacheName,
+                            clearException.getMessage()
+                    );
                 }
             }
         }
@@ -131,98 +429,75 @@ public class StatsCacheEvictService {
 
 
     /**
-     * Evict cache entries related to a specific org + election + center.
-     * Useful when polling_center_allocation or polling_center rows change for a center.
+     * Tests whether a colon-delimited cache key contains a value
+     * as a complete segment.
+     *
+     * This avoids accidental partial UUID matching.
      */
-    @Transactional
-    public void evictOrgElectionCenterCaches(UUID orgId, UUID electionId, UUID centerId) {
-        Objects.requireNonNull(orgId, "orgId is required");
-        Objects.requireNonNull(electionId, "electionId is required");
-        Objects.requireNonNull(centerId, "centerId is required");
+    private boolean containsExactSegment(
+            String key,
+            String expectedSegment
+    ) {
 
-        final String prefix = orgId.toString() + ":" + electionId.toString() + ":" + centerId.toString() + ":";
-        log.debug("Evicting stats caches for center prefix={}", prefix);
+        if (key == null || key.isBlank()) {
+            return false;
+        }
 
-        for (String cacheName : CACHE_NAMES) {
-            org.springframework.cache.Cache c = cacheManager.getCache(cacheName);
-            if (c == null) continue;
-            try {
-                Object nativeCache = c.getNativeCache();
-                if (nativeCache instanceof com.github.benmanes.caffeine.cache.Cache) {
-                    ConcurrentMap<Object, Object> map = ((com.github.benmanes.caffeine.cache.Cache<Object, Object>) nativeCache).asMap();
-                    Set<Object> keys = map.keySet();
-                    for (Object k : keys) {
-                        if (k instanceof String && ((String) k).startsWith(prefix)) {
-                            log.trace("Evicting key {} from cache {}", k, cacheName);
-                            map.remove(k);
-                        }
-                    }
-                } else {
-                    log.debug("Cache '{}' does not expose Caffeine native cache; clearing whole cache as fallback", cacheName);
-                    c.clear();
-                }
-            } catch (Exception ex) {
-                log.warn("Failed targeted eviction for cache '{}': {}, clearing whole cache as fallback", cacheName, ex.getMessage());
-                try {
-                    c.clear();
-                } catch (Exception e) {
-                    log.error("Failed to clear cache '{}' during fallback eviction: {}", cacheName, e.getMessage());
-                }
+        if (expectedSegment == null || expectedSegment.isBlank()) {
+            return false;
+        }
+
+
+        String[] segments =
+                key.split(
+                        ":",
+                        -1
+                );
+
+
+        for (String segment : segments) {
+
+            if (expectedSegment.equals(segment)) {
+                return true;
             }
         }
+
+
+        return false;
     }
 
 
-    @Transactional
-    public void evictByElection(UUID electionId) {
-        Objects.requireNonNull(electionId, "electionId is required");
-        final String prefix = electionId.toString() + ":"; // matches services that use electionId as first key segment
+    /**
+     * Best-effort fallback used when Cache.clear() fails.
+     */
+    private void tryEvictAllEntriesFallback(
+            org.springframework.cache.Cache cache
+    ) {
 
-        log.debug("Evicting stats caches for election prefix={}", prefix);
-        for (String cacheName : CACHE_NAMES) {
-            org.springframework.cache.Cache c = cacheManager.getCache(cacheName);
-            if (c == null) continue;
-            try {
-                Object nativeCache = c.getNativeCache();
-                if (nativeCache instanceof com.github.benmanes.caffeine.cache.Cache) {
-                    ConcurrentMap<Object, Object> map = ((com.github.benmanes.caffeine.cache.Cache<Object, Object>) nativeCache).asMap();
-                    Set<Object> keys = map.keySet();
-                    for (Object k : keys) {
-                        if (k instanceof String && ((String) k).startsWith(prefix)) {
-                            log.trace("Evicting key {} from cache {}", k, cacheName);
-                            map.remove(k);
-                        }
-                    }
-                } else {
-                    // Fallback: clear whole cache (safe but heavier)
-                    log.debug("Cache '{}' does not expose Caffeine native cache; clearing whole cache as fallback", cacheName);
-                    c.clear();
-                }
-            } catch (Exception ex) {
-                log.warn("Failed targeted eviction for cache '{}': {}, clearing whole cache as fallback", cacheName, ex.getMessage());
-                try {
-                    c.clear();
-                } catch (Exception e) {
-                    log.error("Failed to clear cache '{}' during fallback eviction: {}", cacheName, e.getMessage());
-                }
-            }
-        }
-    }
-
-
-    // Helper: try a best-effort removal of entries if clear() isn't available or fails
-    private void tryEvictAllEntriesFallback(org.springframework.cache.Cache c) {
         try {
-            Object nativeCache = c.getNativeCache();
-            if (nativeCache instanceof com.github.benmanes.caffeine.cache.Cache) {
-                ((com.github.benmanes.caffeine.cache.Cache<?, ?>) nativeCache).asMap().clear();
+
+            Object nativeCache =
+                    cache.getNativeCache();
+
+
+            if (nativeCache instanceof
+                    com.github.benmanes.caffeine.cache.Cache<?, ?> caffeine) {
+
+                caffeine
+                        .asMap()
+                        .clear();
+
             } else {
-                c.clear();
+
+                cache.clear();
             }
+
         } catch (Exception ex) {
-            log.debug("Fallback eviction failed: {}", ex.getMessage());
+
+            log.debug(
+                    "Fallback cache eviction failed: {}",
+                    ex.getMessage()
+            );
         }
     }
-
-
 }

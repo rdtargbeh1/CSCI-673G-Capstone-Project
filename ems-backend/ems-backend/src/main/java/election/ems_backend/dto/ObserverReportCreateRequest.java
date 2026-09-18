@@ -15,7 +15,10 @@ import java.util.UUID;
 public class ObserverReportCreateRequest {
     @NotNull
     private UUID orgId;
-    @NotNull private UUID observerId;
+    @NotNull
+    private UUID electionId;
+    @NotNull
+    private UUID observerId;
 
     // Either countyId or centerId (center implies county)
     private UUID countyId;

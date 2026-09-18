@@ -8,7 +8,7 @@ import election.ems_backend.integration.SigningService;
 import election.ems_backend.mapper.VoteSubmissionMapper;
 import election.ems_backend.repository.*;
 import election.ems_backend.security.AuthorizationService;
-import election.ems_backend.security.ElectionAccessPolicy;
+import election.ems_backend.policy.ElectionAccessPolicy;
 import election.ems_backend.service.*;
 import election.ems_backend.utility.RecomputeEvent;
 import election.ems_backend.utility.RequestUtils;

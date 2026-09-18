@@ -39,4 +39,5 @@ public final class CandidateElectionStatsOfficialSpecs {
             return cb.equal(root.get("partyId"), partyId);
         };
     }
+
 }

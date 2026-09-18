@@ -8,6 +8,8 @@ import election.ems_backend.entity.Election;
 import election.ems_backend.entity.ElectionCandidate;
 import election.ems_backend.entity.PollingCenter;
 import election.ems_backend.mapper.ElectionCandidateMapper;
+import election.ems_backend.policy.OperationResourcePolicy;
+import election.ems_backend.policy.OperationRolePolicy;
 import election.ems_backend.repository.*;
 import election.ems_backend.security.AuthorizationService;
 import election.ems_backend.security.CurrentUserProvider;
@@ -16,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -41,6 +44,9 @@ public class ElectionCandidateServiceImplementation implements ElectionCandidate
     private final CurrentUserProvider currentUserProvider;
     private final JdbcTemplate jdbc;
     private final ElectionCandidateMapper mapper;
+
+    private final OperationRolePolicy operationRolePolicy;
+    private final OperationResourcePolicy operationResourcePolicy;
 
 
 
@@ -171,9 +177,23 @@ public class ElectionCandidateServiceImplementation implements ElectionCandidate
 
     @Override
     public ElectionCandidateDto get(UUID id) {
-        return electionCandidateRepository.findById(id)
-                .map(mapper::toDTO)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Election candidate not found"));
+        ElectionCandidate entity = electionCandidateRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        NOT_FOUND,
+                        "Election candidate not found"
+                ));
+
+        if (operationRolePolicy.isOperationalRole()) {
+            UUID electionId = entity.getElection().getElectionId();
+
+            if (!operationResourcePolicy.canViewElectionCandidate(electionId)) {
+                throw new AccessDeniedException(
+                        "User does not have access to this election candidate"
+                );
+            }
+        }
+
+        return mapper.toDTO(entity);
     }
 
 
@@ -186,6 +206,13 @@ public class ElectionCandidateServiceImplementation implements ElectionCandidate
                         "Election not found"
                 ));
 
+        if (operationRolePolicy.isOperationalRole()
+                && !operationResourcePolicy.canViewElectionCandidate(electionId)) {
+            throw new AccessDeniedException(
+                    "User does not have access to election candidates for this election"
+            );
+        }
+
         return electionCandidateRepository
                 .findByElection_ElectionId(electionId)
                 .stream()
@@ -197,6 +224,19 @@ public class ElectionCandidateServiceImplementation implements ElectionCandidate
 
     @Override
     public Page<ElectionCandidateDto> getAll(Pageable pageable) {
+        /*
+         * This endpoint has no electionId, so it cannot safely apply
+         * election-assignment authorization for operational users.
+         *
+         * Existing administrative/non-operational behavior is preserved.
+         * Operational users must use listByElection(electionId).
+         */
+        if (operationRolePolicy.isOperationalRole()) {
+            throw new AccessDeniedException(
+                    "Operational users must use the election-scoped candidate endpoint"
+            );
+        }
+
         return electionCandidateRepository.findAll(pageable).map(mapper::toDTO);
     }
 }
