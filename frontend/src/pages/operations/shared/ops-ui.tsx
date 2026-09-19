@@ -37,34 +37,36 @@ export function OpsPageShell({
   );
 }
 
-export function OpsTabs() {
+export function OpsTabs({ basePath = "/operations" }: { basePath?: string }) {
   const base = "rounded-xl border px-3 py-2 text-xl font-semibold";
   const active = "bg-[#00008B] border-slate-200 text-[#EFBF04] font-extrabold";
   const idle = "bg-white border-slate-200 hover:bg-slate-50";
 
+  const root = basePath.replace(/\/$/, "");
+
   return (
     <div className="flex flex-wrap gap-2">
       <NavLink
-        to="/operations/submissions"
+        to={`${root}/submissions`}
         className={({ isActive }) => `${base} ${isActive ? active : idle}`}
       >
         Submissions
       </NavLink>
       <NavLink
-        to="/operations/observer-reports"
+        to={`${root}/observer-reports`}
         className={({ isActive }) => `${base} ${isActive ? active : idle}`}
       >
         Observer Reports
       </NavLink>
       <NavLink
-        to="/operations/notifications"
+        to={`${root}/notifications`}
         className={({ isActive }) => `${base} ${isActive ? active : idle}`}
       >
         Notifications
       </NavLink>
 
       <NavLink
-        to="/operations/tally-sheets"
+        to={`${root}/tally-sheets`}
         className={({ isActive }) => `${base} ${isActive ? active : idle}`}
       >
         Tally Sheets
