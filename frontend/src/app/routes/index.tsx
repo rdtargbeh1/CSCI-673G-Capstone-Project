@@ -1,5 +1,6 @@
 // src/app/routes/index.tsx
 
+import type { ReactNode } from "react";
 import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import AppLayout from "../layout/AppLayout";
@@ -10,6 +11,7 @@ import { RequireAuth } from "../../shared/routes/RequireGuards";
 
 import SystemDashboard from "../../pages/dashboard/panels/SystemDashboard";
 import { useAuthStore } from "../../shared/store/authStore";
+import { isOperationalWorkspaceUser } from "../../shared/routes/operationalWorkspace";
 import TenantDashboard from "../../pages/dashboard/panels/OrgDashboard";
 import NecDashboard from "../../pages/dashboard/panels/NecDashboard";
 
@@ -107,7 +109,12 @@ import CompareCountyCandidatesPage from "../../pages/elections/workspace/tabs/re
 // ============================================================================
 
 import OperationsLayout from "../../pages/operations/OperationsLayout";
+import OperationsWorkspaceLayout from "../../pages/operations/OperationsWorkspaceLayout";
 import OperationsTab from "../../pages/operations/shared/OperationsTab";
+import SubmissionQueuePage from "../../pages/operations/SubmissionQueuePage";
+import ObserverReportsPage from "../../pages/operations/ObserverReportsPage";
+import NotificationsPage from "../../pages/operations/NotificationsPage";
+import TallySheetsPage from "../../pages/operations/TallySheetsPage";
 
 // ============================================================================
 // GEOGRAPHY
@@ -181,6 +188,46 @@ function AdminSecurityIndexRedirect() {
   return <Navigate to="/admin-security/memberships" replace />;
 }
 
+function RequireOperationalWorkspace({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const user = useAuthStore((state) => state.user);
+  const currentOrgId = useAuthStore((state) => state.currentOrgId);
+  const dashboardMode = useAuthStore((state) => state.dashboardMode);
+
+  if (
+    !isOperationalWorkspaceUser({
+      user,
+      currentOrgId,
+      dashboardMode,
+    })
+  ) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function AdminShellEntry() {
+  const user = useAuthStore((state) => state.user);
+  const currentOrgId = useAuthStore((state) => state.currentOrgId);
+  const dashboardMode = useAuthStore((state) => state.dashboardMode);
+
+  if (
+    isOperationalWorkspaceUser({
+      user,
+      currentOrgId,
+      dashboardMode,
+    })
+  ) {
+    return <Navigate to="/workspace/submissions" replace />;
+  }
+
+  return <AppLayout />;
+}
+
 // ============================================================================
 // ROUTER
 // ============================================================================
@@ -199,11 +246,61 @@ export const router = createBrowserRouter([
   },
 
   {
+    path: "/workspace",
+
+    element: (
+      <RequireAuth>
+        <RequireOperationalWorkspace>
+          <OperationsWorkspaceLayout />
+        </RequireOperationalWorkspace>
+      </RequireAuth>
+    ),
+
+    children: [
+      {
+        index: true,
+
+        element: <Navigate to="submissions" replace />,
+      },
+
+      {
+        path: "submissions",
+
+        element: <SubmissionQueuePage />,
+      },
+
+      {
+        path: "observer-reports",
+
+        element: <ObserverReportsPage />,
+      },
+
+      {
+        path: "notifications",
+
+        element: <NotificationsPage />,
+      },
+
+      {
+        path: "tally-sheets",
+
+        element: <TallySheetsPage />,
+      },
+
+      {
+        path: "*",
+
+        element: <Navigate to="submissions" replace />,
+      },
+    ],
+  },
+
+  {
     path: "/",
 
     element: (
       <RequireAuth>
-        <AppLayout />
+        <AdminShellEntry />
       </RequireAuth>
     ),
 
