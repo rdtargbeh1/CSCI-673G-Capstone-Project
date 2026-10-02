@@ -2,39 +2,30 @@
 
 import { Outlet } from "react-router-dom";
 
-import { OpsTabs } from "./shared/ops-ui";
-
 // ============================================================================
 // OPERATIONS LAYOUT
+// ============================================================================
 //
-// Purpose:
+// The application SidebarNav is the authoritative Operations navigation.
 //
-// Provides the shared Operations module layout.
+// Do NOT add another Operations navigation bar here.
 //
-// Responsibilities:
+// This prevents:
 //
-// - Keeps the Operations navigation visible.
-// - Renders the current Operations page through <Outlet />.
-// - Does not define individual Operations routes.
+// Sidebar
+// + Operations top tabs
 //
-// Individual Operations routes are maintained in:
-//
-// src/pages/operations/shared/OperationsTab.tsx
+// from becoming two competing navigation systems.
 // ============================================================================
 
 export default function OperationsLayout() {
   return (
-    <div className="flex flex-col gap-4">
-      {/* ==================================================================== */}
-      {/* OPERATIONS NAVIGATION */}
-      {/* ==================================================================== */}
-
-      <OpsTabs />
-
-      {/* ==================================================================== */}
-      {/* CURRENT OPERATIONS PAGE */}
-      {/* ==================================================================== */}
-
+    <div
+      className="
+        w-full
+        min-w-0
+      "
+    >
       <Outlet />
     </div>
   );

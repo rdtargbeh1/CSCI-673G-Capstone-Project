@@ -1,11 +1,6 @@
-// src/pages/elections/workspace/tabs/setup/election/ElectionPartiesTab.tsx
-
 import { useMemo, useState } from "react";
-
-import { useNavigate, useParams } from "react-router-dom";
-
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-
 import {
   AlertCircle,
   CheckCircle2,
@@ -17,19 +12,13 @@ import {
 } from "lucide-react";
 
 import { useAuthStore } from "../../../../../../shared/store/authStore";
-
 import {
   deleteElectionParty,
   fetchElectionParties,
   updateElectionParty,
   type ElectionPartyDto,
 } from "../../../../../../shared/services/electionPartyService";
-
 import { Badge, ReadOnlyBanner } from "../../../../shared/elections-ui";
-
-// ============================================================================
-// HELPERS
-// ============================================================================
 
 function friendlyError(error: any) {
   return (
@@ -40,66 +29,48 @@ function friendlyError(error: any) {
   );
 }
 
-// ============================================================================
-// COMPONENT
-// ============================================================================
-
 export default function ElectionPartiesTab() {
-  const { electionId } = useParams<{
-    electionId: string;
-  }>();
-
+  const params = useParams<{ electionId?: string }>();
+  const { pathname } = useLocation();
   const navigate = useNavigate();
-
   const queryClient = useQueryClient();
 
-  // ==========================================================================
-  // ACCESS
-  // ==========================================================================
+  const isOperations =
+    pathname === "/operations" || pathname.startsWith("/operations/");
 
+  const selectedElectionId = useAuthStore((state) => state.currentElectionId);
+  const orgId = useAuthStore((state) => state.currentOrgId);
+  const userId = useAuthStore((state) => state.user?.userId);
   const dashboardMode = useAuthStore((state) => state.dashboardMode);
-
   const isSystemAdmin = useAuthStore((state) => state.isSystemAdmin());
 
-  const canEdit =
-    dashboardMode === "SYSTEM" || dashboardMode === "NEC" || isSystemAdmin;
+  const electionId = isOperations ? selectedElectionId : params.electionId;
 
-  // ==========================================================================
-  // LOCAL BALLOT ORDER STATE
-  // ==========================================================================
+  const accessKey = [
+    isOperations ? "operations" : "administrative",
+    orgId,
+    userId,
+    electionId,
+  ];
+
+  const canEdit =
+    !isOperations &&
+    (dashboardMode === "SYSTEM" || dashboardMode === "NEC" || isSystemAdmin);
 
   const [ballotDrafts, setBallotDrafts] = useState<Record<string, string>>({});
 
-  // ==========================================================================
-  // QUERY
-  // ==========================================================================
-
   const partiesQuery = useQuery({
     enabled: Boolean(electionId),
-
-    queryKey: ["election-parties", electionId],
-
+    queryKey: ["election-parties", electionId, ...accessKey],
     queryFn: () => fetchElectionParties(electionId!),
-
     staleTime: 10_000,
-
     retry: 1,
   });
 
-  const parties = useMemo(
-    () => partiesQuery.data ?? [],
-
-    [partiesQuery.data],
-  );
-
-  // ==========================================================================
-  // REFRESH
-  // ==========================================================================
+  const parties = useMemo(() => partiesQuery.data ?? [], [partiesQuery.data]);
 
   const refreshNow = async () => {
-    if (!electionId) {
-      return;
-    }
+    if (!electionId) return;
 
     await queryClient.invalidateQueries({
       queryKey: ["election-parties", electionId],
@@ -108,36 +79,28 @@ export default function ElectionPartiesTab() {
     await partiesQuery.refetch();
   };
 
-  // ==========================================================================
-  // UPDATE QUALIFICATION
-  // ==========================================================================
-
   const qualificationMutation = useMutation({
     mutationFn: async ({
       partyId,
       qualified,
     }: {
       partyId: string;
-
       qualified: boolean;
     }) => {
-      if (!electionId) {
-        throw new Error("Missing election ID.");
+      if (!canEdit) {
+        throw new Error("Election references are read-only in Operations.");
       }
+
+      if (!electionId) throw new Error("Missing election ID.");
 
       return updateElectionParty(electionId, partyId, {
         isQualified: qualified,
       });
     },
-
     onSuccess: async () => {
       await refreshNow();
     },
   });
-
-  // ==========================================================================
-  // UPDATE BALLOT ORDER
-  // ==========================================================================
 
   const ballotOrderMutation = useMutation({
     mutationFn: async ({
@@ -145,26 +108,22 @@ export default function ElectionPartiesTab() {
       ballotOrder,
     }: {
       partyId: string;
-
       ballotOrder: number | null;
     }) => {
-      if (!electionId) {
-        throw new Error("Missing election ID.");
+      if (!canEdit) {
+        throw new Error("Election references are read-only in Operations.");
       }
+
+      if (!electionId) throw new Error("Missing election ID.");
 
       return updateElectionParty(electionId, partyId, {
         ballotOrder,
       });
     },
-
     onSuccess: async (_, variables) => {
       setBallotDrafts((current) => {
-        const next = {
-          ...current,
-        };
-
+        const next = { ...current };
         delete next[variables.partyId];
-
         return next;
       });
 
@@ -172,45 +131,33 @@ export default function ElectionPartiesTab() {
     },
   });
 
-  // ==========================================================================
-  // DELETE
-  // ==========================================================================
-
   const deleteMutation = useMutation({
     mutationFn: async (party: ElectionPartyDto) => {
-      if (!electionId) {
-        throw new Error("Missing election ID.");
+      if (!canEdit) {
+        throw new Error("Election references are read-only in Operations.");
       }
+
+      if (!electionId) throw new Error("Missing election ID.");
 
       return deleteElectionParty(electionId, party.partyId);
     },
-
     onSuccess: async () => {
       await refreshNow();
     },
   });
 
-  // ==========================================================================
-  // BALLOT ORDER HELPERS
-  // ==========================================================================
-
   const getBallotValue = (party: ElectionPartyDto) => {
     const draft = ballotDrafts[party.partyId];
 
-    if (draft !== undefined) {
-      return draft;
-    }
+    if (draft !== undefined) return draft;
 
     return party.ballotOrder == null ? "" : String(party.ballotOrder);
   };
 
   const commitBallotOrder = (party: ElectionPartyDto) => {
-    if (!canEdit) {
-      return;
-    }
+    if (!canEdit) return;
 
     const value = getBallotValue(party).trim();
-
     const nextValue = value === "" ? null : Number(value);
 
     if (nextValue !== null && (Number.isNaN(nextValue) || nextValue < 1)) {
@@ -221,33 +168,21 @@ export default function ElectionPartiesTab() {
 
     if (currentValue === nextValue) {
       setBallotDrafts((current) => {
-        const next = {
-          ...current,
-        };
-
+        const next = { ...current };
         delete next[party.partyId];
-
         return next;
       });
-
       return;
     }
 
     ballotOrderMutation.mutate({
       partyId: party.partyId,
-
       ballotOrder: nextValue,
     });
   };
 
-  // ==========================================================================
-  // REMOVE
-  // ==========================================================================
-
   const removeParty = (party: ElectionPartyDto) => {
-    if (!canEdit) {
-      return;
-    }
+    if (!canEdit) return;
 
     const confirmed = window.confirm(
       `Remove "${party.partyName ?? "this party"}" from this election?\n\nThe Party Master record will not be deleted.`,
@@ -258,39 +193,23 @@ export default function ElectionPartiesTab() {
     }
   };
 
-  // ==========================================================================
-  // GUARD
-  // ==========================================================================
-
   if (!electionId) {
     return (
       <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
-        Missing election ID.
+        Select an election to view these records.
       </div>
     );
   }
 
-  // ==========================================================================
-  // RENDER
-  // ==========================================================================
-
   return (
     <div className="w-full">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-3">
-        {/* ================================================================
-            READ ONLY
-        ================================================================ */}
-
         {!canEdit && (
           <ReadOnlyBanner
             reason="Election party assignments are managed by NEC/System Admin."
             sources={["election_party", "party"]}
           />
         )}
-
-        {/* ================================================================
-            HEADER
-        ================================================================ */}
 
         <section className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 sm:px-4">
           <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -303,7 +222,6 @@ export default function ElectionPartiesTab() {
                 <h2 className="text-base font-bold text-slate-900 sm:text-lg">
                   Election Parties
                 </h2>
-
                 <p className="text-xs text-slate-500">
                   Parties assigned to this election.
                 </p>
@@ -342,31 +260,18 @@ export default function ElectionPartiesTab() {
           </div>
         </section>
 
-        {/* ================================================================
-            LOADING
-        ================================================================ */}
-
         {partiesQuery.isLoading && (
           <div className="rounded-xl border border-slate-200 bg-white p-5 text-center text-sm text-slate-500">
             Loading election parties…
           </div>
         )}
 
-        {/* ================================================================
-            ERROR
-        ================================================================ */}
-
         {partiesQuery.isError && (
           <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
             <AlertCircle size={17} className="mt-0.5 shrink-0" />
-
             <div>{friendlyError(partiesQuery.error)}</div>
           </div>
         )}
-
-        {/* ================================================================
-            EMPTY
-        ================================================================ */}
 
         {!partiesQuery.isLoading &&
           !partiesQuery.isError &&
@@ -379,7 +284,9 @@ export default function ElectionPartiesTab() {
               </div>
 
               <p className="mt-1 text-xs text-slate-500">
-                Assign parties from Party Master.
+                {canEdit
+                  ? "Assign parties from Party Master."
+                  : "No parties are available for this election."}
               </p>
 
               {canEdit && (
@@ -397,31 +304,16 @@ export default function ElectionPartiesTab() {
             </section>
           )}
 
-        {/* ================================================================
-            LIST
-        ================================================================ */}
-
         {!partiesQuery.isLoading &&
           !partiesQuery.isError &&
           parties.length > 0 && (
             <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              {/* ==========================================================
-                  DESKTOP HEADER
-              ========================================================== */}
-
               <div className="hidden grid-cols-[minmax(220px,1fr)_120px_260px_90px] items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-slate-500 md:grid">
                 <div>Party</div>
-
                 <div>Ballot Order</div>
-
                 <div>Qualification</div>
-
                 <div className="text-right">Action</div>
               </div>
-
-              {/* ==========================================================
-                  ROWS
-              ========================================================== */}
 
               {parties.map((party) => {
                 const qualificationSaving =
@@ -441,14 +333,8 @@ export default function ElectionPartiesTab() {
                     key={party.partyId}
                     className="border-b border-slate-100 px-3 py-2.5 last:border-b-0 sm:px-4"
                   >
-                    {/* ==================================================
-                          MOBILE
-                      ================================================== */}
-
                     <div className="md:hidden">
                       <div className="flex min-w-0 items-start justify-between gap-2">
-                        {/* PARTY */}
-
                         <div className="min-w-0 flex-1">
                           <div
                             className="truncate text-sm font-bold text-slate-900"
@@ -458,8 +344,6 @@ export default function ElectionPartiesTab() {
                           </div>
 
                           <div className="mt-1 flex flex-wrap items-center gap-2">
-                            {/* BALLOT ORDER */}
-
                             <div className="flex items-center gap-1.5">
                               <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
                                 Order
@@ -473,7 +357,6 @@ export default function ElectionPartiesTab() {
                                   onChange={(event) =>
                                     setBallotDrafts((current) => ({
                                       ...current,
-
                                       [party.partyId]: event.target.value,
                                     }))
                                   }
@@ -493,8 +376,6 @@ export default function ElectionPartiesTab() {
                               )}
                             </div>
 
-                            {/* QUALIFICATION */}
-
                             <QualificationChoice
                               partyId={party.partyId}
                               qualified={Boolean(party.isQualified)}
@@ -503,7 +384,6 @@ export default function ElectionPartiesTab() {
                               onChange={(value) =>
                                 qualificationMutation.mutate({
                                   partyId: party.partyId,
-
                                   qualified: value,
                                 })
                               }
@@ -511,8 +391,6 @@ export default function ElectionPartiesTab() {
                             />
                           </div>
                         </div>
-
-                        {/* REMOVE */}
 
                         {canEdit && (
                           <button
@@ -532,13 +410,7 @@ export default function ElectionPartiesTab() {
                       </div>
                     </div>
 
-                    {/* ==================================================
-                          DESKTOP
-                      ================================================== */}
-
                     <div className="hidden grid-cols-[minmax(220px,1fr)_120px_260px_90px] items-center gap-3 md:grid">
-                      {/* PARTY */}
-
                       <div className="min-w-0">
                         <div
                           className="truncate text-sm font-bold text-slate-900 lg:text-base"
@@ -547,8 +419,6 @@ export default function ElectionPartiesTab() {
                           {party.partyName ?? "Unnamed Party"}
                         </div>
                       </div>
-
-                      {/* BALLOT ORDER */}
 
                       <div>
                         {canEdit ? (
@@ -559,7 +429,6 @@ export default function ElectionPartiesTab() {
                             onChange={(event) =>
                               setBallotDrafts((current) => ({
                                 ...current,
-
                                 [party.partyId]: event.target.value,
                               }))
                             }
@@ -579,8 +448,6 @@ export default function ElectionPartiesTab() {
                         )}
                       </div>
 
-                      {/* QUALIFICATION */}
-
                       <QualificationChoice
                         partyId={party.partyId}
                         qualified={Boolean(party.isQualified)}
@@ -589,13 +456,10 @@ export default function ElectionPartiesTab() {
                         onChange={(value) =>
                           qualificationMutation.mutate({
                             partyId: party.partyId,
-
                             qualified: value,
                           })
                         }
                       />
-
-                      {/* REMOVE */}
 
                       <div className="flex justify-end">
                         {canEdit && (
@@ -615,10 +479,6 @@ export default function ElectionPartiesTab() {
                         )}
                       </div>
                     </div>
-
-                    {/* ==================================================
-                          ROW ERRORS
-                      ================================================== */}
 
                     {qualificationMutation.isError &&
                       qualificationMutation.variables?.partyId ===
@@ -641,10 +501,6 @@ export default function ElectionPartiesTab() {
             </section>
           )}
 
-        {/* ================================================================
-            SUMMARY
-        ================================================================ */}
-
         {!partiesQuery.isLoading &&
           !partiesQuery.isError &&
           parties.length > 0 && (
@@ -658,10 +514,6 @@ export default function ElectionPartiesTab() {
   );
 }
 
-// ============================================================================
-// QUALIFICATION CHOICE
-// ============================================================================
-
 function QualificationChoice({
   partyId,
   qualified,
@@ -671,15 +523,10 @@ function QualificationChoice({
   compact = false,
 }: {
   partyId: string;
-
   qualified: boolean;
-
   canEdit: boolean;
-
   saving: boolean;
-
   onChange: (value: boolean) => void;
-
   compact?: boolean;
 }) {
   if (!canEdit) {
@@ -692,7 +539,6 @@ function QualificationChoice({
         }
       >
         {qualified ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
-
         {qualified ? "Qualified" : "Not Qualified"}
       </span>
     );

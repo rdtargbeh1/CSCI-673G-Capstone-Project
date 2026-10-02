@@ -1,9 +1,16 @@
-
-// src/pages/geo-registry/DistrictsPage.tsx
-
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, RefreshCw, Search, Trash2, X, AlertCircle, ChevronDown } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  AlertCircle,
+  ChevronDown,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import { useAuthStore } from "../../shared/store/authStore";
 
@@ -13,237 +20,406 @@ import {
 } from "../../shared/services/countyService";
 
 import {
-  createDistrict,
   deleteDistrict,
   fetchDistricts,
   updateDistrict,
   type DistrictDto,
 } from "../../shared/services/districtService";
 
-import {
-  Badge,
-  Card,
-  Note,
-  PageShell,
-  Table,
-} from "./shared/geo-ui";
+import { Badge, Card, Note, PageShell } from "./shared/geo-ui";
 
-/** ---------------- helpers ---------------- */
-function safeStr(v: any) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+function safeStr(value: unknown) {
+  return typeof value === "string" ? value : value == null ? "" : String(value);
 }
-function normalizeName(v: string) {
-  return v.trim().replace(/\s+/g, " ");
+
+function normalizeName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
 }
+
+// ============================================================================
+// DISTRICTS PAGE
+// ============================================================================
 
 export default function DistrictsPage() {
-  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const queryClient = useQueryClient();
 
-  const dashboardMode = useAuthStore((s) => s.dashboardMode);
-  const canEdit = dashboardMode === "NEC" || dashboardMode === "SYSTEM";
+  // ==========================================================================
+  // PORTAL CONTEXT
+  // ==========================================================================
 
-  // filters/paging
-  const [q, setQ] = useState("");
-  const [countyFilter, setCountyFilter] = useState<string>("");
+  const isOperations =
+    pathname === "/operations" || pathname.startsWith("/operations/");
+
+  const dashboardMode = useAuthStore((state) => state.dashboardMode);
+
+  const hasAdministrativeEditAccess =
+    dashboardMode === "NEC" || dashboardMode === "SYSTEM";
+
+  const canEdit = !isOperations && hasAdministrativeEditAccess;
+
+  // ==========================================================================
+  // PAGINATION / FILTER STATE
+  // ==========================================================================
+
+  const countyGroupsPerPage = 12;
+
   const [page, setPage] = useState(0);
-  const size = 20;
+  const [q, setQ] = useState("");
+  const [countyFilter, setCountyFilter] = useState("");
 
-  // modal state
-  const [open, setOpen] = useState(false);
+  // ==========================================================================
+  // EDIT STATE
+  // ==========================================================================
+
   const [editing, setEditing] = useState<DistrictDto | null>(null);
 
-  // form fields
   const [districtName, setDistrictName] = useState("");
+
   const [countyId, setCountyId] = useState("");
 
-  /** Counties lookup (for filter + create/edit) */
-  const countiesQ = useQuery({
+  // ==========================================================================
+  // COUNTY LOOKUP
+  // ==========================================================================
+
+  const countiesQuery = useQuery({
     queryKey: ["counties-lookup", "districts"],
+
     queryFn: async () => {
-      const res = await fetchCounties({ page: 0, size: 200, q: undefined });
-      return (res.items ?? []) as CountyDto[];
+      const response = await fetchCounties({
+        page: 0,
+        size: 200,
+        q: undefined,
+      });
+
+      return (response.items ?? []) as CountyDto[];
     },
+
     staleTime: 1000 * 60 * 10,
     retry: 1,
   });
 
-  const countyOptions = useMemo(() => {
-    return (countiesQ.data ?? []).map((c) => ({
-      value: c.countyId,
-      label: safeStr(c.countyName) || "—",
-    }));
-  }, [countiesQ.data]);
+  // ==========================================================================
+  // COUNTY OPTIONS
+  // ==========================================================================
 
-  /** District list */
-  const districtsQ = useQuery({
-    queryKey: ["districts", page, q, countyFilter],
+  const countyOptions = useMemo(
+    () =>
+      (countiesQuery.data ?? []).map((county) => ({
+        value: safeStr(county.countyId),
+        label: safeStr(county.countyName) || "—",
+      })),
+    [countiesQuery.data],
+  );
+
+  // ==========================================================================
+  // DISTRICTS QUERY
+  // ==========================================================================
+
+  const districtsQuery = useQuery({
+    queryKey: ["districts", q, countyFilter],
+
     queryFn: () =>
       fetchDistricts({
-        page,
-        size,
+        page: 0,
+        size: 1000,
         q: q.trim() || undefined,
         countyId: countyFilter.trim() || undefined,
       }),
+
     staleTime: 10_000,
     retry: 1,
   });
 
-  const rows = useMemo(() => districtsQ.data?.items ?? [], [districtsQ.data]);
-  const totalPages = Math.max(1, districtsQ.data?.totalPages ?? 1);
+  // ==========================================================================
+  // DISTRICTS
+  // ==========================================================================
+
+  const districts = useMemo(
+    () => districtsQuery.data?.items ?? [],
+    [districtsQuery.data],
+  );
+
+  // ==========================================================================
+  // GROUP DISTRICTS BY COUNTY
+  // ==========================================================================
+
+  const groupedDistricts = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        countyId: string;
+        countyName: string;
+        districts: DistrictDto[];
+      }
+    >();
+
+    for (const district of districts) {
+      const groupCountyId = safeStr(district.countyId) || "unknown";
+
+      const groupCountyName = safeStr(district.countyName) || "Unknown County";
+
+      const current = groups.get(groupCountyId);
+
+      if (current) {
+        current.districts.push(district);
+      } else {
+        groups.set(groupCountyId, {
+          countyId: groupCountyId,
+          countyName: groupCountyName,
+          districts: [district],
+        });
+      }
+    }
+
+    return Array.from(groups.values());
+  }, [districts]);
+
+  // ==========================================================================
+  // SORT COUNTY GROUPS
+  // ==========================================================================
+
+  const sortedDistrictGroups = useMemo(() => {
+    return [...groupedDistricts].sort((a, b) => {
+      const countDifference = b.districts.length - a.districts.length;
+
+      if (countDifference !== 0) {
+        return countDifference;
+      }
+
+      return a.countyName.localeCompare(b.countyName);
+    });
+  }, [groupedDistricts]);
+
+  // ==========================================================================
+  // PAGINATION
+  // ==========================================================================
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(sortedDistrictGroups.length / countyGroupsPerPage),
+  );
+
+  const pagedDistrictGroups = useMemo(() => {
+    const start = page * countyGroupsPerPage;
+
+    return sortedDistrictGroups.slice(start, start + countyGroupsPerPage);
+  }, [sortedDistrictGroups, page]);
+
+  // ==========================================================================
+  // REFRESH
+  // ==========================================================================
 
   const refreshNow = async () => {
-    await qc.invalidateQueries({ queryKey: ["districts"] });
-    await districtsQ.refetch();
+    await queryClient.invalidateQueries({
+      queryKey: ["districts"],
+    });
+
+    await districtsQuery.refetch();
   };
 
-  const createM = useMutation({
-    mutationFn: async () => {
-      const name = normalizeName(districtName);
-      const cid = safeStr(countyId).trim();
-      if (!name) throw new Error("District name is required.");
-      if (!cid) throw new Error("County is required.");
-      return createDistrict({ districtName: name, countyId: cid });
-    },
-    onSuccess: async () => {
-      setOpen(false);
-      setEditing(null);
-      setDistrictName("");
-      setCountyId("");
-      await refreshNow();
-    },
-  });
+  // ==========================================================================
+  // UPDATE DISTRICT
+  // ==========================================================================
 
-  const updateM = useMutation({
+  const updateMutation = useMutation({
     mutationFn: async () => {
-      if (!editing) throw new Error("No district selected.");
+      if (!canEdit) {
+        throw new Error("Geography is read-only in Operations.");
+      }
+
+      if (!editing) {
+        throw new Error("No district selected.");
+      }
+
       const name = normalizeName(districtName);
-      const cid = safeStr(countyId).trim();
-      if (!name) throw new Error("District name is required.");
-      if (!cid) throw new Error("County is required.");
+
+      const selectedCountyId = safeStr(countyId).trim();
+
+      if (!name) {
+        throw new Error("District name is required.");
+      }
+
+      if (!selectedCountyId) {
+        throw new Error("County is required.");
+      }
+
       return updateDistrict(editing.districtId, {
         districtName: name,
-        countyId: cid,
+        countyId: selectedCountyId,
       });
     },
+
     onSuccess: async () => {
-      setOpen(false);
       setEditing(null);
       setDistrictName("");
       setCountyId("");
+
       await refreshNow();
     },
   });
 
-  const deleteM = useMutation({
+  // ==========================================================================
+  // DELETE DISTRICT
+  // ==========================================================================
+
+  const deleteMutation = useMutation({
     mutationFn: async (districtId: string) => {
+      if (!canEdit) {
+        throw new Error("Geography is read-only in Operations.");
+      }
+
       await deleteDistrict(districtId);
     },
+
     onSuccess: refreshNow,
   });
 
-  const saving = createM.isPending || updateM.isPending;
-  const error = createM.error || updateM.error;
+  // ==========================================================================
+  // CREATE
+  // ==========================================================================
 
   const openCreate = () => {
+    if (!canEdit) {
+      return;
+    }
+
+    navigate("new");
+  };
+
+  // ==========================================================================
+  // EDIT
+  // ==========================================================================
+
+  const openEdit = (district: DistrictDto) => {
+    if (!canEdit) {
+      return;
+    }
+
+    setEditing(district);
+
+    setDistrictName(safeStr(district.districtName));
+
+    setCountyId(safeStr(district.countyId));
+  };
+
+  // ==========================================================================
+  // CLOSE EDIT
+  // ==========================================================================
+
+  const closeEdit = () => {
+    if (updateMutation.isPending) {
+      return;
+    }
+
     setEditing(null);
     setDistrictName("");
     setCountyId("");
-    setOpen(true);
   };
 
-  const openEdit = (d: DistrictDto) => {
-    setEditing(d);
-    setDistrictName(safeStr(d.districtName));
-    setCountyId(safeStr(d.countyId));
-    setOpen(true);
-  };
-
-  const save = () => {
-    if (!canEdit) return;
-    if (!normalizeName(districtName)) return;
-    if (!safeStr(countyId).trim()) return;
-    
-    if (editing) updateM.mutate();
-    else createM.mutate();
-  };
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
 
   return (
     <PageShell
       title="Geography • Districts"
-      subtitle="Districts roll up under counties and support election reporting and operations."
+      subtitle="Districts are organized under counties for election reporting and operations."
       right={
-        <div className="flex items-center gap-2">
-          <Badge>
-            {canEdit ? "Editable (NEC/SYSTEM)" : "Read-only (Tenant)"}
-          </Badge>
+        <div className="flex w-full items-center gap-2 sm:w-auto">
+          <div className="hidden sm:block">
+            <Badge>
+              {isOperations
+                ? "Read-only (Operations)"
+                : canEdit
+                  ? "Editable (NEC/SYSTEM)"
+                  : "Read-only (Tenant)"}
+            </Badge>
+          </div>
 
           <button
             type="button"
             onClick={refreshNow}
-            disabled={districtsQ.isFetching}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
+            disabled={districtsQuery.isFetching}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-blue-100 px-3 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
           >
-            <RefreshCw size={16} />
+            <RefreshCw
+              size={16}
+              className={districtsQuery.isFetching ? "animate-spin" : ""}
+            />
             Refresh
           </button>
 
-          <button
-            type="button"
-            onClick={openCreate}
-            disabled={!canEdit}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-[#0000CD] text-white px-3 py-2 text-base font-semibold hover:bg-blue-700 disabled:opacity-50"
-            title={canEdit ? "Add District" : "NEC/SYSTEM only"}
-          >
-            <Plus size={16} />
-            Add District
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={openCreate}
+              className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-[#0000CD] px-3 text-sm font-semibold text-white hover:bg-blue-700 sm:flex-none"
+              title="Create districts"
+            >
+              <Plus size={16} />
+              Create Districts
+            </button>
+          )}
         </div>
       }
     >
       <Card title="Districts">
-        {/* ✅ CONDENSED FILTERS */}
-        <div className="flex items-end gap-2 mb-4">
-          {/* Search */}
-          <div className="relative w-80">
+        {/* ==================================================================
+            FILTERS
+        ================================================================== */}
+
+        <div className="mb-4 grid grid-cols-2 gap-2 lg:grid-cols-12">
+          <div className="relative col-span-2 lg:col-span-6">
             <Search
               className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
               size={16}
             />
+
             <input
               value={q}
-              onChange={(e) => {
-                setQ(e.target.value);
+              onChange={(event) => {
+                setQ(event.target.value);
                 setPage(0);
               }}
               placeholder="Search district…"
-              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-base outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
-          {/* County Filter */}
-          <div className="relative w-80">
+          <div className="relative col-span-1 lg:col-span-4">
             <select
               value={countyFilter}
-              onChange={(e) => {
-                setCountyFilter(e.target.value);
+              onChange={(event) => {
+                setCountyFilter(event.target.value);
+
                 setPage(0);
               }}
-              disabled={countiesQ.isLoading || countiesQ.isError}
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-10 text-base outline-none focus:ring-2 focus:ring-blue-500 appearance-none disabled:bg-slate-50"
+              disabled={countiesQuery.isLoading || countiesQuery.isError}
+              className="w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-2 pr-10 text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50"
             >
               <option value="">
-                {countiesQ.isLoading ? "Loading…" : "All counties"}
+                {countiesQuery.isLoading ? "Loading…" : "All Counties"}
               </option>
-              {countyOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
+
+              {countyOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
-            <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+
+            <ChevronDown
+              size={16}
+              className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+            />
           </div>
 
-          {/* Clear */}
           <button
             type="button"
             onClick={() => {
@@ -251,89 +427,146 @@ export default function DistrictsPage() {
               setCountyFilter("");
               setPage(0);
             }}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50 whitespace-nowrap"
+            className="col-span-1 h-10 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold hover:bg-slate-50 lg:col-span-2"
           >
             Clear All
           </button>
         </div>
 
-        {/* Status */}
+        {/* ==================================================================
+            STATUS
+        ================================================================== */}
+
+        {districtsQuery.isLoading ? (
+          <div className="mt-3 text-sm text-slate-600">Loading districts…</div>
+        ) : districtsQuery.isError ? (
+          <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {(districtsQuery.error as any)?.message ??
+              "Failed to load districts."}
+          </div>
+        ) : null}
+
+        {/* ==================================================================
+            RESPONSIVE COUNTY / DISTRICT GRID
+
+            Mobile:  1 column
+            Tablet:  2 columns
+            Laptop:  3 columns
+            Desktop: 4 columns
+
+            Tailwind:
+            default = 1
+            md      = 2
+            lg      = 3
+            xl      = 4
+        ================================================================== */}
+
         <div className="mt-3">
-          {districtsQ.isLoading ? (
-            <div className="text-sm text-slate-600">Loading districts…</div>
-          ) : districtsQ.isError ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              {(districtsQ.error as any)?.message ??
-                "Failed to load districts."}
+          {districts.length === 0 && !districtsQuery.isLoading ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              No districts found.
             </div>
-          ) : null}
+          ) : (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {pagedDistrictGroups.map((group) => (
+                <section
+                  key={group.countyId}
+                  className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white"
+                >
+                  {/* ====================================================
+                        COUNTY HEADER
+                    ==================================================== */}
+
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className="truncate text-sm font-extrabold text-slate-900"
+                        title={group.countyName}
+                      >
+                        {group.countyName}
+                      </div>
+                    </div>
+
+                    <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500 ring-1 ring-slate-200">
+                      {group.districts.length}{" "}
+                      {group.districts.length === 1 ? "district" : "districts"}
+                    </span>
+                  </div>
+
+                  {/* ====================================================
+                        DISTRICTS
+                    ==================================================== */}
+
+                  <div className="divide-y divide-slate-100">
+                    {group.districts.map((district) => {
+                      const name = safeStr(district.districtName) || "—";
+
+                      return (
+                        <div
+                          key={district.districtId}
+                          className="flex min-w-0 items-center gap-2 px-3 py-2"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div
+                              className="truncate text-sm font-semibold text-slate-800"
+                              title={name}
+                            >
+                              {name}
+                            </div>
+                          </div>
+
+                          {/* ==========================================
+                                  ADMIN ACTIONS
+
+                                  Hidden completely in Operations.
+                              ========================================== */}
+
+                          {canEdit && (
+                            <div className="flex shrink-0 items-center gap-1">
+                              <button
+                                type="button"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-green-600 hover:bg-slate-50"
+                                title="Edit district"
+                                onClick={() => openEdit(district)}
+                              >
+                                <Pencil size={14} />
+                              </button>
+
+                              <button
+                                type="button"
+                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50"
+                                disabled={deleteMutation.isPending}
+                                title="Delete district"
+                                onClick={() => {
+                                  const confirmed = window.confirm(
+                                    `Delete district "${name}"?`,
+                                  );
+
+                                  if (confirmed) {
+                                    deleteMutation.mutate(district.districtId);
+                                  }
+                                }}
+                              >
+                                <Trash2 size={14} className="text-red-600" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Table */}
-        <div className="mt-3">
-          <Table
-            columns={["County", "District", "Actions"]}
-            rows={
-              rows.length === 0 && !districtsQ.isLoading
-                ? [
-                    [
-                      <span key="empty" className="text-slate-600">
-                        No districts found.
-                      </span>,
-                      "",
-                      "",
-                    ],
-                  ]
-                : rows.map((d) => [
-                    <span
-                      key={`${d.districtId}-county`}
-                      className="text-slate-800"
-                    >
-                      {safeStr(d.countyName) || "—"}
-                    </span>,
-                    <span
-                      key={`${d.districtId}-name`}
-                      className="font-semibold text-slate-900"
-                    >
-                      {safeStr(d.districtName) || "—"}
-                    </span>,
-                    <div
-                      key={`${d.districtId}-actions`}
-                      className="flex items-center gap-2"
-                    >
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-base text-green-600 font-semibold hover:bg-slate-50 disabled:opacity-50"
-                        disabled={!canEdit}
-                        title={canEdit ? "Edit" : "NEC/SYSTEM only"}
-                        onClick={() => openEdit(d)}
-                      >
-                        <Pencil size={16} />
-                      </button>
+        {/* ==================================================================
+            PAGINATION
+        ================================================================== */}
 
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
-                        disabled={!canEdit || deleteM.isPending}
-                        title={canEdit ? "Delete" : "NEC/SYSTEM only"}
-                        onClick={() => {
-                          const ok = window.confirm(
-                            `Delete district "${safeStr(d.districtName)}"?`
-                          );
-                          if (ok) deleteM.mutate(d.districtId);
-                        }}
-                      >
-                        <Trash2 size={16} className="text-red-600" />
-                      </button>
-                    </div>,
-                  ])
-            }
-          />
-        </div>
-
-        {/* Pagination */}
         <div className="mt-3 flex items-center justify-between">
-          <div className="text-sm text-slate-600">
+          <div className="text-xs text-slate-600">
             Page <span className="font-bold">{page + 1}</span> of{" "}
             <span className="font-bold">{totalPages}</span>
           </div>
@@ -341,182 +574,183 @@ export default function DistrictsPage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
               disabled={page <= 0}
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              onClick={() => setPage((value) => Math.max(0, value - 1))}
             >
               Prev
             </button>
+
             <button
               type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
+              className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
               disabled={page >= totalPages - 1}
-              onClick={() => setPage((p) => p + 1)}
+              onClick={() => setPage((value) => value + 1)}
             >
               Next
             </button>
           </div>
         </div>
 
-        {/* Notes */}
-        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <Note
-            title="Access rules"
-            bullets={[
-              "NEC_ADMIN and SYSTEM_ADMIN can create/edit/delete districts.",
-              "Tenants can view districts read-only.",
-              "Districts must belong to a county.",
-            ]}
-          />
-          <Note
-            title="API mapping"
-            bullets={[
-              "GET /api/districts?q=&countyId=&page=&size=",
-              "GET /api/districts/by-county/{countyId}",
-              "POST /api/districts",
-              "PUT /api/districts/{id}",
-              "DELETE /api/districts/{id}",
-            ]}
-          />
-        </div>
+        {/* ==================================================================
+            ADMINISTRATIVE NOTES
+        ================================================================== */}
+
+        {!isOperations && (
+          <div className="mt-3 hidden grid-cols-1 gap-3 md:grid lg:grid-cols-2">
+            <Note
+              title="Access rules"
+              bullets={[
+                "NEC_ADMIN and SYSTEM_ADMIN can create/edit/delete districts.",
+                "Tenants can view districts read-only.",
+                "Districts must belong to a county.",
+                "Pagination is by county group so one county is never split across pages.",
+              ]}
+            />
+
+            <Note
+              title="API mapping"
+              bullets={[
+                "GET /api/districts?q=&countyId=&page=0&size=1000",
+                "GET /api/districts/by-county/{countyId}",
+                "PUT /api/districts/{id}",
+                "DELETE /api/districts/{id}",
+              ]}
+            />
+          </div>
+        )}
       </Card>
 
-      {/* ✅ Enhanced Modal - Create/Edit Form */}
-      {open && (
+      {/* ====================================================================
+          EDIT MODAL
+
+          Administrative portal only.
+      ==================================================================== */}
+
+      {canEdit && editing ? (
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={() => !saving && setOpen(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
+          onClick={closeEdit}
         >
           <div
-            className="w-full max-w-120 bg-white rounded-2xl shadow-2xl flex flex-col"
-            onClick={(e) => e.stopPropagation()}
+            className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
           >
-            {/* ✅ HEADER */}
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-8 py-6 text-white flex items-start justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <h2 className="text-2xl font-bold tracking-tight">
-                  {editing ? "Edit District" : "Add District"}
-                </h2>
-                <p className="text-blue-100 mt-1 text-sm">
-                  {editing
-                    ? "Update district master data."
-                    : "Create a new district."}
+            <div className="flex items-start justify-between gap-4 bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-5 text-white">
+              <div>
+                <h2 className="text-xl font-bold">Edit District</h2>
+
+                <p className="mt-1 text-sm text-blue-100">
+                  Update district master data.
                 </p>
               </div>
+
               <button
                 type="button"
-                onClick={() => setOpen(false)}
-                disabled={saving}
-                className="flex-shrink-0 h-10 w-10 rounded-lg bg-white/20 hover:bg-white/30 transition flex items-center justify-center text-white disabled:opacity-50"
+                onClick={closeEdit}
+                disabled={updateMutation.isPending}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/20 text-white hover:bg-white/30 disabled:opacity-50"
                 aria-label="Close"
               >
-                <X size={22} />
+                <X size={20} />
               </button>
             </div>
 
-            {/* ✅ CONTENT */}
-            <div className="px-8 py-6 space-y-4">
-              {/* County Dropdown */}
+            <div className="space-y-4 px-6 py-5">
               <div>
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wide block mb-2">
+                <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-700">
                   County *
                 </label>
+
                 <div className="relative">
                   <select
                     value={countyId}
-                    onChange={(e) => setCountyId(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !saving && countyId && normalizeName(districtName)) {
-                        save();
-                      }
-                    }}
-                    disabled={saving || countiesQ.isLoading || countiesQ.isError}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none disabled:bg-slate-100 disabled:text-slate-500 pr-10"
+                    onChange={(event) => setCountyId(event.target.value)}
+                    disabled={
+                      updateMutation.isPending ||
+                      countiesQuery.isLoading ||
+                      countiesQuery.isError
+                    }
+                    className="w-full appearance-none rounded-xl border border-slate-300 bg-white px-4 py-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100"
                   >
-                    <option value="">
-                      {countiesQ.isLoading
-                        ? "Loading counties…"
-                        : "-- Select County --"}
-                    </option>
-                    {countyOptions.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
+                    <option value="">Select County</option>
+
+                    {countyOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
-                  <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+
+                  <ChevronDown
+                    size={16}
+                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
                 </div>
               </div>
 
-              {/* District Name Input */}
               <div>
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wide block mb-2">
+                <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-700">
                   District Name *
                 </label>
+
                 <input
                   value={districtName}
-                  onChange={(e) => setDistrictName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !saving) {
-                      save();
-                    }
-                  }}
-                  disabled={saving}
+                  onChange={(event) => setDistrictName(event.target.value)}
+                  disabled={updateMutation.isPending}
                   type="text"
-                  placeholder="e.g., District 1"
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-slate-100 disabled:text-slate-500"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100"
                 />
               </div>
 
-              {/* Error Message */}
-              {error && (
-                <div className="rounded-xl bg-red-50 border border-red-200 p-4 flex gap-3">
-                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+              {updateMutation.error ? (
+                <div className="flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+                  <AlertCircle
+                    className="mt-0.5 shrink-0 text-red-600"
+                    size={20}
+                  />
+
                   <div>
                     <div className="text-sm font-bold text-red-900">Error</div>
-                    <div className="text-sm text-red-800 mt-1">
-                      {(error as any)?.message ?? "Failed to save district."}
+
+                    <div className="mt-1 text-sm text-red-800">
+                      {(updateMutation.error as any)?.message ??
+                        "Failed to update district."}
                     </div>
                   </div>
                 </div>
-              )}
-
-              {/* Info Message */}
-              <div className="rounded-xl bg-blue-50 border border-blue-200 p-3">
-                <p className="text-xs text-blue-700">
-                  💡 <span className="font-semibold">Tip:</span> Select a county first, then enter the district name. Press Enter to save.
-                </p>
-              </div>
+              ) : null}
             </div>
 
-            {/* ✅ FOOTER */}
-            <div className="border-t border-slate-200 bg-white px-8 py-4 flex items-center justify-end gap-3">
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
               <button
                 type="button"
-                onClick={() => setOpen(false)}
-                disabled={saving}
-                className="px-6 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-semibold hover:bg-slate-50 transition disabled:opacity-50"
+                onClick={closeEdit}
+                disabled={updateMutation.isPending}
+                className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
               >
                 Cancel
               </button>
 
               <button
                 type="button"
-                disabled={saving || !normalizeName(districtName) || !safeStr(countyId).trim() || !canEdit}
-                onClick={save}
-                className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition disabled:opacity-50 shadow-md"
+                onClick={() => updateMutation.mutate()}
+                disabled={
+                  updateMutation.isPending ||
+                  !canEdit ||
+                  !normalizeName(districtName) ||
+                  !safeStr(countyId).trim()
+                }
+                className="rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white shadow-md hover:bg-blue-700 disabled:opacity-50"
               >
-                {saving ? "Saving…" : editing ? "Update District" : "Create District"}
+                {updateMutation.isPending ? "Saving…" : "Update District"}
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </PageShell>
   );
 }
-
-
-

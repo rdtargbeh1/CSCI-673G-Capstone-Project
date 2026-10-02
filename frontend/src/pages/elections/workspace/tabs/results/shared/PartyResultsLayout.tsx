@@ -1,41 +1,15 @@
-// src/pages/elections/workspace/tabs/results/party/shared/PartyResultsLayout.tsx
+// src/pages/elections/workspace/tabs/results/shared/PartyResultsLayout.tsx
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 
 import {
-  Navigate,
   NavLink,
   Outlet,
   useLocation,
   useOutletContext,
 } from "react-router-dom";
-
-/**
- * ============================================================================
- * RESULTS • PARTY • LAYOUT
- * ============================================================================
- *
- * Path:
- *
- * /elections/:electionId/results/party/*
- *
- * Default:
- *
- * candidates/centers
- *
- * Mobile:
- *
- * Shows only the current Local Results sub-tab with a compact dropdown.
- *
- * Desktop:
- *
- * Keeps Candidate Stats and Geo Stats navigation visible.
- *
- * ResultsTab outlet context is forwarded to nested pages.
- * ============================================================================
- */
 
 // ============================================================================
 // TYPES
@@ -110,29 +84,13 @@ function ActiveDot({ active }: { active: boolean }) {
 // ============================================================================
 
 export default function PartyResultsLayout() {
-  // ==========================================================================
-  // OUTLET CONTEXT
-  // ==========================================================================
-
   const context = useOutletContext<ResultsOutletCtx>();
-
-  // ==========================================================================
-  // LOCATION
-  // ==========================================================================
 
   const location = useLocation();
 
-  // ==========================================================================
-  // DEFAULT ROUTE
-  // ==========================================================================
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
-  const pathname = location.pathname.replace(/\/+$/, "");
-
-  const isIndex = pathname.endsWith("/results/party");
-
-  if (isIndex) {
-    return <Navigate to={`candidates/centers${location.search}`} replace />;
-  }
+  const mobileNavRef = useRef<HTMLDivElement | null>(null);
 
   // ==========================================================================
   // TABS
@@ -226,34 +184,30 @@ export default function PartyResultsLayout() {
 
   const currentTab = useMemo(
     () =>
-      allTabs.find((tab) => location.pathname.includes(`/party/${tab.to}`)) ??
+      allTabs.find((tab) => location.pathname.endsWith(`/${tab.to}`)) ??
       candidateTabs[0],
 
     [allTabs, candidateTabs, location.pathname],
   );
 
-  // ==========================================================================
-  // CURRENT GROUP
-  // ==========================================================================
-
   const currentGroupLabel =
     currentTab.group === "CANDIDATE" ? "Candidate Stats" : "Geo Stats";
 
   // ==========================================================================
-  // PRESERVE QUERY STRING
+  // RELATIVE DESTINATION
   // ==========================================================================
 
   function tabDestination(to: string) {
-    return `${to}${location.search}`;
+    return {
+      pathname: to,
+
+      search: location.search,
+    };
   }
 
   // ==========================================================================
   // MOBILE NAV
   // ==========================================================================
-
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
-
-  const mobileNavRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -283,27 +237,67 @@ export default function PartyResultsLayout() {
   // ==========================================================================
 
   return (
-    <div className="relative flex min-w-0 flex-col gap-2">
-      {/* ====================================================================
-          MOBILE HEADER
-      ==================================================================== */}
+    <div
+      className="
+        relative
+        flex
+        min-w-0
+        flex-col
+        gap-2
+      "
+    >
+      {/* MOBILE */}
 
-      <div ref={mobileNavRef} className="relative z-40 sm:hidden">
-        <section className="rounded-xl border border-slate-200 bg-white px-3 py-3">
-          <div className="flex items-center justify-between gap-3">
-            {/* TITLE */}
-
+      <div
+        ref={mobileNavRef}
+        className="
+          relative
+          z-40
+          sm:hidden
+        "
+      >
+        <section
+          className="
+            rounded-xl
+            border
+            border-slate-200
+            bg-white
+            px-3
+            py-3
+          "
+        >
+          <div
+            className="
+              flex
+              items-center
+              justify-between
+              gap-3
+            "
+          >
             <div className="min-w-0">
-              <div className="text-lg font-bold text-slate-900">
+              <div
+                className="
+                  text-lg
+                  font-bold
+                  text-slate-900
+                "
+              >
                 Local Results
               </div>
 
-              <div className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-red-500">
+              <div
+                className="
+                  mt-0.5
+                  text-[10px]
+                  font-bold
+                  uppercase
+                  tracking-wide
+                  text-red-500
+                "
+              >
                 {currentGroupLabel}
               </div>
             </div>
-
-            {/* CURRENT TAB */}
 
             <button
               type="button"
@@ -327,8 +321,23 @@ export default function PartyResultsLayout() {
                 shadow-sm
               "
             >
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span className="h-2 w-2 shrink-0 rounded-full bg-red-600" />
+              <span
+                className="
+                  flex
+                  min-w-0
+                  items-center
+                  gap-1.5
+                "
+              >
+                <span
+                  className="
+                    h-2
+                    w-2
+                    shrink-0
+                    rounded-full
+                    bg-red-600
+                  "
+                />
 
                 <span className="truncate">{currentTab.label}</span>
               </span>
@@ -342,17 +351,36 @@ export default function PartyResultsLayout() {
           </div>
         </section>
 
-        {/* ==================================================================
-            MOBILE DROPDOWN
-        ================================================================== */}
-
-        {mobileNavOpen && (
-          <div className="absolute right-3 top-[58px] z-[100] w-[225px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
-            {/* ==============================================================
-                CANDIDATE STATS
-            ============================================================== */}
-
-            <div className="border-b border-slate-100 px-3 pb-1.5 pt-2.5 text-[9px] font-bold uppercase tracking-wider text-red-500">
+        {mobileNavOpen ? (
+          <div
+            className="
+              absolute
+              right-3
+              top-[58px]
+              z-[100]
+              w-[225px]
+              overflow-hidden
+              rounded-xl
+              border
+              border-slate-200
+              bg-white
+              shadow-2xl
+            "
+          >
+            <div
+              className="
+                border-b
+                border-slate-100
+                px-3
+                pb-1.5
+                pt-2.5
+                text-[9px]
+                font-bold
+                uppercase
+                tracking-wider
+                text-red-500
+              "
+            >
               Candidate Stats
             </div>
 
@@ -365,11 +393,20 @@ export default function PartyResultsLayout() {
               />
             ))}
 
-            {/* ==============================================================
-                GEO STATS
-            ============================================================== */}
-
-            <div className="border-y border-slate-100 px-3 pb-1.5 pt-2.5 text-[9px] font-bold uppercase tracking-wider text-red-500">
+            <div
+              className="
+                border-y
+                border-slate-100
+                px-3
+                pb-1.5
+                pt-2.5
+                text-[9px]
+                font-bold
+                uppercase
+                tracking-wider
+                text-red-500
+              "
+            >
               Geo Stats
             </div>
 
@@ -382,31 +419,69 @@ export default function PartyResultsLayout() {
               />
             ))}
           </div>
-        )}
+        ) : null}
       </div>
 
-      {/* ====================================================================
-          DESKTOP HEADER
-      ==================================================================== */}
+      {/* DESKTOP */}
 
-      <div className="hidden rounded-xl border border-slate-200 bg-white px-3 py-2 sm:block">
-        {/* TITLE */}
+      <div
+        className="
+          hidden
+          rounded-xl
+          border
+          border-slate-200
+          bg-white
+          px-3
+          py-2
+          sm:block
+        "
+      >
+        <div
+          className="
+            text-base
+            font-bold
+            text-slate-900
+          "
+        >
+          Local Results
+        </div>
 
-        <div className="text-base font-bold text-slate-900">Local Results</div>
-
-        {/* NAV */}
-
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-          {/* ================================================================
-              CANDIDATE STATS
-          ================================================================ */}
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-bold text-red-700">
+        <div
+          className="
+            mt-2
+            flex
+            flex-wrap
+            items-center
+            justify-between
+            gap-3
+          "
+        >
+          <div
+            className="
+              flex
+              flex-wrap
+              items-center
+              gap-2
+            "
+          >
+            <span
+              className="
+                text-sm
+                font-bold
+                text-red-700
+              "
+            >
               Candidate Stats:
             </span>
 
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div
+              className="
+                flex
+                flex-wrap
+                items-center
+                gap-1.5
+              "
+            >
               {candidateTabs.map((tab) => (
                 <NavLink
                   key={tab.to}
@@ -419,9 +494,19 @@ export default function PartyResultsLayout() {
 
                       <span>{tab.label}</span>
 
-                      {isActive && (
-                        <span className="absolute -bottom-[1px] left-2 right-2 h-[2px] rounded-full bg-red-600" />
-                      )}
+                      {isActive ? (
+                        <span
+                          className="
+                              absolute
+                              -bottom-[1px]
+                              left-2
+                              right-2
+                              h-[2px]
+                              rounded-full
+                              bg-red-600
+                            "
+                        />
+                      ) : null}
                     </>
                   )}
                 </NavLink>
@@ -429,14 +514,32 @@ export default function PartyResultsLayout() {
             </div>
           </div>
 
-          {/* ================================================================
-              GEO STATS
-          ================================================================ */}
+          <div
+            className="
+              flex
+              flex-wrap
+              items-center
+              gap-2
+            "
+          >
+            <span
+              className="
+                text-sm
+                font-bold
+                text-red-700
+              "
+            >
+              Geo Stats:
+            </span>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-bold text-red-700">Geo Stats:</span>
-
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div
+              className="
+                flex
+                flex-wrap
+                items-center
+                gap-1.5
+              "
+            >
               {totalsTabs.map((tab) => (
                 <NavLink
                   key={tab.to}
@@ -449,9 +552,19 @@ export default function PartyResultsLayout() {
 
                       <span>{tab.label}</span>
 
-                      {isActive && (
-                        <span className="absolute -bottom-[1px] left-2 right-2 h-[2px] rounded-full bg-red-600" />
-                      )}
+                      {isActive ? (
+                        <span
+                          className="
+                              absolute
+                              -bottom-[1px]
+                              left-2
+                              right-2
+                              h-[2px]
+                              rounded-full
+                              bg-red-600
+                            "
+                        />
+                      ) : null}
                     </>
                   )}
                 </NavLink>
@@ -461,9 +574,7 @@ export default function PartyResultsLayout() {
         </div>
       </div>
 
-      {/* ====================================================================
-          CHILD PAGE
-      ==================================================================== */}
+      {/* CHILD PAGE */}
 
       <Outlet context={context} />
     </div>
@@ -481,7 +592,13 @@ function PartyMobileOption({
 }: {
   label: string;
 
-  to: string;
+  to:
+    | string
+    | {
+        pathname: string;
+
+        search: string;
+      };
 
   active: boolean;
 }) {
@@ -509,7 +626,14 @@ function PartyMobileOption({
         active ? "bg-red-50 text-red-700" : "text-slate-700 hover:bg-slate-50",
       ].join(" ")}
     >
-      <span className="flex min-w-0 items-center gap-2">
+      <span
+        className="
+          flex
+          min-w-0
+          items-center
+          gap-2
+        "
+      >
         <span
           className={[
             "h-2 w-2 shrink-0 rounded-full",
@@ -521,7 +645,15 @@ function PartyMobileOption({
         <span className="truncate">{label}</span>
       </span>
 
-      {active && <Check size={13} className="shrink-0 text-red-600" />}
+      {active ? (
+        <Check
+          size={13}
+          className="
+            shrink-0
+            text-red-600
+          "
+        />
+      ) : null}
     </NavLink>
   );
 }

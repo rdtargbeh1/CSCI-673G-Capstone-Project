@@ -28,7 +28,14 @@ import java.util.Set;
  *     TALLY_OFFICER, AUDITOR, COORDINATOR, OBSERVER, SUPERVISOR,
  *     FIELD_OFFICER, PRESIDING_OFFICER, DATA_ENTRY
  *
- * Final authorization is the intersection of:
+ * Portal rule:
+ *
+ *     Administrative role -> Administrative Portal
+ *     Operational role    -> Operations Portal
+ *
+ * Portal selection does NOT require an election.
+ *
+ * Election-specific authority remains the intersection of:
  *
  *     role authority
  *     + organization/election boundary
@@ -61,29 +68,92 @@ public class OperationRolePolicy {
 
     private final AuthorizationService authz;
 
+    // ========================================================================
+    // CURRENT ROLE
+    // ========================================================================
+
     public Set<String> currentRoles() {
         return authz.currentRoles();
     }
 
+    // ========================================================================
+    // ROLE FAMILIES
+    // ========================================================================
+
     public boolean isAdministrativeRole() {
-        return containsAny(currentRoles(), ADMINISTRATIVE_ROLES);
+        return containsAny(
+                currentRoles(),
+                ADMINISTRATIVE_ROLES
+        );
     }
 
     public boolean isOperationalRole() {
-        return containsAny(currentRoles(), OPERATIONAL_ROLES);
+        return containsAny(
+                currentRoles(),
+                OPERATIONAL_ROLES
+        );
     }
 
+    /**
+     * Used by shared backend operational policies.
+     *
+     * Administrators may still use operational resources through their
+     * existing administrative portal.
+     *
+     * Regular operational users use those resources through the dedicated
+     * Operations Portal.
+     */
     public boolean canUseOperations() {
-        return isAdministrativeRole() || isOperationalRole();
+        return isAdministrativeRole()
+                || isOperationalRole();
     }
 
-    public boolean canReceiveElectionAssignment(String roleName) {
-        String normalized = normalize(roleName);
-        return normalized != null && OPERATIONAL_ROLES.contains(normalized);
+    // ========================================================================
+    // PORTAL ACCESS
+    // ========================================================================
+
+    /**
+     * Administrative Portal eligibility.
+     *
+     * No election is required to answer this question.
+     */
+    public boolean canAccessAdministrativePortal() {
+        return isAdministrativeRole();
     }
 
-    public void requireAssignableRole(String roleName) {
+    /**
+     * Operations Portal eligibility.
+     *
+     * No election is required to answer this question.
+     *
+     * Election assignment is checked later when election-scoped data is
+     * requested.
+     */
+    public boolean canAccessOperationsPortal() {
+        return isOperationalRole();
+    }
+
+    // ========================================================================
+    // ELECTION ASSIGNMENT ELIGIBILITY
+    // ========================================================================
+
+    public boolean canReceiveElectionAssignment(
+            String roleName
+    ) {
+
+        String normalized =
+                normalize(roleName);
+
+        return normalized != null
+                && OPERATIONAL_ROLES.contains(normalized);
+    }
+
+    public void requireAssignableRole(
+            String roleName
+    ) {
+
         if (!canReceiveElectionAssignment(roleName)) {
+
             throw new AccessDeniedException(
                     "Election geographic assignments are reserved for operational roles"
             );
@@ -91,15 +161,35 @@ public class OperationRolePolicy {
     }
 
     /**
-     * All operational roles may be assigned any supported geographic scope.
-     * Scope changes reach, not the role's authority.
+     * IMPORTANT:
+     *
+     * The precise role -> allowed scope matrix must remain a separately
+     * approved administrative assignment rule.
+     *
+     * Do not infer job authority from geographic scope.
+     *
+     * This method intentionally preserves the current backend assignment
+     * eligibility until the final role/scope matrix is explicitly locked.
      */
-    public boolean canReceiveScope(String roleName, AssignmentScope scope) {
-        return scope != null && canReceiveElectionAssignment(roleName);
+    public boolean canReceiveScope(
+            String roleName,
+            AssignmentScope scope
+    ) {
+
+        return scope != null
+                && canReceiveElectionAssignment(roleName);
     }
 
-    public void requireAssignableScope(String roleName, AssignmentScope scope) {
-        if (!canReceiveScope(roleName, scope)) {
+    public void requireAssignableScope(
+            String roleName,
+            AssignmentScope scope
+    ) {
+
+        if (!canReceiveScope(
+                roleName,
+                scope
+        )) {
+
             throw new AccessDeniedException(
                     "Role is not eligible for the requested election assignment scope"
             );
@@ -118,12 +208,15 @@ public class OperationRolePolicy {
         return canUseOperations();
     }
 
+    /**
+     * Allocations are read-only reference resources for regular operational
+     * users.
+     *
+     * Every Operations-capable role may read allocations inside its authorized
+     * election/geographic scope.
+     */
     public boolean canViewAllocations() {
-        return hasAnyRole(
-                "SYSTEM_ADMIN", "NEC_ADMIN", "TENANT_ADMIN", "ADMIN",
-                "TALLY_OFFICER", "AUDITOR", "COORDINATOR", "SUPERVISOR",
-                "FIELD_OFFICER", "PRESIDING_OFFICER", "DATA_ENTRY"
-        );
+        return canUseOperations();
     }
 
     public boolean canViewOperationalContacts() {
@@ -142,36 +235,51 @@ public class OperationRolePolicy {
         return canUseOperations();
     }
 
+    // ========================================================================
+    // OBSERVER REPORT ROLE AUTHORITY
+    // ========================================================================
+
     public boolean canViewObserverReports() {
         return canUseOperations();
     }
 
     public boolean canCreateObserverReport() {
+
         return hasAnyRole(
-                "SYSTEM_ADMIN", "NEC_ADMIN", "TENANT_ADMIN", "ADMIN",
-                "OBSERVER", "FIELD_OFFICER", "PRESIDING_OFFICER",
-                "SUPERVISOR", "COORDINATOR"
+                "SYSTEM_ADMIN",
+                "NEC_ADMIN",
+                "TENANT_ADMIN",
+                "ADMIN",
+
+                "OBSERVER",
+                "FIELD_OFFICER",
+                "PRESIDING_OFFICER",
+                "SUPERVISOR",
+                "COORDINATOR"
         );
     }
 
     public boolean canReviewObserverReports() {
+
         return hasAnyRole(
-                "SYSTEM_ADMIN", "NEC_ADMIN", "TENANT_ADMIN", "ADMIN",
-                "SUPERVISOR", "COORDINATOR"
+                "SYSTEM_ADMIN",
+                "NEC_ADMIN",
+                "TENANT_ADMIN",
+                "ADMIN",
+
+                "SUPERVISOR",
+                "COORDINATOR"
         );
     }
 
     /**
-     * ObserverReport delete authority.
-     *
-     * Geographic scope is NOT decided here.
-     *
      * Administrative roles retain their existing delete authority.
-     * Operational delete authority is limited to OBSERVER and SUPERVISOR.
      *
-     * FIELD_OFFICER cannot delete ObserverReport records.
+     * Operational delete remains role-limited to OBSERVER and SUPERVISOR.
+     * OperationObserverReportPolicy adds the required scope/resource checks.
      */
     public boolean canDeleteObserverReport() {
+
         return isAdministrativeRole()
                 || hasAnyRole(
                 "OBSERVER",
@@ -179,25 +287,59 @@ public class OperationRolePolicy {
         );
     }
 
+    // ========================================================================
+    // DISCREPANCIES
+    // ========================================================================
+
+    /**
+     * Operational workspace:
+     * discrepancies are read-only.
+     */
     public boolean canViewDiscrepancies() {
         return canUseOperations();
     }
 
+    /**
+     * Administrative workflows may still manage discrepancies.
+     *
+     * Regular operational users cannot mutate discrepancy records through the
+     * Operations Portal.
+     */
     public boolean canManageDiscrepancies() {
-        return hasAnyRole(
-                "SYSTEM_ADMIN", "NEC_ADMIN", "TENANT_ADMIN", "ADMIN",
-                "TALLY_OFFICER", "SUPERVISOR", "COORDINATOR"
-        );
+        return isAdministrativeRole();
     }
+
+    // ========================================================================
+    // REPORTS
+    // ========================================================================
 
     public boolean canViewScopedReports() {
         return canUseOperations();
     }
 
+    /**
+     * WHAT-level report generation authority.
+     *
+     * OperationResourcePolicy applies the additional scope ceiling:
+     *
+     *     COUNTY
+     *     DISTRICT
+     *     CENTER
+     *
+     * for operational users.
+     */
     public boolean canGenerateScopedReports() {
+
         return hasAnyRole(
-                "SYSTEM_ADMIN", "NEC_ADMIN", "TENANT_ADMIN", "ADMIN",
-                "TALLY_OFFICER", "AUDITOR", "SUPERVISOR", "COORDINATOR"
+                "SYSTEM_ADMIN",
+                "NEC_ADMIN",
+                "TENANT_ADMIN",
+                "ADMIN",
+
+                "TALLY_OFFICER",
+                "AUDITOR",
+                "SUPERVISOR",
+                "COORDINATOR"
         );
     }
 
@@ -210,36 +352,68 @@ public class OperationRolePolicy {
     }
 
     public boolean canCreateSubmission() {
+
         return hasAnyRole(
-                "SYSTEM_ADMIN", "NEC_ADMIN", "TENANT_ADMIN", "ADMIN",
-                "FIELD_OFFICER", "PRESIDING_OFFICER", "DATA_ENTRY"
+                "SYSTEM_ADMIN",
+                "NEC_ADMIN",
+                "TENANT_ADMIN",
+                "ADMIN",
+
+                "FIELD_OFFICER",
+                "PRESIDING_OFFICER",
+                "DATA_ENTRY"
         );
     }
 
     public boolean canEditSubmission() {
+
         return hasAnyRole(
-                "SYSTEM_ADMIN", "NEC_ADMIN", "TENANT_ADMIN", "ADMIN",
-                "FIELD_OFFICER", "PRESIDING_OFFICER", "DATA_ENTRY"
+                "SYSTEM_ADMIN",
+                "NEC_ADMIN",
+                "TENANT_ADMIN",
+                "ADMIN",
+
+                "FIELD_OFFICER",
+                "PRESIDING_OFFICER",
+                "DATA_ENTRY"
         );
     }
 
     public boolean canVerifySubmission() {
+
         return hasAnyRole(
-                "SYSTEM_ADMIN", "NEC_ADMIN", "TENANT_ADMIN", "ADMIN",
-                "TALLY_OFFICER", "SUPERVISOR"
+                "SYSTEM_ADMIN",
+                "NEC_ADMIN",
+                "TENANT_ADMIN",
+                "ADMIN",
+
+                "TALLY_OFFICER",
+                "SUPERVISOR"
         );
     }
 
     public boolean canFlagSubmission() {
+
         return hasAnyRole(
-                "SYSTEM_ADMIN", "NEC_ADMIN", "TENANT_ADMIN", "ADMIN",
-                "TALLY_OFFICER", "SUPERVISOR", "COORDINATOR"
+                "SYSTEM_ADMIN",
+                "NEC_ADMIN",
+                "TENANT_ADMIN",
+                "ADMIN",
+
+                "TALLY_OFFICER",
+                "SUPERVISOR",
+                "COORDINATOR"
         );
     }
 
     public boolean canAmendSubmission() {
+
         return hasAnyRole(
-                "SYSTEM_ADMIN", "NEC_ADMIN", "TENANT_ADMIN", "ADMIN",
+                "SYSTEM_ADMIN",
+                "NEC_ADMIN",
+                "TENANT_ADMIN",
+                "ADMIN",
+
                 "TALLY_OFFICER"
         );
     }
@@ -249,9 +423,16 @@ public class OperationRolePolicy {
     }
 
     public boolean canResubmitSubmission() {
+
         return hasAnyRole(
-                "SYSTEM_ADMIN", "NEC_ADMIN", "TENANT_ADMIN", "ADMIN",
-                "FIELD_OFFICER", "PRESIDING_OFFICER", "DATA_ENTRY"
+                "SYSTEM_ADMIN",
+                "NEC_ADMIN",
+                "TENANT_ADMIN",
+                "ADMIN",
+
+                "FIELD_OFFICER",
+                "PRESIDING_OFFICER",
+                "DATA_ENTRY"
         );
     }
 
@@ -263,14 +444,30 @@ public class OperationRolePolicy {
     // HELPERS
     // ========================================================================
 
-    private boolean hasAnyRole(String... roles) {
-        Set<String> current = currentRoles();
-        if (current == null || current.isEmpty() || roles == null) {
+    private boolean hasAnyRole(
+            String... roles
+    ) {
+
+        Set<String> current =
+                currentRoles();
+
+        if (
+                current == null
+                        || current.isEmpty()
+                        || roles == null
+        ) {
             return false;
         }
 
         for (String role : roles) {
-            if (role != null && current.contains(role)) {
+
+            String normalized =
+                    normalize(role);
+
+            if (
+                    normalized != null
+                            && current.contains(normalized)
+            ) {
                 return true;
             }
         }
@@ -278,12 +475,22 @@ public class OperationRolePolicy {
         return false;
     }
 
-    private boolean containsAny(Set<String> current, Set<String> expected) {
-        if (current == null || current.isEmpty()) {
+    private boolean containsAny(
+            Set<String> current,
+            Set<String> expected
+    ) {
+
+        if (
+                current == null
+                        || current.isEmpty()
+                        || expected == null
+                        || expected.isEmpty()
+        ) {
             return false;
         }
 
         for (String role : expected) {
+
             if (current.contains(role)) {
                 return true;
             }
@@ -292,10 +499,30 @@ public class OperationRolePolicy {
         return false;
     }
 
-    private String normalize(String roleName) {
-        if (roleName == null || roleName.isBlank()) {
+    private String normalize(
+            String roleName
+    ) {
+
+        if (
+                roleName == null
+                        || roleName.isBlank()
+        ) {
             return null;
         }
-        return roleName.trim().toUpperCase(Locale.ROOT);
+
+        String role =
+                roleName
+                        .trim()
+                        .toUpperCase(Locale.ROOT);
+
+        if (role.startsWith("ROLE_")) {
+            role =
+                    role.substring(
+                            "ROLE_".length()
+                    );
+        }
+
+        return role;
     }
 }
+

@@ -45,7 +45,7 @@ export function decodeIsSystemAdmin(token: string | null): boolean {
       atob(b64)
         .split("")
         .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
-        .join("")
+        .join(""),
     );
 
     const payload = JSON.parse(json) as any;

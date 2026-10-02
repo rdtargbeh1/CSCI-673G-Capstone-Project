@@ -1,407 +1,569 @@
-
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, RefreshCw, Search, Trash2, X, AlertCircle } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  AlertCircle,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import { useAuthStore } from "../../shared/store/authStore";
+
 import {
-  createCounty,
   deleteCounty,
   fetchCounties,
   updateCounty,
   type CountyDto,
 } from "../../shared/services/countyService";
 
-import {
-  Badge,
-  Card,
-  Note,
-  PageShell,
-  Table,
-} from "./shared/geo-ui";
+import { Badge, Card, Note, PageShell } from "./shared/geo-ui";
 
-/** ---------------- helpers ---------------- */
-function safeStr(v: any) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+function safeStr(value: unknown) {
+  return typeof value === "string" ? value : value == null ? "" : String(value);
 }
-function normalizeName(v: string) {
-  return v.trim().replace(/\s+/g, " ");
+
+function normalizeName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
 }
+
+// ============================================================================
+// COUNTIES PAGE
+// ============================================================================
 
 export default function CountiesPage() {
-  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
 
-  const dashboardMode = useAuthStore((s) => s.dashboardMode);
-  const canEdit = dashboardMode === "NEC" || dashboardMode === "SYSTEM";
+  const queryClient = useQueryClient();
+
+  // ==========================================================================
+  // PORTAL CONTEXT
+  // ==========================================================================
+  //
+  // Operations Geography is always read-only.
+  //
+  // Administrative / Setup keeps the existing NEC / SYSTEM permissions.
+  //
+  // ==========================================================================
+
+  const isOperations =
+    pathname === "/operations" || pathname.startsWith("/operations/");
+
+  const dashboardMode = useAuthStore((state) => state.dashboardMode);
+
+  const hasAdministrativeEditAccess =
+    dashboardMode === "NEC" || dashboardMode === "SYSTEM";
+
+  const canEdit = !isOperations && hasAdministrativeEditAccess;
+
+  // ==========================================================================
+  // STATE
+  // ==========================================================================
 
   const [q, setQ] = useState("");
-  const [page, setPage] = useState(0);
-  const size = 20;
 
-  // modal state
-  const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CountyDto | null>(null);
+
   const [name, setName] = useState("");
 
-  const countiesQ = useQuery({
-    queryKey: ["counties", page, q],
+  // ==========================================================================
+  // COUNTIES QUERY
+  // ==========================================================================
+
+  const countiesQuery = useQuery({
+    queryKey: ["counties", q],
+
     queryFn: () =>
       fetchCounties({
-        page,
-        size,
+        page: 0,
+        size: 250,
         q: q.trim() || undefined,
       }),
+
     staleTime: 10_000,
+
     retry: 1,
   });
 
-  const rows = useMemo(() => countiesQ.data?.items ?? [], [countiesQ.data]);
-  const totalPages = Math.max(1, countiesQ.data?.totalPages ?? 1);
+  // ==========================================================================
+  // SORTED COUNTIES
+  // ==========================================================================
+
+  const counties = useMemo(
+    () =>
+      [...(countiesQuery.data?.items ?? [])].sort((a, b) =>
+        safeStr(a.countyName).localeCompare(safeStr(b.countyName)),
+      ),
+    [countiesQuery.data],
+  );
+
+  // ==========================================================================
+  // REFRESH
+  // ==========================================================================
 
   const refreshNow = async () => {
-    await qc.invalidateQueries({ queryKey: ["counties"] });
-    await countiesQ.refetch();
+    await queryClient.invalidateQueries({
+      queryKey: ["counties"],
+    });
+
+    await countiesQuery.refetch();
   };
 
-  const createM = useMutation({
+  // ==========================================================================
+  // UPDATE COUNTY
+  // ==========================================================================
+  //
+  // Even though Operations does not render the edit controls, the mutation
+  // also checks canEdit so Operations cannot update a county through this
+  // component.
+  //
+  // ==========================================================================
+
+  const updateMutation = useMutation({
     mutationFn: async () => {
+      if (!canEdit) {
+        throw new Error("Geography is read-only in Operations.");
+      }
+
+      if (!editing) {
+        throw new Error("No county selected.");
+      }
+
       const countyName = normalizeName(name);
-      if (!countyName) throw new Error("County name is required.");
-      return createCounty({ countyName });
+
+      if (!countyName) {
+        throw new Error("County name is required.");
+      }
+
+      return updateCounty(editing.countyId, {
+        countyName,
+      });
     },
+
     onSuccess: async () => {
-      setOpen(false);
       setEditing(null);
       setName("");
+
       await refreshNow();
     },
   });
 
-  const updateM = useMutation({
-    mutationFn: async () => {
-      if (!editing) throw new Error("No county selected.");
-      const countyName = normalizeName(name);
-      if (!countyName) throw new Error("County name is required.");
-      return updateCounty(editing.countyId, { countyName });
-    },
-    onSuccess: async () => {
-      setOpen(false);
-      setEditing(null);
-      setName("");
-      await refreshNow();
-    },
-  });
+  // ==========================================================================
+  // DELETE COUNTY
+  // ==========================================================================
 
-  const deleteM = useMutation({
+  const deleteMutation = useMutation({
     mutationFn: async (countyId: string) => {
+      if (!canEdit) {
+        throw new Error("Geography is read-only in Operations.");
+      }
+
       await deleteCounty(countyId);
     },
+
     onSuccess: refreshNow,
   });
 
+  // ==========================================================================
+  // CREATE
+  // ==========================================================================
+
   const openCreate = () => {
+    if (!canEdit) {
+      return;
+    }
+
+    navigate("new");
+  };
+
+  // ==========================================================================
+  // EDIT
+  // ==========================================================================
+
+  const openEdit = (county: CountyDto) => {
+    if (!canEdit) {
+      return;
+    }
+
+    setEditing(county);
+
+    setName(safeStr(county.countyName));
+  };
+
+  // ==========================================================================
+  // CLOSE EDIT
+  // ==========================================================================
+
+  const closeEdit = () => {
+    if (updateMutation.isPending) {
+      return;
+    }
+
     setEditing(null);
     setName("");
-    setOpen(true);
   };
 
-  const openEdit = (c: CountyDto) => {
-    setEditing(c);
-    setName(safeStr(c.countyName));
-    setOpen(true);
-  };
-
-  const save = () => {
-    if (!canEdit) return;
-    if (editing) updateM.mutate();
-    else createM.mutate();
-  };
-
-  const saving = createM.isPending || updateM.isPending;
-  const error = createM.error || updateM.error;
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
 
   return (
     <PageShell
       title="Geography • Counties"
       subtitle="Global master data used across allocations, submissions, and results drilldowns."
       right={
-        <div className="flex items-center gap-2">
-          <Badge>
-            {canEdit ? "Editable (NEC/SYSTEM)" : "Read-only (Tenant)"}
-          </Badge>
+        <div className="flex w-full items-center gap-2 sm:w-auto">
+          {/* ==============================================================
+              ACCESS BADGE
+          ============================================================== */}
+
+          <div className="hidden sm:block">
+            <Badge>
+              {isOperations
+                ? "Read-only (Operations)"
+                : canEdit
+                  ? "Editable (NEC/SYSTEM)"
+                  : "Read-only (Tenant)"}
+            </Badge>
+          </div>
+
+          {/* ==============================================================
+              REFRESH
+
+              Refresh remains available in Operations because it does not
+              modify geography data.
+          ============================================================== */}
 
           <button
             type="button"
             onClick={refreshNow}
-            disabled={countiesQ.isFetching}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-blue-100 px-3 py-2 text-base font-semibold hover:bg-slate-50 disabled:opacity-50"
+            disabled={countiesQuery.isFetching}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-blue-100 px-3 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
           >
-            <RefreshCw size={16} />
+            <RefreshCw
+              size={16}
+              className={countiesQuery.isFetching ? "animate-spin" : ""}
+            />
             Refresh
           </button>
 
-          <button
-            type="button"
-            onClick={openCreate}
-            disabled={!canEdit}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-[#0000CD] text-white px-3 py-2 text-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
-            title={canEdit ? "Add County" : "NEC/SYSTEM only"}
-          >
-            <Plus size={16} />
-            Add County
-          </button>
+          {/* ==============================================================
+              CREATE
+
+              Completely hidden in Operations.
+
+              Administrative / Setup behavior remains unchanged.
+          ============================================================== */}
+
+          {canEdit && (
+            <button
+              type="button"
+              onClick={openCreate}
+              className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-[#0000CD] px-3 text-sm font-semibold text-white hover:bg-blue-700 sm:flex-none"
+              title="Create counties"
+            >
+              <Plus size={16} />
+              Create Counties
+            </button>
+          )}
         </div>
       }
     >
       <Card title="Counties">
-        {/* Filters */}
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex w-full items-center gap-2 sm:max-w-xl">
-            <div className="relative w-full">
-              <Search
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-                size={16}
-              />
-              <input
-                value={q}
-                onChange={(e) => {
-                  setQ(e.target.value);
-                  setPage(0);
-                }}
-                placeholder="Search counties…"
-                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-base outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+        {/* ==================================================================
+            SEARCH
+        ================================================================== */}
 
-            <button
-              type="button"
-              onClick={() => {
-                setQ("");
-                setPage(0);
-              }}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-semibold hover:bg-slate-50"
-            >
-              Clear
-            </button>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_120px]">
+          <div className="relative">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              size={16}
+            />
+
+            <input
+              value={q}
+              onChange={(event) => setQ(event.target.value)}
+              placeholder="Search counties…"
+              className="h-10 w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
+
+          <button
+            type="button"
+            onClick={() => setQ("")}
+            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold hover:bg-slate-50"
+          >
+            Clear
+          </button>
         </div>
 
-        {/* Status */}
+        {/* ==================================================================
+            STATUS
+        ================================================================== */}
+
+        {countiesQuery.isLoading ? (
+          <div className="mt-3 text-sm text-slate-600">Loading counties…</div>
+        ) : countiesQuery.isError ? (
+          <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {(countiesQuery.error as any)?.message ??
+              "Failed to load counties."}
+          </div>
+        ) : null}
+
+        {/* ==================================================================
+            COUNTY GRID
+        ================================================================== */}
+
         <div className="mt-3">
-          {countiesQ.isLoading ? (
-            <div className="text-sm text-slate-600">Loading counties…</div>
-          ) : countiesQ.isError ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              {(countiesQ.error as any)?.message ?? "Failed to load counties."}
+          {counties.length === 0 && !countiesQuery.isLoading ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              No counties found.
             </div>
-          ) : null}
+          ) : (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {counties.map((county, index) => {
+                const countyName = safeStr(county.countyName) || "—";
+
+                return (
+                  <article
+                    key={county.countyId}
+                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm"
+                  >
+                    {/* ==================================================
+                          NUMBER
+                      ================================================== */}
+
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-xs font-extrabold text-blue-700">
+                      {index + 1}
+                    </div>
+
+                    {/* ==================================================
+                          COUNTY NAME
+                      ================================================== */}
+
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-extrabold text-slate-900">
+                        {countyName}
+                      </div>
+                    </div>
+
+                    {/* ==================================================
+                          ACTIONS
+
+                          Completely removed from the Operations portal.
+
+                          They are only rendered when canEdit === true.
+                      ================================================== */}
+
+                    {canEdit && (
+                      <div className="flex shrink-0 items-center gap-1">
+                        {/* ==============================================
+                              EDIT
+                          ============================================== */}
+
+                        <button
+                          type="button"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-green-600 hover:bg-slate-50"
+                          title="Edit county"
+                          onClick={() => openEdit(county)}
+                        >
+                          <Pencil size={14} />
+                        </button>
+
+                        {/* ==============================================
+                              DELETE
+                          ============================================== */}
+
+                        <button
+                          type="button"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50"
+                          disabled={deleteMutation.isPending}
+                          title="Delete county"
+                          onClick={() => {
+                            const confirmed = window.confirm(
+                              `Delete county "${countyName}"?`,
+                            );
+
+                            if (confirmed) {
+                              deleteMutation.mutate(county.countyId);
+                            }
+                          }}
+                        >
+                          <Trash2 size={14} className="text-red-600" />
+                        </button>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* Table */}
-        <div className="mt-3">
-          <Table
-            columns={["County", "Actions"]}
-            rows={
-              rows.length === 0 && !countiesQ.isLoading
-                ? [
-                    [
-                      <span key="empty" className="text-slate-600">
-                        No counties found.
-                      </span>,
-                      "",
-                    ],
-                  ]
-                : rows.map((c) => [
-                    <div
-                      key={c.countyId}
-                      className="font-semibold text-slate-900"
-                    >
-                      {safeStr(c.countyName) || "—"}
-                    </div>,
-                    <div
-                      key={`${c.countyId}-actions`}
-                      className="flex items-center gap-2"
-                    >
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white text-green-600 px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
-                        disabled={!canEdit}
-                        title={canEdit ? "Edit" : "NEC/SYSTEM only"}
-                        onClick={() => openEdit(c)}
-                      >
-                        <Pencil size={16} />
-                      </button>
+        {/* ==================================================================
+            COUNT
+        ================================================================== */}
 
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
-                        disabled={!canEdit || deleteM.isPending}
-                        title={canEdit ? "Delete" : "NEC/SYSTEM only"}
-                        onClick={() => {
-                          const ok = window.confirm(
-                            `Delete county "${safeStr(c.countyName)}"?`
-                          );
-                          if (ok) deleteM.mutate(c.countyId);
-                        }}
-                      >
-                        <Trash2 size={16} className="text-red-600" />
-                      </button>
-                    </div>,
-                  ])
-            }
-          />
+        <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+          <span>
+            {counties.length} {counties.length === 1 ? "county" : "counties"}
+          </span>
         </div>
 
-        {/* Pagination */}
-        <div className="mt-3 flex items-center justify-between">
-          <div className="text-sm text-slate-600">
-            Page <span className="font-bold">{page + 1}</span> of{" "}
-            <span className="font-bold">{totalPages}</span>
+        {/* ==================================================================
+            ADMINISTRATIVE NOTES
+
+            These are hidden from Operations because the Operations portal
+            does not need create/edit/delete API information.
+        ================================================================== */}
+
+        {!isOperations && (
+          <div className="mt-3 hidden grid-cols-1 gap-3 md:grid lg:grid-cols-2">
+            <Note
+              title="Access rules"
+              bullets={[
+                "NEC_ADMIN and SYSTEM_ADMIN can create/edit/delete counties.",
+                "Tenants can view counties read-only.",
+                "Counties drive district and polling-center drilldowns.",
+              ]}
+            />
+
+            <Note
+              title="API mapping"
+              bullets={[
+                "GET /api/counties?q=&page=&size=",
+                "PUT /api/counties/{countyId}",
+                "DELETE /api/counties/{countyId}",
+              ]}
+            />
           </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
-              disabled={page <= 0}
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-            >
-              Prev
-            </button>
-            <button
-              type="button"
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:opacity-50"
-              disabled={page >= totalPages - 1}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-            </button>
-          </div>
-        </div>
-
-        {/* Notes */}
-        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <Note
-            title="Access rules"
-            bullets={[
-              "NEC_ADMIN and SYSTEM_ADMIN can create/edit/delete counties.",
-              "Tenants can view counties read-only.",
-              "Counties drive district/polling center drilldowns everywhere.",
-            ]}
-          />
-          <Note
-            title="API mapping"
-            bullets={[
-              "GET /api/counties?q=&page=&size=",
-              "POST /api/counties",
-              "PUT /api/counties/{countyId}",
-              "DELETE /api/counties/{countyId}",
-            ]}
-          />
-        </div>
+        )}
       </Card>
 
-      {/* ✅ Enhanced Modal - Create/Edit Form */}
-      {open && (
+      {/* ====================================================================
+          EDIT MODAL
+
+          IMPORTANT:
+
+          The modal requires BOTH:
+
+          editing !== null
+          canEdit === true
+
+          Therefore it can never render in Operations.
+      ==================================================================== */}
+
+      {canEdit && editing ? (
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={() => !saving && setOpen(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4 backdrop-blur-sm"
+          onClick={closeEdit}
         >
           <div
-            className="w-full max-w-120 bg-white rounded-2xl shadow-2xl flex flex-col"
-            onClick={(e) => e.stopPropagation()}
+            className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
           >
-            {/* ✅ HEADER */}
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-8 py-6 text-white flex items-start justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <h2 className="text-2xl font-bold tracking-tight">
-                  {editing ? "Edit County" : "Add County"}
-                </h2>
-                <p className="text-blue-100 mt-1 text-sm">
-                  {editing
-                    ? "Update county master data."
-                    : "Create a new county."}
+            {/* ============================================================
+                MODAL HEADER
+            ============================================================ */}
+
+            <div className="flex items-start justify-between gap-4 bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-5 text-white">
+              <div>
+                <h2 className="text-xl font-bold">Edit County</h2>
+
+                <p className="mt-1 text-sm text-blue-100">
+                  Update county master data.
                 </p>
               </div>
+
               <button
                 type="button"
-                onClick={() => setOpen(false)}
-                disabled={saving}
-                className="flex-shrink-0 h-10 w-10 rounded-lg bg-white/20 hover:bg-white/30 transition flex items-center justify-center text-white disabled:opacity-50"
+                onClick={closeEdit}
+                disabled={updateMutation.isPending}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/20 text-white hover:bg-white/30 disabled:opacity-50"
                 aria-label="Close"
               >
-                <X size={22} />
+                <X size={20} />
               </button>
             </div>
 
-            {/* ✅ CONTENT */}
-            <div className="px-8 py-6 space-y-4">
-              {/* County Name Input */}
+            {/* ============================================================
+                MODAL BODY
+            ============================================================ */}
+
+            <div className="space-y-4 px-6 py-5">
               <div>
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wide block mb-2">
+                <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-700">
                   County Name *
                 </label>
+
                 <input
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !saving) {
-                      save();
-                    }
-                  }}
-                  disabled={saving}
+                  onChange={(event) => setName(event.target.value)}
+                  disabled={updateMutation.isPending}
                   type="text"
-                  placeholder="e.g., Montserrado"
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-slate-100 disabled:text-slate-500"
+                  maxLength={120}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100"
                 />
               </div>
 
-              {/* Error Message */}
-              {error && (
-                <div className="rounded-xl bg-red-50 border border-red-200 p-4 flex gap-3">
-                  <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+              {updateMutation.error ? (
+                <div className="flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+                  <AlertCircle
+                    className="mt-0.5 shrink-0 text-red-600"
+                    size={20}
+                  />
+
                   <div>
                     <div className="text-sm font-bold text-red-900">Error</div>
-                    <div className="text-sm text-red-800 mt-1">
-                      {(error as any)?.message ?? "Failed to save county."}
+
+                    <div className="mt-1 text-sm text-red-800">
+                      {(updateMutation.error as any)?.message ??
+                        "Failed to update county."}
                     </div>
                   </div>
                 </div>
-              )}
-
-              {/* Info Message */}
-              <div className="rounded-xl bg-blue-50 border border-blue-200 p-3">
-                <p className="text-xs text-blue-700">
-                  💡 <span className="font-semibold">Tip:</span> County names are global master data. Press Enter to save or click the Save button.
-                </p>
-              </div>
+              ) : null}
             </div>
 
-            {/* ✅ FOOTER */}
-            <div className="border-t border-slate-200 bg-white px-8 py-4 flex items-center justify-end gap-3">
+            {/* ============================================================
+                MODAL FOOTER
+            ============================================================ */}
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
               <button
                 type="button"
-                onClick={() => setOpen(false)}
-                disabled={saving}
-                className="px-6 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-semibold hover:bg-slate-50 transition disabled:opacity-50"
+                onClick={closeEdit}
+                disabled={updateMutation.isPending}
+                className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
               >
                 Cancel
               </button>
 
               <button
                 type="button"
-                disabled={saving || !normalizeName(name) || !canEdit}
-                onClick={save}
-                className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition disabled:opacity-50 shadow-md"
+                onClick={() => updateMutation.mutate()}
+                disabled={
+                  updateMutation.isPending || !canEdit || !normalizeName(name)
+                }
+                className="rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white shadow-md hover:bg-blue-700 disabled:opacity-50"
               >
-                {saving ? "Saving…" : editing ? "Update County" : "Create County"}
+                {updateMutation.isPending ? "Saving…" : "Update County"}
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </PageShell>
   );
 }

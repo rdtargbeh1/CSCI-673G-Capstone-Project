@@ -1,5 +1,3 @@
-
-
 /**
  * WORKSPACE: NEC WORKFLOW (LAYOUT)
  *
@@ -14,41 +12,95 @@
  *   - geo outputs (v_nec_result_geo / mv_nec_result_geo)
  */
 
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useParams } from "react-router-dom";
+
 import { Panel } from "../../../../shared/elections-ui";
+
+// ============================================================================
+// TAB STYLE
+// ============================================================================
 
 function tabClass(active: boolean) {
   return [
     "relative inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-lg font-extrabold transition",
+
     active
       ? "border-indigo-200 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-100"
       : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
   ].join(" ");
 }
 
+// ============================================================================
+// ACTIVE DOT
+// ============================================================================
+
 function ActiveDot({ active }: { active: boolean }) {
   return (
     <span
       className={[
         "h-2.5 w-2.5 rounded-full",
+
         active ? "bg-indigo-600" : "bg-slate-300",
       ].join(" ")}
     />
   );
 }
 
+// ============================================================================
+// COMPONENT
+// ============================================================================
+
 export default function NecWorkflowTab() {
+  const { electionId } = useParams<{ electionId: string }>();
+
+  // ==========================================================================
+  // ROUTE BASE
+  //
+  // IMPORTANT:
+  //
+  // Do not use:
+  //
+  // to="nec-result"
+  // to="history"
+  //
+  // Those paths are relative to the CURRENT child route.
+  //
+  // Example:
+  //
+  // /nec-workflow/nec-result + history
+  // becomes:
+  // /nec-workflow/nec-result/history
+  //
+  // Use the election-scoped absolute URL instead.
+  // ==========================================================================
+
+  const necWorkflowBase = `/elections/${electionId}/nec-workflow`;
+
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
+
   return (
     <div className="flex flex-col gap-2">
       <Panel
         title="NEC Workflow"
         right={
           <div className="flex flex-wrap items-center gap-2">
-            <NavLink to="nec-result" className={({ isActive }) => tabClass(isActive)}>
+            {/* ================================================================ */}
+            {/* NEC RESULT */}
+            {/* ================================================================ */}
+
+            <NavLink
+              to={`${necWorkflowBase}/nec-result`}
+              end
+              className={({ isActive }) => tabClass(isActive)}
+            >
               {({ isActive }) => (
                 <>
                   <ActiveDot active={isActive} />
+
                   <span>NEC Result</span>
+
                   {isActive && (
                     <span className="absolute -bottom-[2px] left-2 right-2 h-[2px] rounded-full bg-indigo-600" />
                   )}
@@ -56,23 +108,45 @@ export default function NecWorkflowTab() {
               )}
             </NavLink>
 
-            {/* <NavLink to="staging" className={({ isActive }) => tabClass(isActive)}>
+            {/* ================================================================ */}
+            {/* STAGING */}
+            {/* ================================================================ */}
+
+            {/*
+            <NavLink
+              to={`${necWorkflowBase}/staging`}
+              end
+              className={({ isActive }) => tabClass(isActive)}
+            >
               {({ isActive }) => (
                 <>
                   <ActiveDot active={isActive} />
+
                   <span>Staging</span>
+
                   {isActive && (
                     <span className="absolute -bottom-[2px] left-2 right-2 h-[2px] rounded-full bg-indigo-600" />
                   )}
                 </>
               )}
-            </NavLink> */}
+            </NavLink>
+            */}
 
-            <NavLink to="history" className={({ isActive }) => tabClass(isActive)}>
+            {/* ================================================================ */}
+            {/* HISTORY */}
+            {/* ================================================================ */}
+
+            <NavLink
+              to={`${necWorkflowBase}/history`}
+              end
+              className={({ isActive }) => tabClass(isActive)}
+            >
               {({ isActive }) => (
                 <>
                   <ActiveDot active={isActive} />
+
                   <span>History</span>
+
                   {isActive && (
                     <span className="absolute -bottom-[2px] left-2 right-2 h-[2px] rounded-full bg-indigo-600" />
                   )}
@@ -80,17 +154,29 @@ export default function NecWorkflowTab() {
               )}
             </NavLink>
 
-            {/* <NavLink to="geo" className={({ isActive }) => tabClass(isActive)}>
+            {/* ================================================================ */}
+            {/* GEO */}
+            {/* ================================================================ */}
+
+            {/*
+            <NavLink
+              to={`${necWorkflowBase}/geo`}
+              end
+              className={({ isActive }) => tabClass(isActive)}
+            >
               {({ isActive }) => (
                 <>
                   <ActiveDot active={isActive} />
+
                   <span>Geo</span>
+
                   {isActive && (
                     <span className="absolute -bottom-[2px] left-2 right-2 h-[2px] rounded-full bg-indigo-600" />
                   )}
                 </>
               )}
-            </NavLink> */}
+            </NavLink>
+            */}
           </div>
         }
       >
@@ -98,8 +184,11 @@ export default function NecWorkflowTab() {
         <></>
       </Panel>
 
+      {/* ==================================================================== */}
+      {/* ACTIVE NEC WORKFLOW PAGE */}
+      {/* ==================================================================== */}
+
       <Outlet />
     </div>
   );
 }
-

@@ -1,7 +1,7 @@
 // src/pages/geo-registry/shared/geo-ui.ts
 
 import React from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../auth/useAuth";
 
 export function PageShell({
@@ -17,15 +17,21 @@ export function PageShell({
 }) {
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-extrabold">{title}</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl font-extrabold text-slate-900 sm:text-2xl">
+            {title}
+          </h1>
           {subtitle ? (
-            <p className="mt-1 text-base text-slate-600">{subtitle}</p>
+            <p className="mt-1 text-sm text-slate-600 sm:text-base">
+              {subtitle}
+            </p>
           ) : null}
         </div>
-        {right}
+
+        {right ? <div className="w-full sm:w-auto">{right}</div> : null}
       </div>
+
       {children}
     </div>
   );
@@ -33,71 +39,118 @@ export function PageShell({
 
 export function Tabs() {
   const { dashboardMode } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const showRegistry = dashboardMode === "NEC" || dashboardMode === "SYSTEM";
 
-  const base = "rounded-xl border px-3 py-2 text-xl font-semibold";
-  const active = "bg-[#00008B] border-slate-200 text-[#EFBF04] font-extrabold";
-  const idle = "bg-white border-slate-200 hover:bg-slate-50";
+  // ==========================================================================
+  // WORKSPACE-AWARE BASE PATH
+  // ==========================================================================
+
+  const inOperations =
+    location.pathname === "/operations/geography" ||
+    location.pathname.startsWith("/operations/geography/");
+
+  const geographyBase = inOperations
+    ? "/operations/geography"
+    : "/geography-registry";
+
+  const geographyTabs = [
+    {
+      label: "Counties",
+      to: `${geographyBase}/counties`,
+    },
+    {
+      label: "Districts",
+      to: `${geographyBase}/districts`,
+    },
+    {
+      label: "Polling Centers",
+      to: `${geographyBase}/polling-centers`,
+    },
+    {
+      label: "Polling Places",
+      to: `${geographyBase}/polling-places`,
+    },
+  ];
+
+  const registryTabs =
+    showRegistry && !inOperations
+      ? [
+          // Registry tabs can be enabled here when they are ready for navigation.
+        ]
+      : [];
+
+  const tabs = [...geographyTabs, ...registryTabs];
+
+  const currentTab =
+    tabs.find((tab) => {
+      if (tab.to === `${geographyBase}/polling-places`) {
+        return location.pathname.startsWith(tab.to);
+      }
+
+      return location.pathname === tab.to;
+    }) ?? geographyTabs[0];
+
+  const base =
+    "rounded-xl border px-3 py-2 text-base font-semibold transition lg:text-lg";
+  const active = "border-slate-200 bg-[#00008B] font-extrabold text-[#EFBF04]";
+  const idle = "border-slate-200 bg-white text-slate-800 hover:bg-slate-50";
 
   return (
-    <div className="flex flex-wrap gap-2">
-      <NavLink
-        to="/geography-registry/counties"
-        className={({ isActive }) => `${base} ${isActive ? active : idle}`}
-      >
-        Counties
-      </NavLink>
-      <NavLink
-        to="/geography-registry/districts"
-        className={({ isActive }) => `${base} ${isActive ? active : idle}`}
-      >
-        Districts
-      </NavLink>
-      <NavLink
-        to="/geography-registry/polling-centers"
-        className={({ isActive }) => `${base} ${isActive ? active : idle}`}
-      >
-        Polling Centers
-      </NavLink>
-      <NavLink
-        to="/geography-registry/polling-places"
-        className={({ isActive }) => `${base} ${isActive ? active : idle}`}
-      >
-        Polling Places
-      </NavLink>
+    <>
+      {/* Mobile: show only the active section and let the user switch. */}
+      <div className="sm:hidden">
+        <label className="sr-only" htmlFor="geo-mobile-nav">
+          Geography section
+        </label>
 
-      {showRegistry ? (
-        <>
-          {/* <span className="mx-1 self-center text-xs font-bold text-slate-400">
-            | Registry
+        <div className="relative">
+          <select
+            id="geo-mobile-nav"
+            value={currentTab.to}
+            onChange={(event) => navigate(event.target.value)}
+            className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-[#00008B] px-4 pr-10 text-sm font-extrabold text-[#EFBF04] shadow-sm outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {tabs.map((tab) => (
+              <option
+                key={tab.to}
+                value={tab.to}
+                className="bg-white text-slate-900"
+              >
+                {tab.label}
+              </option>
+            ))}
+          </select>
+
+          <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[#EFBF04]">
+            ▾
           </span>
+        </div>
+      </div>
+
+      {/* Tablet/Desktop: keep the familiar tab navigation. */}
+      <div className="hidden flex-wrap gap-2 sm:flex">
+        {tabs.map((tab) => (
           <NavLink
-            to="/geography-registry/import-batches"
-            className={({ isActive }) => `${base} ${isActive ? active : idle}`}
+            key={tab.to}
+            to={tab.to}
+            className={({ isActive }) =>
+              `${base} ${
+                isActive ||
+                (tab.to === `${geographyBase}/polling-places` &&
+                  location.pathname.startsWith(tab.to))
+                  ? active
+                  : idle
+              }`
+            }
           >
-            Import Batches
+            {tab.label}
           </NavLink>
-          <NavLink
-            to="/geography-registry/voter-staging"
-            className={({ isActive }) => `${base} ${isActive ? active : idle}`}
-          >
-            Voter Staging
-          </NavLink>
-          <NavLink
-            to="/geography-registry/voter-registry"
-            className={({ isActive }) => `${base} ${isActive ? active : idle}`}
-          >
-            Voter Registry
-          </NavLink>
-          <NavLink
-            to="/geography-registry/public-roll"
-            className={({ isActive }) => `${base} ${isActive ? active : idle}`}
-          >
-            Public Roll
-          </NavLink> */}
-        </>
-      ) : null}
-    </div>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -156,13 +209,13 @@ export function Table({
 }) {
   return (
     <div className="w-full overflow-x-auto">
-      <table className="w-full border-collapse table-auto">
+      <table className="w-full min-w-[900px] border-collapse table-auto">
         <thead>
           <tr>
             {columns.map((c) => (
               <th
                 key={c}
-                className="whitespace-nowrap border-b border-slate-200 px-2 py-1.5 text-left text-base font-extrabold text-slate-600"
+                className="whitespace-nowrap border-b border-slate-200 px-3 py-2.5 text-left text-sm font-extrabold text-slate-600"
               >
                 {c}
               </th>
@@ -176,7 +229,7 @@ export function Table({
               {r.map((cell, j) => (
                 <td
                   key={j}
-                  className="border-b border-slate-100 px-2 py-1.5 text-base text-slate-800 align-middle"
+                  className="border-b border-slate-100 px-3 py-2.5 text-sm text-slate-800 align-middle"
                 >
                   {cell}
                 </td>
@@ -230,7 +283,9 @@ export function Modal({
                   {title}
                 </div>
                 {subtitle ? (
-                  <div className="mt-1 text-base text-slate-600">{subtitle}</div>
+                  <div className="mt-1 text-base text-slate-600">
+                    {subtitle}
+                  </div>
                 ) : null}
               </div>
 

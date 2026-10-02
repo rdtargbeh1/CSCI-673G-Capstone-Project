@@ -1,15 +1,24 @@
 // src/app/routes/index.tsx
 
-import { createBrowserRouter, Navigate } from "react-router-dom";
+import { createBrowserRouter, Navigate, Outlet } from "react-router-dom";
 
 import AppLayout from "../layout/AppLayout";
 
 import RootRedirect from "./RootRedirect";
 import LoginPage from "../../pages/auth/LoginPage";
+
 import { RequireAuth } from "../../shared/routes/RequireGuards";
 
+import {
+  AdministrativeWorkspaceGuard,
+  DashboardWorkspaceGuard,
+  OperationsWorkspaceGuard,
+} from "../../shared/routes/WorkspaceGuards";
+
 import SystemDashboard from "../../pages/dashboard/panels/SystemDashboard";
+
 import { useAuthStore } from "../../shared/store/authStore";
+
 import TenantDashboard from "../../pages/dashboard/panels/OrgDashboard";
 import NecDashboard from "../../pages/dashboard/panels/NecDashboard";
 
@@ -29,13 +38,14 @@ import ElectionWorkspaceLayout from "../../pages/elections/workspace/ElectionWor
 
 import OverviewTab from "../../pages/elections/workspace/tabs/overview/OverviewTab";
 import SetupTab from "../../pages/elections/workspace/tabs/setup/SetupTab";
-import AllocationTab from "../../pages/elections/workspace/tabs/allocation/AllocationTab";
 import SubmissionsTab from "../../pages/elections/workspace/tabs/submissions/shared/SubmissionsTab";
 import IntegrityTab from "../../pages/elections/workspace/tabs/integrity/IntegrityTab";
 
 // ============================================================================
-// ELECTION ALLOCATIONS
+// ELECTION ALLOCATION
 // ============================================================================
+
+import AllocationTab from "../../pages/elections/workspace/tabs/allocation/AllocationTab";
 
 import PollingCenterAllocationPage from "../../pages/elections/workspace/tabs/allocation/PollingCenterAllocationsPage";
 import PollingCenterAllocationCreatePage from "../../pages/elections/workspace/tabs/allocation/PollingCenterAllocationCreatePage";
@@ -106,11 +116,10 @@ import CompareCountyCandidatesPage from "../../pages/elections/workspace/tabs/re
 // OPERATIONS
 // ============================================================================
 
-import OperationsLayout from "../../pages/operations/OperationsLayout";
 import OperationsTab from "../../pages/operations/shared/OperationsTab";
 
 // ============================================================================
-// GEOGRAPHY
+// GEOGRAPHY / REGISTRY
 // ============================================================================
 
 import GeoRegistryLayout from "../../pages/geo-registry/GeoRegistryLayout";
@@ -138,19 +147,23 @@ import ReportFilesPage from "../../pages/reports/ReportFilesPage";
 // ============================================================================
 
 import AdminSecurityLayout from "../../pages/admin-security/AdminSecurityLayout";
-
 import TenantTab from "../../pages/admin-security/tenant/shared/TenantTab";
-
-// import OrganizationsPage from "../../pages/admin-security/tenant/OrganizationsPage";
-// import MembershipsPage from "../../pages/admin-security/tenant/MembershipsPage";
-// import OrgSettingsPage from "../../pages/admin-security/tenant/OrgSettingsPage";
-
 import SecurityTab from "../../pages/admin-security/security/shared/SecurityTab";
-
 import OversightTab from "../../pages/admin-security/oversight/shared/OversightTab";
 
 // ============================================================================
 // DASHBOARD ENTRY
+// ============================================================================
+//
+// Portal access is already resolved before this component.
+//
+// This component only decides which ADMINISTRATIVE dashboard presentation
+// belongs to the current environment:
+//
+// SYSTEM
+// NEC
+// TENANT
+//
 // ============================================================================
 
 function DashboardEntry() {
@@ -182,21 +195,54 @@ function AdminSecurityIndexRedirect() {
 }
 
 // ============================================================================
+// ADMINISTRATIVE ELECTION OUTLET
+// ============================================================================
+//
+// This preserves the CURRENT elections/:electionId route structure:
+//
+// Election detail
+// Lifecycle
+// ElectionWorkspaceLayout
+//
+// while applying one administrative guard to the entire election-management
+// branch.
+//
+// ============================================================================
+
+function AdministrativeElectionOutlet() {
+  return (
+    <AdministrativeWorkspaceGuard>
+      <Outlet />
+    </AdministrativeWorkspaceGuard>
+  );
+}
+
+// ============================================================================
 // ROUTER
 // ============================================================================
 
 export const router = createBrowserRouter([
+  // ==========================================================================
+  // ROOT
+  // ==========================================================================
+
   {
     path: "/",
-
     element: <RootRedirect />,
   },
 
+  // ==========================================================================
+  // LOGIN
+  // ==========================================================================
+
   {
     path: "/login",
-
     element: <LoginPage />,
   },
+
+  // ==========================================================================
+  // AUTHENTICATED APPLICATION
+  // ==========================================================================
 
   {
     path: "/",
@@ -208,102 +254,130 @@ export const router = createBrowserRouter([
     ),
 
     children: [
-      // ====================================================================
+      // ======================================================================
       // ROOT
-      // ====================================================================
+      // ======================================================================
+      //
+      // Keep this consistent with the public root redirect in case React
+      // Router resolves this authenticated index branch.
+      //
+      // ======================================================================
 
       {
         index: true,
-
-        element: <DashboardEntry />,
+        element: <RootRedirect />,
       },
 
-      // ====================================================================
-      // DASHBOARD
-      // ====================================================================
+      // ======================================================================
+      // ADMINISTRATIVE DASHBOARD
+      // ======================================================================
 
       {
         path: "dashboard",
 
-        element: <DashboardEntry />,
+        element: (
+          <DashboardWorkspaceGuard>
+            <DashboardEntry />
+          </DashboardWorkspaceGuard>
+        ),
       },
 
       {
         path: "dashboard/local-results",
 
-        element: <LocalResultsDashboard mode="TENANT" />,
+        element: (
+          <DashboardWorkspaceGuard>
+            <LocalResultsDashboard mode="TENANT" />
+          </DashboardWorkspaceGuard>
+        ),
       },
 
       {
         path: "dashboard/official-results",
 
-        element: <OfficialResultsDashboard mode="TENANT" />,
+        element: (
+          <DashboardWorkspaceGuard>
+            <OfficialResultsDashboard mode="TENANT" />
+          </DashboardWorkspaceGuard>
+        ),
       },
 
       {
         path: "dashboard/nec",
 
-        element: <NecDashboard />,
+        element: (
+          <DashboardWorkspaceGuard>
+            <NecDashboard />
+          </DashboardWorkspaceGuard>
+        ),
       },
 
       {
         path: "dashboard/nec/local-results",
 
-        element: <LocalResultsDashboard mode="NEC" />,
+        element: (
+          <DashboardWorkspaceGuard>
+            <LocalResultsDashboard mode="NEC" />
+          </DashboardWorkspaceGuard>
+        ),
       },
 
       {
         path: "dashboard/nec/official-results",
 
-        element: <OfficialResultsDashboard mode="NEC" />,
+        element: (
+          <DashboardWorkspaceGuard>
+            <OfficialResultsDashboard mode="NEC" />
+          </DashboardWorkspaceGuard>
+        ),
       },
 
       {
         path: "dashboard/system",
 
-        element: <SystemDashboard />,
+        element: (
+          <DashboardWorkspaceGuard>
+            <SystemDashboard />
+          </DashboardWorkspaceGuard>
+        ),
       },
 
-      // ====================================================================
-      // ELECTIONS
-      //
-      // /elections
-      // /elections/new
-      // /elections/:electionId
-      //
-      // Existing Election Workspace URLs are preserved:
-      //
-      // /elections/:electionId/overview
-      // /elections/:electionId/setup
-      // /elections/:electionId/allocation
-      // /elections/:electionId/submissions
-      // /elections/:electionId/results
-      // ...
-      // ====================================================================
+      // ======================================================================
+      // ADMINISTRATIVE ELECTIONS
+      // ======================================================================
 
       {
         path: "elections",
 
-        element: <ElectionsListPage />,
+        element: (
+          <AdministrativeWorkspaceGuard>
+            <ElectionsListPage />
+          </AdministrativeWorkspaceGuard>
+        ),
       },
 
       {
         path: "elections/new",
 
-        element: <ElectionCreatePage />,
+        element: (
+          <AdministrativeWorkspaceGuard>
+            <ElectionCreatePage />
+          </AdministrativeWorkspaceGuard>
+        ),
       },
 
       {
         path: "elections/:electionId",
 
+        element: <AdministrativeElectionOutlet />,
+
         children: [
-          // ================================================================
+          // ==================================================================
           // ELECTION DETAIL
-          // ================================================================
+          // ==================================================================
 
           {
             index: true,
-
             element: <ElectionDetailPage />,
           },
 
@@ -312,40 +386,38 @@ export const router = createBrowserRouter([
             element: <ElectionLifecyclePage />,
           },
 
-          // ================================================================
+          // ==================================================================
           // ELECTION WORKSPACE
-          // ================================================================
+          // ==================================================================
 
           {
             element: <ElectionWorkspaceLayout />,
 
             children: [
-              // ============================================================
+              // ==============================================================
               // OVERVIEW
-              // ============================================================
+              // ==============================================================
 
               {
                 path: "overview",
-
                 element: <OverviewTab />,
               },
 
-              // ============================================================
+              // ==============================================================
               // SETUP
-              // ============================================================
+              // ==============================================================
 
               {
                 path: "setup/*",
-
                 element: <SetupTab />,
               },
 
-              // ============================================================
+              // ==============================================================
               // ALLOCATION
-              // ============================================================
+              // ==============================================================
 
               {
-                path: "allocation*",
+                path: "allocation",
 
                 element: <AllocationTab />,
 
@@ -355,10 +427,6 @@ export const router = createBrowserRouter([
 
                     element: <Navigate to="centers" replace />,
                   },
-
-                  // ========================================================
-                  // POLLING CENTER ALLOCATION
-                  // ========================================================
 
                   {
                     path: "centers",
@@ -378,10 +446,6 @@ export const router = createBrowserRouter([
                     element: <PollingCenterAllocationDetailPage />,
                   },
 
-                  // ========================================================
-                  // POLLING PLACE ALLOCATION
-                  // ========================================================
-
                   {
                     path: "places",
 
@@ -395,42 +459,39 @@ export const router = createBrowserRouter([
                   },
 
                   {
-                    path: "places/:placeAllocationId",
+                    path: "places/:allocationId",
 
                     element: <PollingPlaceAllocationDetailPage />,
                   },
                 ],
               },
 
-              // ============================================================
+              // ==============================================================
               // SUBMISSIONS
-              // ============================================================
+              // ==============================================================
 
               {
                 path: "submissions",
-
                 element: <SubmissionsTab />,
               },
 
               {
                 path: "submissions/*",
-
                 element: <SubmissionsTab />,
               },
 
-              // ============================================================
+              // ==============================================================
               // INTEGRITY
-              // ============================================================
+              // ==============================================================
 
               {
                 path: "integrity",
-
                 element: <IntegrityTab />,
               },
 
-              // ============================================================
+              // ==============================================================
               // NEC WORKFLOW
-              // ============================================================
+              // ==============================================================
 
               {
                 path: "nec-workflow",
@@ -446,33 +507,29 @@ export const router = createBrowserRouter([
 
                   {
                     path: "nec-result",
-
                     element: <NecResultTab />,
                   },
 
                   {
                     path: "staging",
-
                     element: <NecResultStagingPage />,
                   },
 
                   {
                     path: "history",
-
                     element: <NecResultHistoryPage />,
                   },
 
                   {
                     path: "geo",
-
                     element: <NecResultGeoPage />,
                   },
                 ],
               },
 
-              // ============================================================
+              // ==============================================================
               // RESULTS
-              // ============================================================
+              // ==============================================================
 
               {
                 path: "results",
@@ -486,29 +543,19 @@ export const router = createBrowserRouter([
                     element: <Navigate to="submission-contest" replace />,
                   },
 
-                  // ========================================================
-                  // SUBMISSION CONTEST
-                  // ========================================================
-
                   {
                     path: "submission-contest",
-
                     element: <VoteSubmissionContestPage />,
                   },
 
-                  // ========================================================
-                  // TALLY
-                  // ========================================================
-
                   {
                     path: "tally",
-
                     element: <VoteTallyPage />,
                   },
 
-                  // ========================================================
+                  // ==========================================================
                   // PARTY RESULTS
-                  // ========================================================
+                  // ==========================================================
 
                   {
                     path: "party",
@@ -522,67 +569,51 @@ export const router = createBrowserRouter([
                         element: <Navigate to="candidates/counties" replace />,
                       },
 
-                      // ====================================================
-                      // PARTY CANDIDATES
-                      // ====================================================
-
                       {
                         path: "candidates/centers",
-
                         element: <PartyCandidateCentersPage />,
                       },
 
                       {
                         path: "candidates/districts",
-
                         element: <PartyCandidateDistrictsPage />,
                       },
 
                       {
                         path: "candidates/counties",
-
                         element: <PartyCandidateCountiesPage />,
                       },
 
                       {
                         path: "candidates/election",
-
                         element: <PartyCandidateElectionPage />,
                       },
 
-                      // ====================================================
-                      // PARTY TOTALS
-                      // ====================================================
-
                       {
                         path: "totals/centers",
-
                         element: <PartyTotalsCentersPage />,
                       },
 
                       {
                         path: "totals/districts",
-
                         element: <PartyTotalsDistrictsPage />,
                       },
 
                       {
                         path: "totals/counties",
-
                         element: <PartyTotalsCountiesPage />,
                       },
 
                       {
                         path: "totals/election",
-
                         element: <PartyTotalsElectionPage />,
                       },
                     ],
                   },
 
-                  // ========================================================
+                  // ==========================================================
                   // OFFICIAL RESULTS
-                  // ========================================================
+                  // ==========================================================
 
                   {
                     path: "official",
@@ -596,77 +627,59 @@ export const router = createBrowserRouter([
                         element: <Navigate to="candidates/counties" replace />,
                       },
 
-                      // ====================================================
-                      // OFFICIAL CANDIDATES
-                      // ====================================================
-
                       {
                         path: "candidates/centers",
-
                         element: <OfficialCandidateCentersPage />,
                       },
 
                       {
                         path: "candidates/districts",
-
                         element: <OfficialCandidateDistrictsPage />,
                       },
 
                       {
                         path: "candidates/counties",
-
                         element: <OfficialCandidateCountiesPage />,
                       },
 
                       {
                         path: "candidates/election",
-
                         element: <OfficialCandidateElectionPage />,
                       },
 
-                      // ====================================================
-                      // OFFICIAL TOTALS
-                      // ====================================================
-
                       {
                         path: "totals/centers",
-
                         element: <OfficialTotalsCentersPage />,
                       },
 
                       {
                         path: "totals/districts",
-
                         element: <OfficialTotalsDistrictsPage />,
                       },
 
                       {
                         path: "totals/counties",
-
                         element: <OfficialTotalsCountiesPage />,
                       },
 
                       {
                         path: "totals/election",
-
                         element: <OfficialTotalsElectionPage />,
                       },
 
                       {
                         path: "geo",
-
                         element: <NecResultGeoPage />,
                       },
                     ],
                   },
 
-                  // ========================================================
+                  // ==========================================================
                   // COMPARE
-                  // ========================================================
+                  // ==========================================================
 
                   {
                     path: "compare",
-
                     element: <CompareCountyCandidatesPage />,
                   },
                 ],
@@ -676,176 +689,167 @@ export const router = createBrowserRouter([
         ],
       },
 
-      // ====================================================================
+      // ======================================================================
       // OPERATIONS
-      // ====================================================================
+      // ======================================================================
+      //
+      // IMPORTANT:
+      //
+      // Stable portal routes remain:
+      //
+      // /operations
+      // /operations/*
+      //
+      // Election ID is NOT part of the Operations portal route identity.
+      //
+      // Administrative and operational users may both enter Operations.
+      //
+      // ======================================================================
 
       {
-        path: "operations",
+        path: "operations/*",
 
-        element: <OperationsLayout />,
-
-        children: [
-          {
-            path: "*",
-
-            element: <OperationsTab />,
-          },
-        ],
+        element: (
+          <OperationsWorkspaceGuard>
+            <OperationsTab />
+          </OperationsWorkspaceGuard>
+        ),
       },
 
-      // ====================================================================
-      // GEOGRAPHY
-      // ====================================================================
+      // ======================================================================
+      // ADMINISTRATIVE GEOGRAPHY / REGISTRY
+      // ======================================================================
 
       {
         path: "geography-registry",
 
-        element: <GeoRegistryLayout />,
+        element: (
+          <AdministrativeWorkspaceGuard>
+            <GeoRegistryLayout />
+          </AdministrativeWorkspaceGuard>
+        ),
 
         children: [
           {
             index: true,
-
             element: <CountiesPage />,
           },
 
           {
             path: "counties",
-
             element: <CountiesPage />,
           },
 
           {
             path: "districts",
-
             element: <DistrictsPage />,
           },
 
           {
             path: "polling-centers",
-
             element: <PollingCentersPage />,
           },
 
           {
             path: "polling-places",
-
             element: <PollingPlacesPage />,
           },
 
           {
             path: "import-batches",
-
             element: <ImportBatchesPage />,
           },
 
           {
             path: "voter-staging",
-
             element: <VoterStagingPage />,
           },
 
           {
             path: "voter-registry",
-
             element: <VoterRegistryPage />,
           },
 
           {
             path: "public-roll",
-
             element: <PublicRollPage />,
           },
         ],
       },
 
-      // ====================================================================
-      // REPORTS
-      // ====================================================================
+      // ======================================================================
+      // ADMINISTRATIVE REPORTS
+      // ======================================================================
 
       {
         path: "reports",
 
-        element: <ReportsLayout />,
+        element: (
+          <AdministrativeWorkspaceGuard>
+            <ReportsLayout />
+          </AdministrativeWorkspaceGuard>
+        ),
 
         children: [
           {
             index: true,
-
             element: <ReportRequestsPage />,
           },
 
           {
             path: "requests",
-
             element: <ReportRequestsPage />,
           },
 
           {
             path: "files",
-
             element: <ReportFilesPage />,
           },
         ],
       },
 
-      // ====================================================================
+      // ======================================================================
       // ADMIN & SECURITY
-      // ====================================================================
+      // ======================================================================
 
       {
         path: "admin-security",
 
-        element: <AdminSecurityLayout />,
+        element: (
+          <AdministrativeWorkspaceGuard>
+            <AdminSecurityLayout />
+          </AdministrativeWorkspaceGuard>
+        ),
 
         children: [
           {
             index: true,
-
             element: <AdminSecurityIndexRedirect />,
           },
 
-          // ================================================================
-          // TENANT ADMIN MODULE
-          // ================================================================
-
           {
             path: "tenant",
-
             element: <TenantTab />,
           },
 
           {
             path: "tenant/*",
-
             element: <TenantTab />,
           },
 
-          // ================================================================
-          // SECURITY MODULE
-          // ================================================================
-
-          {
-            path: "*",
-
-            element: <SecurityTab />,
-          },
-
-          // ================================================================
-          // OVERSIGHT MODULE
-          // ================================================================
-
           {
             path: "oversight",
-
             element: <OversightTab />,
           },
 
           {
             path: "oversight/*",
-
             element: <OversightTab />,
+          },
+
+          {
+            path: "*",
+            element: <SecurityTab />,
           },
         ],
       },

@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 
 import {
+  BarChart3,
+  FileBarChart,
   FileText,
   LayoutDashboard,
   MapPin,
@@ -16,40 +18,43 @@ import {
 
 import type { LucideIcon } from "lucide-react";
 
-import { useAuth } from "../../auth/useAuth";
-
 import { useAuthStore } from "../../shared/store/authStore";
 
-type DashboardMode = "SYSTEM" | "NEC" | "TENANT";
+import { useAccessProfile } from "../../shared/hooks/useAccessProfile";
+
+import { useOperationalContext } from "../../shared/hooks/useOperationalContext";
+
+import type { DashboardMode } from "../../auth/types";
+
+// ============================================================================
+// TYPES
+// ============================================================================
 
 type NavItem = {
   to: string;
   label: string;
   icon: LucideIcon;
   iconColor: string;
-  show: (mode: DashboardMode) => boolean;
+  end?: boolean;
+  matchPrefixes?: string[];
 };
 
 // ============================================================================
-// NAV LINK STYLE
+// NAV STYLE
 // ============================================================================
 
-function linkClass(isActive: boolean) {
+function linkClass(active: boolean) {
   return [
     `
       flex
       min-w-0
       items-center
       gap-3
-
       rounded-lg
-
       px-3
       py-2.5
-
       text-[17px]
       font-semibold
-
       transition
 
       lg:gap-3
@@ -60,7 +65,7 @@ function linkClass(isActive: boolean) {
       xl:text-xl
     `,
 
-    isActive
+    active
       ? `
           bg-slate-800/40
           text-green-500
@@ -74,11 +79,13 @@ function linkClass(isActive: boolean) {
 }
 
 // ============================================================================
-// MODE NORMALIZATION
+// DASHBOARD MODE
 // ============================================================================
 
 function normalizeMode(value: unknown): DashboardMode {
-  const mode = String(value ?? "").toUpperCase();
+  const mode = String(value ?? "")
+    .trim()
+    .toUpperCase();
 
   if (mode === "SYSTEM") {
     return "SYSTEM";
@@ -92,137 +99,260 @@ function normalizeMode(value: unknown): DashboardMode {
 }
 
 // ============================================================================
+// ADMINISTRATIVE NAVIGATION
+// ============================================================================
+
+const administrativeNavItems: NavItem[] = [
+  {
+    to: "/dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    iconColor: "#3b82f6",
+  },
+
+  {
+    to: "/elections",
+    label: "Elections",
+    icon: Vote,
+    iconColor: "#ef4444",
+  },
+
+  {
+    to: "/operations",
+    label: "Operations",
+    icon: Zap,
+    iconColor: "#f59e0b",
+  },
+
+  {
+    to: "/geography-registry",
+    label: "Geography & Registry",
+    icon: MapPin,
+    iconColor: "#10b981",
+  },
+
+  {
+    to: "/reports",
+    label: "Reports",
+    icon: FileText,
+    iconColor: "#8b5cf6",
+  },
+
+  {
+    to: "/admin-security",
+    label: "Admin & Security",
+    icon: Shield,
+    iconColor: "#ec4899",
+  },
+];
+
+// ============================================================================
+// OPERATIONAL NAVIGATION
+// ============================================================================
+//
+// Stable Operations portal:
+//
+// /operations/dashboard
+// /operations/geography
+// /operations/personnel
+// /operations/reference
+// /operations/submissions
+// /operations/results
+// /operations/reports
+//
+// Election remains data context.
+//
+// ============================================================================
+
+const operationalNavItems: NavItem[] = [
+  {
+    to: "/operations",
+    end: true,
+
+    label: "Dashboard",
+
+    icon: LayoutDashboard,
+
+    iconColor: "#3b82f6",
+
+    matchPrefixes: ["/operations"],
+  },
+
+  {
+    /*
+     * Geography starts at Districts because the operational model exposes:
+     *
+     * Districts
+     * Polling Centers
+     * Polling Places
+     *
+     * County information may still appear as necessary parent context.
+     */
+    to: "/operations/geography",
+
+    label: "Geography",
+
+    icon: MapPin,
+
+    iconColor: "#10b981",
+
+    matchPrefixes: ["/operations/geography"],
+  },
+
+  {
+    to: "/operations/reference",
+
+    label: "Election Reference",
+
+    icon: Vote,
+
+    iconColor: "#ef4444",
+
+    matchPrefixes: ["/operations/reference"],
+  },
+
+  {
+    to: "/operations/submissions",
+
+    label: "Operations",
+
+    icon: Zap,
+
+    iconColor: "#f59e0b",
+
+    matchPrefixes: [
+      "/operations/submissions",
+      "/operations/observer-reports",
+      "/operations/notifications",
+      "/operations/tally-sheets",
+      "/operations/submission-actions",
+      "/operations/discrepancies",
+    ],
+  },
+
+  {
+    to: "/operations/results",
+
+    label: "Results",
+
+    icon: BarChart3,
+
+    iconColor: "#8b5cf6",
+
+    matchPrefixes: ["/operations/results"],
+  },
+
+  {
+    to: "/operations/reports",
+
+    label: "Reports",
+
+    icon: FileBarChart,
+
+    iconColor: "#ec4899",
+
+    matchPrefixes: ["/operations/reports"],
+  },
+];
+
+// ============================================================================
+// ACTIVE ROUTE
+// ============================================================================
+
+function isItemActive(pathname: string, item: NavItem): boolean {
+  if (item.end) return pathname.replace(/\/$/, "") === item.to;
+  const prefixes = item.matchPrefixes ?? [item.to];
+
+  return prefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+// ============================================================================
 // COMPONENT
 // ============================================================================
 
 export default function SidebarNav() {
-  const { tenant, user } = useAuth();
-
-  const storeMode = useAuthStore((state) => state.dashboardMode);
-
-  const tenantMeta = useAuthStore((state) => state.tenantMeta);
+  const location = useLocation();
 
   // ==========================================================================
-  // DASHBOARD MODE
+  // ACCESS
   // ==========================================================================
 
-  const sysRole = String(user?.systemRole ?? "").toUpperCase();
+  const { roles, portal, isLoading, isError } = useAccessProfile();
 
-  const isSystemAdmin = sysRole === "SYSTEM_ADMIN";
-
-  const isNecAdmin = sysRole === "NEC_ADMIN";
-
-  let mode: DashboardMode = normalizeMode(storeMode);
-
-  if (!storeMode) {
-    const orgType = String(tenantMeta?.orgType ?? "").toUpperCase();
-
-    if (isSystemAdmin) {
-      mode = "SYSTEM";
-    } else if (orgType === "NEC" || isNecAdmin) {
-      mode = "NEC";
-    } else {
-      mode = "TENANT";
-    }
-  }
+  const operationalPortal = portal === "OPERATIONS";
 
   // ==========================================================================
-  // TENANT NAME
+  // OPERATIONAL CONTEXT
   // ==========================================================================
 
-  const rawTenantName = tenantMeta?.orgName ?? tenant?.orgName ?? null;
+  const {
+    electionId,
+    scopeType,
+    operationalAccess,
+    loading: operationContextLoading,
+  } = useOperationalContext(operationalPortal);
 
-  const isSystemPlatform =
-    !rawTenantName || String(rawTenantName).trim().length === 0;
+  // ==========================================================================
+  // STORE
+  // ==========================================================================
 
-  const tenantName = isSystemPlatform ? "PLATFORM" : rawTenantName;
+  const storeMode = useAuthStore((state: any) => state.dashboardMode);
+
+  const tenantMeta = useAuthStore((state: any) => state.tenantMeta);
+
+  const storedUser = useAuthStore((state: any) => state.user);
+
+  // ==========================================================================
+  // MODE
+  // ==========================================================================
+
+  const mode = normalizeMode(storeMode);
+
+  // ==========================================================================
+  // ORGANIZATION
+  // ==========================================================================
+
+  const rawTenantName = tenantMeta?.orgName ?? null;
+
+  const tenantName =
+    rawTenantName && String(rawTenantName).trim()
+      ? String(rawTenantName)
+      : "PLATFORM";
+
+  // ==========================================================================
+  // ROLE
+  // ==========================================================================
+
+  const roleLabel =
+    roles.length > 0
+      ? roles.join(", ")
+      : String(
+          storedUser?.roleName ??
+            storedUser?.tenantRole ??
+            storedUser?.systemRole ??
+            "—",
+        );
 
   // ==========================================================================
   // NAVIGATION
   // ==========================================================================
 
-  const navItems: NavItem[] = [
-    {
-      to: "/dashboard",
-
-      label: "Dashboard",
-
-      icon: LayoutDashboard,
-
-      iconColor: "#3b82f6",
-
-      show: () => true,
-    },
-
-    {
-      to: "/elections",
-
-      label: "Elections",
-
-      icon: Vote,
-
-      iconColor: "#ef4444",
-
-      show: () => true,
-    },
-
-    {
-      to: "/operations",
-
-      label: "Operations",
-
-      icon: Zap,
-
-      iconColor: "#f59e0b",
-
-      show: () => true,
-    },
-
-    {
-      to: "/geography-registry",
-
-      label: "Geography & Registry",
-
-      icon: MapPin,
-
-      iconColor: "#10b981",
-
-      show: () => true,
-    },
-
-    {
-      to: "/reports",
-
-      label: "Reports",
-
-      icon: FileText,
-
-      iconColor: "#8b5cf6",
-
-      show: () => true,
-    },
-
-    {
-      to: "/admin-security",
-
-      label: "Admin & Security",
-
-      icon: Shield,
-
-      iconColor: "#ec4899",
-
-      show: () => true,
-    },
-  ];
-
-  const filteredNav = useMemo(
-    () => navItems.filter((item) => item.show(mode)),
-
-    [mode],
+  const navItems = useMemo(
+    () =>
+      isLoading || isError
+        ? []
+        : portal === "OPERATIONS"
+          ? operationalNavItems
+          : portal === "ADMINISTRATIVE"
+            ? administrativeNavItems
+            : [],
+    [portal, isLoading, isError],
   );
 
   // ==========================================================================
-  // MOBILE DRAWER
+  // MOBILE
   // ==========================================================================
 
   const [open, setOpen] = useState(false);
@@ -256,40 +386,21 @@ export default function SidebarNav() {
   }, [open]);
 
   // ==========================================================================
-  // SHARED SIDEBAR CONTENT
+  // CONTENT
   // ==========================================================================
 
   const sidebarContent = (
-    <div
-      className="
-        flex
-        h-full
-        min-h-0
-        min-w-0
-        flex-col
-      "
-    >
-      {/* ================================================================
-          TOP CONTENT
-      ================================================================ */}
-
-      <div
-        className="
-          min-w-0
-          shrink-0
-        "
-      >
-        {/* ==============================================================
-            WORKSPACE IDENTITY
-        ============================================================== */}
+    <div className="flex h-full min-h-0 min-w-0 flex-col">
+      <div className="min-w-0 shrink-0">
+        {/* ================================================================
+            WORKSPACE CONTEXT
+        ================================================================ */}
 
         <div
           className="
             min-w-0
-
             rounded-xl
             border
-
             px-3
             py-2.5
 
@@ -302,140 +413,94 @@ export default function SidebarNav() {
             borderColor: "#312e81",
           }}
         >
-          <div
-            className="
-              text-lg
-              font-extrabold
-              text-white
-
-              lg:text-xl
-
-              xl:text-2xl
-            "
-          >
+          <div className="text-lg font-extrabold text-white lg:text-xl xl:text-2xl">
             EMS
           </div>
 
-          <div
-            className="
-              mt-1
-              min-w-0
-              space-y-0.5
-
-              text-xs
-              text-slate-300
-
-              lg:mt-1.5
-              lg:space-y-1
-              lg:text-sm
-            "
-          >
-            {/* MODE */}
-
+          <div className="mt-1 min-w-0 space-y-0.5 text-xs text-slate-300 lg:mt-1.5 lg:space-y-1 lg:text-sm">
             <div>
-              Mode:{" "}
-              <span
-                className="
-                  font-bold
-                  text-white
-                "
-              >
-                {mode}
+              Portal:{" "}
+              <span className="font-bold text-white">
+                {isLoading ? "Loading..." : (portal ?? "Unavailable")}
               </span>
             </div>
 
-            {/* TENANT */}
+            <div>
+              Mode: <span className="font-bold text-white">{mode}</span>
+            </div>
 
             <div className="min-w-0">
               <span
                 className="
                   block
                   break-words
-
                   text-base
                   font-bold
                   leading-tight
                   text-[#FFA500]
 
                   lg:text-lg
-
                   xl:text-xl
                 "
-                title={String(tenantName)}
+                title={tenantName}
               >
                 {tenantName}
               </span>
             </div>
 
-            {/* TENANT ROLE */}
+            <div className="min-w-0 break-words">
+              Role: <span className="font-bold text-white">{roleLabel}</span>
+            </div>
 
-            {user?.tenantRole ? (
-              <div
-                className="
-                  min-w-0
-                  break-words
-                "
-              >
-                Role:{" "}
-                <span
-                  className="
-                    font-bold
-                    text-white
-                  "
-                >
-                  {user.tenantRole}
-                </span>
-              </div>
-            ) : null}
+            {operationalPortal ? (
+              <>
+                <div className="min-w-0 break-words">
+                  Election:{" "}
+                  <span className="font-bold text-white">
+                    {operationContextLoading
+                      ? "Loading..."
+                      : electionId
+                        ? "Selected"
+                        : "Not assigned"}
+                  </span>
+                </div>
 
-            {/* SYSTEM ROLE */}
+                <div className="min-w-0 break-words">
+                  Scope:{" "}
+                  <span className="font-bold text-white">
+                    {operationContextLoading
+                      ? "Loading..."
+                      : (scopeType ?? "—")}
+                  </span>
+                </div>
 
-            {user?.systemRole ? (
-              <div
-                className="
-                  min-w-0
-                  break-words
-                "
-              >
-                System:{" "}
-                <span
-                  className="
-                    font-bold
-                    text-white
-                  "
-                >
-                  {user.systemRole}
-                </span>
-              </div>
+                {!operationContextLoading && !operationalAccess ? (
+                  <div className="pt-1 text-xs font-semibold text-amber-300">
+                    No active election assignment
+                  </div>
+                ) : null}
+              </>
             ) : null}
           </div>
         </div>
 
-        {/* ==============================================================
+        {/* ================================================================
             NAVIGATION
-        ============================================================== */}
+        ================================================================ */}
 
-        <nav
-          className="
-            mt-2.5
-            flex
-            min-w-0
-            flex-col
-            gap-0.5
-
-            lg:mt-3
-            lg:gap-1
-          "
-        >
-          {filteredNav.map((item) => {
+        <nav className="mt-2.5 flex min-w-0 flex-col gap-0.5 lg:mt-3 lg:gap-1">
+          {navItems.map((item) => {
             const Icon = item.icon;
+
+            const active = isItemActive(location.pathname, item);
 
             return (
               <NavLink
                 key={item.to}
                 to={item.to}
+                end={item.end}
                 onClick={() => setOpen(false)}
-                className={({ isActive }) => linkClass(isActive)}
+                className={() => linkClass(active)}
               >
                 <Icon
                   size={22}
@@ -453,13 +518,7 @@ export default function SidebarNav() {
                   }}
                 />
 
-                <span
-                  className="
-                      min-w-0
-                      break-words
-                      leading-tight
-                    "
-                >
+                <span className="min-w-0 break-words leading-tight">
                   {item.label}
                 </span>
               </NavLink>
@@ -468,26 +527,15 @@ export default function SidebarNav() {
         </nav>
       </div>
 
-      {/* ================================================================
-          FLEXIBLE SPACE
-      ================================================================ */}
-
       <div className="min-h-4 flex-1" />
-
-      {/* ================================================================
-          FOOTER NOTE
-      ================================================================ */}
 
       <div
         className="
           shrink-0
-
           border-t
           border-dashed
           border-white/25
-
           pt-2.5
-
           text-[10px]
           leading-4
           text-slate-300
@@ -497,9 +545,16 @@ export default function SidebarNav() {
           lg:leading-5
         "
       >
-        Elections are viewable by all tenants.
-        <br />
-        Create/edit controls remain restricted inside pages.
+        {operationalPortal ? (
+          <>
+            Access is limited by election, role, assignment scope, resource
+            location, ownership, and workflow state.
+          </>
+        ) : (
+          <>
+            Administrative access remains controlled by backend authorization.
+          </>
+        )}
       </div>
     </div>
   );
@@ -510,17 +565,15 @@ export default function SidebarNav() {
 
   return (
     <>
-      {/* ================================================================
-          DESKTOP SIDEBAR
-      ================================================================ */}
+      {/* ==================================================================
+          DESKTOP
+      ================================================================== */}
 
       <aside
         className="
           hidden
           shrink-0
-
           border-r
-
           p-2
 
           lg:block
@@ -540,18 +593,11 @@ export default function SidebarNav() {
         {sidebarContent}
       </aside>
 
-      {/* ================================================================
-          MOBILE / TABLET MENU BUTTON
-      ================================================================ */}
+      {/* ==================================================================
+          MOBILE MENU BUTTON
+      ================================================================== */}
 
-      <div
-        className="
-          px-3
-          pt-3
-
-          lg:hidden
-        "
-      >
+      <div className="px-3 pt-3 lg:hidden">
         <button
           type="button"
           onClick={() => setOpen(true)}
@@ -560,68 +606,39 @@ export default function SidebarNav() {
             min-h-10
             items-center
             justify-center
-
             gap-2
-
             rounded-lg
-
             border
             border-slate-200
-
             bg-white
-
             px-3
             py-2
-
             text-sm
             font-semibold
             text-slate-900
-
             shadow-sm
-
             transition
 
             hover:bg-slate-50
           "
           aria-label="Open menu"
         >
-          <span
-            className="
-              text-base
-              leading-none
-            "
-          >
-            ☰
-          </span>
+          <span className="text-base leading-none">☰</span>
           Menu
         </button>
       </div>
 
-      {/* ================================================================
+      {/* ==================================================================
           MOBILE DRAWER
-      ================================================================ */}
+      ================================================================== */}
 
       {open ? (
         <>
-          {/* BACKDROP */}
-
           <div
-            className="
-              fixed
-              inset-0
-              z-40
-
-              bg-black/40
-
-              backdrop-blur-[1px]
-
-              lg:hidden
-            "
+            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] lg:hidden"
             onClick={() => setOpen(false)}
             aria-hidden="true"
           />
-
-          {/* DRAWER */}
 
           <aside
             className="
@@ -629,14 +646,10 @@ export default function SidebarNav() {
               inset-y-0
               left-0
               z-50
-
               w-[78vw]
               max-w-[300px]
-
               overflow-hidden
-
               border-r
-
               shadow-2xl
 
               sm:w-[72vw]
@@ -653,21 +666,14 @@ export default function SidebarNav() {
             aria-modal="true"
             aria-label="Navigation menu"
           >
-            {/* ============================================================
-                DRAWER HEADER
-            ============================================================ */}
-
             <div
               className="
                 flex
                 min-h-[50px]
                 items-center
                 justify-between
-
                 gap-3
-
                 border-b
-
                 px-3
                 py-2
               "
@@ -675,15 +681,7 @@ export default function SidebarNav() {
                 borderColor: "rgba(255,255,255,0.15)",
               }}
             >
-              <div
-                className="
-                  text-base
-                  font-extrabold
-                  text-white
-                "
-              >
-                Menu
-              </div>
+              <div className="text-base font-extrabold text-white">Menu</div>
 
               <button
                 type="button"
@@ -696,13 +694,9 @@ export default function SidebarNav() {
                   shrink-0
                   items-center
                   justify-center
-
                   rounded-lg
-
                   border
-
                   text-white
-
                   transition
 
                   hover:bg-white/10
@@ -716,19 +710,13 @@ export default function SidebarNav() {
               </button>
             </div>
 
-            {/* ============================================================
-                DRAWER CONTENT
-            ============================================================ */}
-
             <div
               className="
                 h-[calc(100vh-50px)]
                 min-h-0
                 overflow-y-auto
-
-                p-2.5
-
                 overscroll-contain
+                p-2.5
 
                 sm:p-3
               "

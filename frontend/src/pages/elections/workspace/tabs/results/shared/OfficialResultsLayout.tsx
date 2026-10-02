@@ -1,35 +1,28 @@
+// src/pages/elections/workspace/tabs/results/shared/OfficialResultsLayout.tsx
+
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 
-import {
-  NavLink,
-  Outlet,
-  useLocation,
-  useNavigate,
-  useSearchParams,
-} from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 /**
  * ============================================================================
  * RESULTS • OFFICIAL • LAYOUT
  * ============================================================================
  *
- * Path:
+ * This layout is workspace-agnostic.
  *
+ * It may be mounted beneath:
+ *
+ * ADMIN:
  * /elections/:electionId/results/official/*
  *
- * Default:
+ * OPERATIONS:
+ * /operations/results/official/*
  *
- * candidates/centers
- *
- * Mobile:
- *
- * Shows only the current Official Results sub-tab with a Change dropdown.
- *
- * Desktop:
- *
- * Keeps the full Candidate Stats / Geo Stats navigation.
+ * IMPORTANT:
+ * All navigation inside this module is RELATIVE.
  * ============================================================================
  */
 
@@ -102,50 +95,11 @@ function ActiveDot({ active }: { active: boolean }) {
 // ============================================================================
 
 export default function OfficialResultsLayout() {
-  const [searchParams] = useSearchParams();
-
-  const contestId = searchParams.get("contestId");
-
-  const navigate = useNavigate();
-
   const location = useLocation();
-
-  // ==========================================================================
-  // MOBILE NAV STATE
-  // ==========================================================================
 
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const mobileNavRef = useRef<HTMLDivElement | null>(null);
-
-  // ==========================================================================
-  // DEFAULT ROUTE
-  //
-  // official
-  // official/
-  // official/candidates
-  // official/candidates/
-  //
-  // -> official/candidates/centers
-  // ==========================================================================
-
-  useEffect(() => {
-    const pathname = location.pathname.replace(/\/+$/, "");
-
-    const isOfficialRoot = pathname.endsWith("/results/official");
-
-    const isCandidatesRoot = pathname.endsWith("/results/official/candidates");
-
-    if (isOfficialRoot || isCandidatesRoot) {
-      navigate(
-        `candidates/centers${location.search}`,
-
-        {
-          replace: true,
-        },
-      );
-    }
-  }, [location.pathname, location.search, navigate]);
 
   // ==========================================================================
   // TABS
@@ -255,8 +209,7 @@ export default function OfficialResultsLayout() {
     const pathname = location.pathname;
 
     return (
-      allTabs.find((tab) => pathname.includes(`/official/${tab.to}`)) ??
-      candidateTabs[0]
+      allTabs.find((tab) => pathname.endsWith(`/${tab.to}`)) ?? candidateTabs[0]
     );
   }, [allTabs, candidateTabs, location.pathname]);
 
@@ -272,11 +225,21 @@ export default function OfficialResultsLayout() {
         : "NEC Geo";
 
   // ==========================================================================
-  // PRESERVE QUERY STRING
+  // RELATIVE TAB DESTINATION
+  //
+  // IMPORTANT:
+  //
+  // Do not build /elections/... or /operations/... here.
+  //
+  // The parent router determines the workspace.
   // ==========================================================================
 
   function tabDestination(to: string) {
-    return `${to}${location.search}`;
+    return {
+      pathname: to,
+
+      search: location.search,
+    };
   }
 
   // ==========================================================================
@@ -315,27 +278,69 @@ export default function OfficialResultsLayout() {
   // ==========================================================================
 
   return (
-    <div className="relative flex min-w-0 flex-col gap-2">
+    <div
+      className="
+        relative
+        flex
+        min-w-0
+        flex-col
+        gap-2
+      "
+    >
       {/* ====================================================================
           MOBILE HEADER
       ==================================================================== */}
 
-      <div ref={mobileNavRef} className="relative z-40 sm:hidden">
-        <section className="rounded-xl border border-slate-200 bg-white px-3 py-3">
-          <div className="flex items-center justify-between gap-3">
-            {/* TITLE */}
-
+      <div
+        ref={mobileNavRef}
+        className="
+          relative
+          z-40
+          sm:hidden
+        "
+      >
+        <section
+          className="
+            rounded-xl
+            border
+            border-slate-200
+            bg-white
+            px-3
+            py-3
+          "
+        >
+          <div
+            className="
+              flex
+              items-center
+              justify-between
+              gap-3
+            "
+          >
             <div className="min-w-0">
-              <div className="text-lg font-bold text-slate-900">
+              <div
+                className="
+                  text-lg
+                  font-bold
+                  text-slate-900
+                "
+              >
                 Official Results
               </div>
 
-              <div className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-red-500">
+              <div
+                className="
+                  mt-0.5
+                  text-[10px]
+                  font-bold
+                  uppercase
+                  tracking-wide
+                  text-red-500
+                "
+              >
                 {currentGroupLabel}
               </div>
             </div>
-
-            {/* CURRENT TAB */}
 
             <button
               type="button"
@@ -359,8 +364,23 @@ export default function OfficialResultsLayout() {
                 shadow-sm
               "
             >
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span className="h-2 w-2 shrink-0 rounded-full bg-red-600" />
+              <span
+                className="
+                  flex
+                  min-w-0
+                  items-center
+                  gap-1.5
+                "
+              >
+                <span
+                  className="
+                    h-2
+                    w-2
+                    shrink-0
+                    rounded-full
+                    bg-red-600
+                  "
+                />
 
                 <span className="truncate">{currentTab.label}</span>
               </span>
@@ -374,17 +394,40 @@ export default function OfficialResultsLayout() {
           </div>
         </section>
 
-        {/* ==================================================================
-            MOBILE DROPDOWN
-        ================================================================== */}
-
-        {mobileNavOpen && (
-          <div className="absolute right-3 top-[58px] z-[100] w-[225px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+        {mobileNavOpen ? (
+          <div
+            className="
+              absolute
+              right-3
+              top-[58px]
+              z-[100]
+              w-[225px]
+              overflow-hidden
+              rounded-xl
+              border
+              border-slate-200
+              bg-white
+              shadow-2xl
+            "
+          >
             {/* ==============================================================
                 CANDIDATE STATS
             ============================================================== */}
 
-            <div className="border-b border-slate-100 px-3 pb-1.5 pt-2.5 text-[9px] font-bold uppercase tracking-wider text-red-500">
+            <div
+              className="
+                border-b
+                border-slate-100
+                px-3
+                pb-1.5
+                pt-2.5
+                text-[9px]
+                font-bold
+                uppercase
+                tracking-wider
+                text-red-500
+              "
+            >
               Candidate Stats
             </div>
 
@@ -405,7 +448,20 @@ export default function OfficialResultsLayout() {
                 GEO STATS
             ============================================================== */}
 
-            <div className="border-y border-slate-100 px-3 pb-1.5 pt-2.5 text-[9px] font-bold uppercase tracking-wider text-red-500">
+            <div
+              className="
+                border-y
+                border-slate-100
+                px-3
+                pb-1.5
+                pt-2.5
+                text-[9px]
+                font-bold
+                uppercase
+                tracking-wider
+                text-red-500
+              "
+            >
               Geo Stats
             </div>
 
@@ -426,7 +482,20 @@ export default function OfficialResultsLayout() {
                 NEC GEO
             ============================================================== */}
 
-            <div className="border-y border-slate-100 px-3 pb-1.5 pt-2.5 text-[9px] font-bold uppercase tracking-wider text-indigo-500">
+            <div
+              className="
+                border-y
+                border-slate-100
+                px-3
+                pb-1.5
+                pt-2.5
+                text-[9px]
+                font-bold
+                uppercase
+                tracking-wider
+                text-indigo-500
+              "
+            >
               Geography
             </div>
 
@@ -444,37 +513,74 @@ export default function OfficialResultsLayout() {
               );
             })}
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* ====================================================================
           DESKTOP HEADER
       ==================================================================== */}
 
-      <div className="hidden rounded-xl border border-slate-200 bg-white px-3 py-2 sm:block">
-        {/* TITLE */}
-
+      <div
+        className="
+          hidden
+          rounded-xl
+          border
+          border-slate-200
+          bg-white
+          px-3
+          py-2
+          sm:block
+        "
+      >
         <div className="mb-2">
-          <div className="text-base font-bold text-slate-900">
+          <div
+            className="
+              text-base
+              font-bold
+              text-slate-900
+            "
+          >
             Official Results
           </div>
         </div>
 
-        {/* ==================================================================
-            NAVIGATION
-        ================================================================== */}
+        <div
+          className="
+            flex
+            flex-wrap
+            items-center
+            justify-between
+            gap-3
+          "
+        >
+          {/* CANDIDATE STATS */}
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* ================================================================
-              CANDIDATE STATS
-          ================================================================ */}
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-bold text-red-600">
+          <div
+            className="
+              flex
+              flex-wrap
+              items-center
+              gap-2
+            "
+          >
+            <span
+              className="
+                text-sm
+                font-bold
+                text-red-600
+              "
+            >
               Candidate Stats:
             </span>
 
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div
+              className="
+                flex
+                flex-wrap
+                items-center
+                gap-1.5
+              "
+            >
               {candidateTabs.map((tab) => (
                 <NavLink
                   key={tab.to}
@@ -487,9 +593,19 @@ export default function OfficialResultsLayout() {
 
                       <span>{tab.label}</span>
 
-                      {isActive && (
-                        <span className="absolute -bottom-[1px] left-2 right-2 h-[2px] rounded-full bg-red-600" />
-                      )}
+                      {isActive ? (
+                        <span
+                          className="
+                              absolute
+                              -bottom-[1px]
+                              left-2
+                              right-2
+                              h-[2px]
+                              rounded-full
+                              bg-red-600
+                            "
+                        />
+                      ) : null}
                     </>
                   )}
                 </NavLink>
@@ -497,17 +613,42 @@ export default function OfficialResultsLayout() {
             </div>
           </div>
 
-          {/* ================================================================
-              GEO STATS + NEC GEO
-          ================================================================ */}
+          {/* GEO STATS / NEC GEO */}
 
-          <div className="flex flex-wrap items-center gap-3">
-            {/* GEO STATS */}
+          <div
+            className="
+              flex
+              flex-wrap
+              items-center
+              gap-3
+            "
+          >
+            <div
+              className="
+                flex
+                flex-wrap
+                items-center
+                gap-2
+              "
+            >
+              <span
+                className="
+                  text-sm
+                  font-bold
+                  text-red-600
+                "
+              >
+                Geo Stats:
+              </span>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-bold text-red-600">Geo Stats:</span>
-
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div
+                className="
+                  flex
+                  flex-wrap
+                  items-center
+                  gap-1.5
+                "
+              >
                 {totalsTabs.map((tab) => (
                   <NavLink
                     key={tab.to}
@@ -520,9 +661,19 @@ export default function OfficialResultsLayout() {
 
                         <span>{tab.label}</span>
 
-                        {isActive && (
-                          <span className="absolute -bottom-[1px] left-2 right-2 h-[2px] rounded-full bg-red-600" />
-                        )}
+                        {isActive ? (
+                          <span
+                            className="
+                                absolute
+                                -bottom-[1px]
+                                left-2
+                                right-2
+                                h-[2px]
+                                rounded-full
+                                bg-red-600
+                              "
+                          />
+                        ) : null}
                       </>
                     )}
                   </NavLink>
@@ -530,9 +681,14 @@ export default function OfficialResultsLayout() {
               </div>
             </div>
 
-            {/* NEC GEO */}
-
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div
+              className="
+                flex
+                flex-wrap
+                items-center
+                gap-1.5
+              "
+            >
               {geoTabs.map((tab) => (
                 <NavLink
                   key={tab.to}
@@ -551,9 +707,19 @@ export default function OfficialResultsLayout() {
 
                       <span>{tab.label}</span>
 
-                      {isActive && (
-                        <span className="absolute -bottom-[1px] left-2 right-2 h-[2px] rounded-full bg-indigo-600" />
-                      )}
+                      {isActive ? (
+                        <span
+                          className="
+                              absolute
+                              -bottom-[1px]
+                              left-2
+                              right-2
+                              h-[2px]
+                              rounded-full
+                              bg-indigo-600
+                            "
+                        />
+                      ) : null}
                     </>
                   )}
                 </NavLink>
@@ -584,7 +750,13 @@ function OfficialMobileOption({
 }: {
   label: string;
 
-  to: string;
+  to:
+    | string
+    | {
+        pathname: string;
+
+        search: string;
+      };
 
   active: boolean;
 
@@ -618,7 +790,14 @@ function OfficialMobileOption({
           : "text-slate-700 hover:bg-slate-50",
       ].join(" ")}
     >
-      <span className="flex min-w-0 items-center gap-2">
+      <span
+        className="
+          flex
+          min-w-0
+          items-center
+          gap-2
+        "
+      >
         <span
           className={[
             "h-2 w-2 shrink-0 rounded-full",
@@ -630,14 +809,14 @@ function OfficialMobileOption({
         <span className="truncate">{label}</span>
       </span>
 
-      {active && (
+      {active ? (
         <Check
           size={13}
           className={
             indigo ? "shrink-0 text-indigo-600" : "shrink-0 text-red-600"
           }
         />
-      )}
+      ) : null}
     </NavLink>
   );
 }

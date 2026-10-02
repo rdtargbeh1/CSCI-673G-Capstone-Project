@@ -1,11 +1,6 @@
-// src/pages/elections/workspace/tabs/setup/election/ContestOptionsPage.tsx
-
 import { useMemo, useState } from "react";
-
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-
 import {
   AlertCircle,
   ArrowLeft,
@@ -21,26 +16,18 @@ import {
 } from "lucide-react";
 
 import { useAuthStore } from "../../../../../../shared/store/authStore";
-
 import { Badge, ReadOnlyBanner } from "../../../../shared/elections-ui";
-
 import {
   bulkAssignCandidates,
   deleteOption,
   listOptionsByContest,
   type ContestOptionDto,
 } from "../../../../../../shared/services/contestOptionService";
-
 import {
   fetchElectionCandidates,
   type ElectionCandidateDto,
 } from "../../../../../../shared/services/electionCandidateService";
-
 import { listContestsByElection } from "../../../../../../shared/services/contestService";
-
-// ============================================================================
-// HELPERS
-// ============================================================================
 
 function safeStr(value: unknown) {
   return typeof value === "string" ? value : value == null ? "" : String(value);
@@ -59,133 +46,93 @@ function friendlyError(error: any) {
   );
 }
 
-// ============================================================================
-// COMPONENT
-// ============================================================================
-
 export default function ContestOptionsPage() {
-  const { electionId } = useParams<{
-    electionId: string;
+  const params = useParams<{
+    electionId?: string;
+    contestId?: string;
   }>();
 
-  const location = useLocation();
-
+  const { pathname } = useLocation();
   const navigate = useNavigate();
-
   const queryClient = useQueryClient();
 
-  // ==========================================================================
-  // CONTEST ID
-  //
-  // SetupTab owns /setup/* manually, so contestId is read from pathname.
-  //
-  // /setup/contests/{contestId}/options
-  // ==========================================================================
+  const isOperations =
+    pathname === "/operations" || pathname.startsWith("/operations/");
+
+  const selectedElectionId = useAuthStore((state) => state.currentElectionId);
+  const orgId = useAuthStore((state) => state.currentOrgId);
+  const userId = useAuthStore((state) => state.user?.userId);
+  const dashboardMode = useAuthStore((state) => state.dashboardMode);
+  const isSystemAdmin = useAuthStore((state) => state.isSystemAdmin());
+
+  const electionId = isOperations ? selectedElectionId : params.electionId;
+
+  const accessKey = [
+    isOperations ? "operations" : "administrative",
+    orgId,
+    userId,
+    electionId,
+  ];
 
   const contestId = useMemo(() => {
-    const match = location.pathname.match(
-      /\/setup\/contests\/([^/]+)\/options\/?$/,
+    if (params.contestId) return params.contestId;
+
+    const match = pathname.match(
+      /\/(?:setup|reference)\/contests\/([^/]+)\/options\/?$/,
     );
 
-    if (!match?.[1]) {
-      return null;
-    }
+    if (!match?.[1]) return null;
 
     try {
       return decodeURIComponent(match[1]);
     } catch {
       return match[1];
     }
-  }, [location.pathname]);
-
-  // ==========================================================================
-  // ACCESS
-  // ==========================================================================
-
-  const dashboardMode = useAuthStore((state) => state.dashboardMode);
-
-  const isSystemAdmin = useAuthStore((state) => state.isSystemAdmin());
+  }, [pathname, params.contestId]);
 
   const canEdit =
-    dashboardMode === "NEC" || dashboardMode === "SYSTEM" || isSystemAdmin;
-
-  // ==========================================================================
-  // STATE
-  // ==========================================================================
+    !isOperations &&
+    (dashboardMode === "NEC" || dashboardMode === "SYSTEM" || isSystemAdmin);
 
   const [search, setSearch] = useState("");
-
   const [onlyActive, setOnlyActive] = useState(true);
-
   const [bulkOpen, setBulkOpen] = useState(false);
-
   const [bulkMode, setBulkMode] = useState<"ALL" | "MANUAL">("MANUAL");
-
   const [bulkReplace, setBulkReplace] = useState(false);
-
   const [bulkSearch, setBulkSearch] = useState("");
-
   const [bulkSelected, setBulkSelected] = useState<string[]>([]);
-
-  // ==========================================================================
-  // CONTEST
-  // ==========================================================================
 
   const contestsQuery = useQuery({
     enabled: Boolean(electionId),
-
-    queryKey: ["contests-by-election", electionId],
-
+    queryKey: ["contests-by-election", electionId, ...accessKey],
     queryFn: () => listContestsByElection(electionId!),
-
     staleTime: 30_000,
-
     retry: 1,
   });
 
   const contest = useMemo(
     () =>
       contestsQuery.data?.find((item) => item.contestId === contestId) ?? null,
-
     [contestsQuery.data, contestId],
   );
 
-  // ==========================================================================
-  // ELECTION CANDIDATES
-  // ==========================================================================
-
   const electionCandidatesQuery = useQuery({
     enabled: Boolean(electionId),
-
-    queryKey: ["election-candidates", electionId],
-
+    queryKey: ["election-candidates", electionId, ...accessKey],
     queryFn: () => fetchElectionCandidates(electionId!),
-
     staleTime: 30_000,
-
     retry: 1,
   });
 
   const electionCandidates = useMemo<ElectionCandidateDto[]>(
     () =>
       [...(electionCandidatesQuery.data ?? [])].sort((a, b) =>
-        safeStr(a.fullName).localeCompare(
-          safeStr(b.fullName),
-
-          undefined,
-
-          {
-            sensitivity: "base",
-          },
-        ),
+        safeStr(a.fullName).localeCompare(safeStr(b.fullName), undefined, {
+          sensitivity: "base",
+        }),
       ),
-
     [electionCandidatesQuery.data],
   );
-
-  // ==========================================================================
-  // CANDIDATE LABEL MAP
-  // ==========================================================================
 
   const electIdToLabel = useMemo(() => {
     const map = new Map<string, string>();
@@ -197,7 +144,6 @@ export default function ContestOptionsPage() {
 
       map.set(
         candidate.electId,
-
         meta ? `${candidate.fullName} (${meta})` : candidate.fullName,
       );
     }
@@ -205,48 +151,27 @@ export default function ContestOptionsPage() {
     return map;
   }, [electionCandidates]);
 
-  // ==========================================================================
-  // OPTIONS
-  //
-  // IMPORTANT:
-  // Do NOT sort by optionOrder here.
-  //
-  // Backend now returns candidate options alphabetically.
-  // ==========================================================================
-
   const optionsQuery = useQuery({
-    enabled: Boolean(contestId),
-
-    queryKey: ["contest-options", contestId, onlyActive],
-
+    enabled: Boolean(electionId && contestId && (!isOperations || contest)),
+    queryKey: ["contest-options", contestId, onlyActive, ...accessKey],
     queryFn: () =>
       listOptionsByContest({
         contestId: contestId!,
-
         onlyActive,
       }),
-
     staleTime: 5_000,
-
     retry: 1,
   });
 
   const options = useMemo<ContestOptionDto[]>(
     () => optionsQuery.data ?? [],
-
     [optionsQuery.data],
   );
-
-  // ==========================================================================
-  // SEARCH OPTIONS
-  // ==========================================================================
 
   const visibleOptions = useMemo(() => {
     const term = search.trim().toLowerCase();
 
-    if (!term) {
-      return options;
-    }
+    if (!term) return options;
 
     return options.filter((option) => {
       const value =
@@ -269,16 +194,10 @@ export default function ContestOptionsPage() {
     });
   }, [options, search, electIdToLabel]);
 
-  // ==========================================================================
-  // BULK CANDIDATES
-  // ==========================================================================
-
   const bulkCandidates = useMemo(() => {
     const term = bulkSearch.trim().toLowerCase();
 
-    if (!term) {
-      return electionCandidates;
-    }
+    if (!term) return electionCandidates;
 
     return electionCandidates.filter((candidate) => {
       const searchable = [
@@ -294,14 +213,8 @@ export default function ContestOptionsPage() {
     });
   }, [electionCandidates, bulkSearch]);
 
-  // ==========================================================================
-  // REFRESH
-  // ==========================================================================
-
   const refreshNow = async () => {
-    if (!contestId) {
-      return;
-    }
+    if (!contestId) return;
 
     await queryClient.invalidateQueries({
       queryKey: ["contest-options", contestId],
@@ -310,25 +223,24 @@ export default function ContestOptionsPage() {
     await optionsQuery.refetch();
   };
 
-  // ==========================================================================
-  // DELETE
-  // ==========================================================================
-
   const deleteMutation = useMutation({
-    mutationFn: (option: ContestOptionDto) => deleteOption(option.optionId),
+    mutationFn: (option: ContestOptionDto) => {
+      if (!canEdit) {
+        throw new Error("Election references are read-only in Operations.");
+      }
 
+      return deleteOption(option.optionId);
+    },
     onSuccess: refreshNow,
   });
 
-  // ==========================================================================
-  // BULK ASSIGN
-  // ==========================================================================
-
   const bulkAssignMutation = useMutation({
     mutationFn: async () => {
-      if (!contestId) {
-        throw new Error("Missing contest ID.");
+      if (!canEdit) {
+        throw new Error("Election references are read-only in Operations.");
       }
+
+      if (!contestId) throw new Error("Missing contest ID.");
 
       let electIds: string[];
 
@@ -346,38 +258,29 @@ export default function ContestOptionsPage() {
 
       return bulkAssignCandidates({
         contestId,
-
         electIds,
-
         replace: bulkReplace,
       });
     },
-
     onSuccess: async () => {
       setBulkOpen(false);
-
       setBulkSelected([]);
-
       await refreshNow();
     },
   });
 
-  // ==========================================================================
-  // NAVIGATION
-  // ==========================================================================
-
   const goBack = () => {
-    if (!electionId) {
-      return;
-    }
+    if (!electionId) return;
 
-    navigate(`/elections/${electionId}/setup/contests`);
+    navigate(
+      isOperations
+        ? "/operations/reference/contests"
+        : `/elections/${electionId}/setup/contests`,
+    );
   };
 
   const openCreate = () => {
-    if (!electionId || !contestId) {
-      return;
-    }
+    if (!canEdit || !electionId || !contestId) return;
 
     navigate(
       `/elections/${electionId}/setup/contests/${contestId}/options/new`,
@@ -385,36 +288,23 @@ export default function ContestOptionsPage() {
   };
 
   const openEdit = (option: ContestOptionDto) => {
-    if (!electionId || !contestId) {
-      return;
-    }
+    if (!canEdit || !electionId || !contestId) return;
 
     navigate(
       `/elections/${electionId}/setup/contests/${contestId}/options/${option.optionId}/edit`,
-
-      {
-        state: {
-          option,
-        },
-      },
+      { state: { option } },
     );
   };
 
   const openBulk = () => {
+    if (!canEdit) return;
+
     setBulkMode("MANUAL");
-
     setBulkReplace(false);
-
     setBulkSearch("");
-
     setBulkSelected([]);
-
     setBulkOpen(true);
   };
-
-  // ==========================================================================
-  // GUARD
-  // ==========================================================================
 
   if (!electionId || !contestId) {
     return (
@@ -424,9 +314,24 @@ export default function ContestOptionsPage() {
     );
   }
 
-  // ==========================================================================
-  // RENDER
-  // ==========================================================================
+  if (isOperations && contestsQuery.isLoading) {
+    return <div role="status">Loading contest…</div>;
+  }
+
+  if (isOperations && contestsQuery.isError) {
+    return <div role="alert">{friendlyError(contestsQuery.error)}</div>;
+  }
+
+  if (isOperations && !contest) {
+    return (
+      <div role="status">
+        This contest is unavailable for the selected election.{" "}
+        <button type="button" onClick={goBack}>
+          Back to contests
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -436,10 +341,6 @@ export default function ContestOptionsPage() {
           sources={["contest_option"]}
         />
       )}
-
-      {/* ====================================================================
-          HEADER
-      ==================================================================== */}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
         <div className="flex items-start gap-3">
@@ -456,12 +357,13 @@ export default function ContestOptionsPage() {
               <h1 className="text-lg font-bold text-slate-900 sm:text-xl">
                 Contest Options
               </h1>
-
               {contest && <Badge text={contest.contestName} />}
             </div>
 
             <p className="mt-1 text-xs text-slate-500">
-              Manage candidates and label options assigned to this contest.
+              {isOperations
+                ? "View candidates and label options assigned to this contest."
+                : "Manage candidates and label options assigned to this contest."}
             </p>
           </div>
         </div>
@@ -504,10 +406,6 @@ export default function ContestOptionsPage() {
         </div>
       </section>
 
-      {/* ====================================================================
-          SEARCH + ACTIVE FILTER
-      ==================================================================== */}
-
       <section className="rounded-2xl border border-slate-200 bg-white p-2.5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="relative min-w-0 flex-1">
@@ -536,34 +434,19 @@ export default function ContestOptionsPage() {
         </div>
       </section>
 
-      {/* ====================================================================
-          ERROR
-      ==================================================================== */}
-
       {optionsQuery.isError && (
         <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
           <AlertCircle size={16} />
-
           {friendlyError(optionsQuery.error)}
         </div>
       )}
 
-      {/* ====================================================================
-          OPTIONS LIST
-      ==================================================================== */}
-
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        {/* DESKTOP HEADER */}
-
         <div className="hidden grid-cols-[70px_110px_minmax(260px,1fr)_110px_130px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 md:grid">
           <div>Order</div>
-
           <div>Type</div>
-
           <div>Value</div>
-
           <div>Status</div>
-
           <div className="text-right">Actions</div>
         </div>
 
@@ -573,7 +456,6 @@ export default function ContestOptionsPage() {
               size={20}
               className="mx-auto animate-spin text-blue-600"
             />
-
             <div className="mt-2">Loading options...</div>
           </div>
         ) : visibleOptions.length === 0 ? (
@@ -600,8 +482,6 @@ export default function ContestOptionsPage() {
                 key={option.optionId}
                 className="border-b border-slate-100 px-3 py-2.5 last:border-b-0 hover:bg-slate-50 sm:px-4"
               >
-                {/* MOBILE */}
-
                 <div className="flex items-center gap-2 md:hidden">
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-bold text-slate-900">
@@ -612,11 +492,8 @@ export default function ContestOptionsPage() {
                       <span className="font-bold text-slate-600">
                         {option.optionType}
                       </span>
-
                       <span>•</span>
-
                       <span>Order {option.optionOrder ?? "—"}</span>
-
                       <span
                         className={
                           active
@@ -665,8 +542,6 @@ export default function ContestOptionsPage() {
                   <ChevronRight size={15} className="shrink-0 text-slate-400" />
                 </div>
 
-                {/* DESKTOP */}
-
                 <div className="hidden grid-cols-[70px_110px_minmax(260px,1fr)_110px_130px] items-center gap-3 md:grid">
                   <div className="text-xs font-semibold text-slate-600">
                     {option.optionOrder ?? "—"}
@@ -676,7 +551,6 @@ export default function ContestOptionsPage() {
                     <span
                       className={[
                         "rounded-full px-2 py-1 text-[10px] font-bold",
-
                         option.optionType === "CANDIDATE"
                           ? "bg-blue-50 text-blue-700"
                           : "bg-violet-50 text-violet-700",
@@ -694,7 +568,6 @@ export default function ContestOptionsPage() {
                     <span
                       className={[
                         "inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold",
-
                         active
                           ? "bg-emerald-50 text-emerald-700"
                           : "bg-slate-100 text-slate-500",
@@ -703,11 +576,9 @@ export default function ContestOptionsPage() {
                       <span
                         className={[
                           "h-1.5 w-1.5 rounded-full",
-
                           active ? "bg-emerald-500" : "bg-slate-300",
                         ].join(" ")}
                       />
-
                       {active ? "ACTIVE" : "INACTIVE"}
                     </span>
                   </div>
@@ -755,11 +626,7 @@ export default function ContestOptionsPage() {
         )}
       </section>
 
-      {/* ====================================================================
-          BULK ASSIGN MODAL
-      ==================================================================== */}
-
-      {bulkOpen && (
+      {canEdit && bulkOpen && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 p-3 backdrop-blur-sm"
           onClick={() => {
@@ -772,8 +639,6 @@ export default function ContestOptionsPage() {
             className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            {/* HEADER */}
-
             <div className="flex items-start gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
                 <Users size={17} />
@@ -783,7 +648,6 @@ export default function ContestOptionsPage() {
                 <div className="text-base font-bold text-slate-900">
                   Bulk Assign Candidates
                 </div>
-
                 <p className="mt-0.5 text-xs text-slate-500">
                   Assign election candidates to this contest.
                 </p>
@@ -799,8 +663,6 @@ export default function ContestOptionsPage() {
               </button>
             </div>
 
-            {/* CONTENT */}
-
             <div className="flex-1 overflow-y-auto p-3 sm:p-4">
               <div className="grid gap-2 sm:grid-cols-2">
                 <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 p-3">
@@ -810,7 +672,6 @@ export default function ContestOptionsPage() {
                     onChange={() => setBulkMode("MANUAL")}
                     className="h-4 w-4 accent-violet-600"
                   />
-
                   <span className="text-sm font-semibold text-slate-700">
                     Select manually
                   </span>
@@ -823,7 +684,6 @@ export default function ContestOptionsPage() {
                     onChange={() => setBulkMode("ALL")}
                     className="h-4 w-4 accent-violet-600"
                   />
-
                   <span className="text-sm font-semibold text-slate-700">
                     Assign all filtered
                   </span>
@@ -842,7 +702,6 @@ export default function ContestOptionsPage() {
                   <div className="text-sm font-bold text-amber-900">
                     Replace mode
                   </div>
-
                   <div className="mt-0.5 text-xs text-amber-700">
                     Candidates not selected will be deactivated from this
                     contest.
@@ -850,14 +709,11 @@ export default function ContestOptionsPage() {
                 </div>
               </label>
 
-              {/* SEARCH */}
-
               <div className="relative mt-3">
                 <Search
                   size={15}
                   className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
                 />
-
                 <input
                   value={bulkSearch}
                   onChange={(event) => setBulkSearch(event.target.value)}
@@ -865,8 +721,6 @@ export default function ContestOptionsPage() {
                   className="min-h-10 w-full rounded-xl border border-slate-300 pl-9 pr-3 text-sm outline-none focus:border-violet-500"
                 />
               </div>
-
-              {/* CANDIDATES */}
 
               <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
                 <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
@@ -910,9 +764,7 @@ export default function ContestOptionsPage() {
                           disabled={bulkMode === "ALL"}
                           checked={bulkMode === "ALL" ? true : checked}
                           onChange={(event) => {
-                            if (bulkMode === "ALL") {
-                              return;
-                            }
+                            if (bulkMode === "ALL") return;
 
                             if (event.target.checked) {
                               setBulkSelected((current) =>
@@ -951,13 +803,10 @@ export default function ContestOptionsPage() {
               {bulkAssignMutation.isError && (
                 <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700">
                   <AlertCircle size={15} />
-
                   {friendlyError(bulkAssignMutation.error)}
                 </div>
               )}
             </div>
-
-            {/* FOOTER */}
 
             <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 p-3 sm:flex-row sm:justify-end">
               <button

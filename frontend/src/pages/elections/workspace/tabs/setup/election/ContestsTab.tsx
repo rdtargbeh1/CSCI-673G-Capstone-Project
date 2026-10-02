@@ -1,11 +1,6 @@
-// src/pages/elections/workspace/tabs/setup/election/ContestsTab.tsx
-
 import { useMemo, useState } from "react";
-
-import { useNavigate, useParams } from "react-router-dom";
-
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-
 import {
   AlertCircle,
   ChevronRight,
@@ -19,43 +14,28 @@ import {
 } from "lucide-react";
 
 import { useAuthStore } from "../../../../../../shared/store/authStore";
-
 import { Badge, ReadOnlyBanner } from "../../../../shared/elections-ui";
-
 import {
   deleteContest,
   listContestsByElection,
   updateContest,
 } from "../../../../../../shared/services/contestService";
-
 import type { ContestDto } from "../../../../../../auth/contestTypes";
-
-// ============================================================================
-// PROPS
-// ============================================================================
 
 type Props = {
   onOpenOptions: (contestId: string) => void;
 };
-
-// ============================================================================
-// HELPERS
-// ============================================================================
 
 function safeStr(value: unknown) {
   return typeof value === "string" ? value : value == null ? "" : String(value);
 }
 
 function formatDate(value: unknown) {
-  if (!value) {
-    return "—";
-  }
+  if (!value) return "—";
 
   const date = new Date(String(value));
 
-  if (Number.isNaN(date.getTime())) {
-    return safeStr(value);
-  }
+  if (Number.isNaN(date.getTime())) return safeStr(value);
 
   return date.toLocaleString();
 }
@@ -73,68 +53,53 @@ function friendlyError(error: any) {
   );
 }
 
-// ============================================================================
-// COMPONENT
-// ============================================================================
-
 export default function ContestsTab({ onOpenOptions }: Props) {
-  const { electionId } = useParams<{
-    electionId: string;
-  }>();
-
+  const params = useParams<{ electionId?: string }>();
+  const { pathname } = useLocation();
   const navigate = useNavigate();
-
   const queryClient = useQueryClient();
 
-  // ==========================================================================
-  // ACCESS
-  // ==========================================================================
+  const isOperations =
+    pathname === "/operations" || pathname.startsWith("/operations/");
 
+  const selectedElectionId = useAuthStore((state) => state.currentElectionId);
+  const orgId = useAuthStore((state) => state.currentOrgId);
+  const userId = useAuthStore((state) => state.user?.userId);
   const dashboardMode = useAuthStore((state) => state.dashboardMode);
-
   const isSystemAdmin = useAuthStore((state) => state.isSystemAdmin());
 
-  const canEdit =
-    dashboardMode === "NEC" || dashboardMode === "SYSTEM" || isSystemAdmin;
+  const electionId = isOperations ? selectedElectionId : params.electionId;
 
-  // ==========================================================================
-  // SEARCH
-  // ==========================================================================
+  const accessKey = [
+    isOperations ? "operations" : "administrative",
+    orgId,
+    userId,
+    electionId,
+  ];
+
+  const canEdit =
+    !isOperations &&
+    (dashboardMode === "NEC" || dashboardMode === "SYSTEM" || isSystemAdmin);
 
   const [search, setSearch] = useState("");
 
-  // ==========================================================================
-  // QUERY
-  // ==========================================================================
-
   const contestsQuery = useQuery({
     enabled: Boolean(electionId),
-
-    queryKey: ["contests-by-election", electionId],
-
+    queryKey: ["contests-by-election", electionId, ...accessKey],
     queryFn: () => listContestsByElection(electionId!),
-
     staleTime: 10_000,
-
     retry: 1,
   });
 
   const contests = useMemo(
     () => contestsQuery.data ?? [],
-
     [contestsQuery.data],
   );
-
-  // ==========================================================================
-  // FILTERED CONTESTS
-  // ==========================================================================
 
   const filteredContests = useMemo(() => {
     const term = search.trim().toLowerCase();
 
-    if (!term) {
-      return contests;
-    }
+    if (!term) return contests;
 
     return contests.filter((contest) => {
       const searchable = [
@@ -153,10 +118,6 @@ export default function ContestsTab({ onOpenOptions }: Props) {
     });
   }, [contests, search]);
 
-  // ==========================================================================
-  // REFRESH
-  // ==========================================================================
-
   const refreshNow = async () => {
     await queryClient.invalidateQueries({
       queryKey: ["contests-by-election", electionId],
@@ -165,49 +126,38 @@ export default function ContestsTab({ onOpenOptions }: Props) {
     await contestsQuery.refetch();
   };
 
-  // ==========================================================================
-  // TOGGLE ACTIVE
-  // ==========================================================================
-
   const toggleActiveMutation = useMutation({
-    mutationFn: async (contest: ContestDto) =>
-      updateContest(
-        contest.contestId,
+    mutationFn: async (contest: ContestDto) => {
+      if (!canEdit) {
+        throw new Error("Election references are read-only in Operations.");
+      }
 
-        {
-          isActive: !boolVal(contest.isActive, true),
-        },
-      ),
-
+      return updateContest(contest.contestId, {
+        isActive: !boolVal(contest.isActive, true),
+      });
+    },
     onSuccess: refreshNow,
   });
-
-  // ==========================================================================
-  // DELETE
-  // ==========================================================================
 
   const deleteMutation = useMutation({
-    mutationFn: (contestId: string) => deleteContest(contestId),
+    mutationFn: (contestId: string) => {
+      if (!canEdit) {
+        throw new Error("Election references are read-only in Operations.");
+      }
 
+      return deleteContest(contestId);
+    },
     onSuccess: refreshNow,
   });
 
-  // ==========================================================================
-  // NAVIGATION
-  // ==========================================================================
-
   const openCreate = () => {
-    if (!electionId) {
-      return;
-    }
+    if (!canEdit || !electionId) return;
 
     navigate(`/elections/${electionId}/setup/contests/new`);
   };
 
   const openEdit = (contest: ContestDto) => {
-    if (!electionId) {
-      return;
-    }
+    if (!canEdit || !electionId) return;
 
     navigate(
       `/elections/${electionId}/setup/contests/${contest.contestId}/edit`,
@@ -215,9 +165,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
   };
 
   const removeContest = (contest: ContestDto) => {
-    if (!canEdit) {
-      return;
-    }
+    if (!canEdit) return;
 
     const confirmed = window.confirm(
       `Delete contest "${contest.contestName}"?\n\nThis action is permanent.`,
@@ -228,21 +176,13 @@ export default function ContestsTab({ onOpenOptions }: Props) {
     }
   };
 
-  // ==========================================================================
-  // GUARD
-  // ==========================================================================
-
   if (!electionId) {
     return (
       <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
-        Missing election ID.
+        Select an election to view these records.
       </div>
     );
   }
-
-  // ==========================================================================
-  // RENDER
-  // ==========================================================================
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -253,10 +193,6 @@ export default function ContestsTab({ onOpenOptions }: Props) {
         />
       )}
 
-      {/* ====================================================================
-          HEADER
-      ==================================================================== */}
-
       <section className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
@@ -265,7 +201,9 @@ export default function ContestsTab({ onOpenOptions }: Props) {
             </div>
 
             <div className="mt-0.5 text-xs text-slate-500">
-              Manage election contests, scope and ballot rules.
+              {isOperations
+                ? "View election contests, scope and ballot rules."
+                : "Manage election contests, scope and ballot rules."}
             </div>
           </div>
 
@@ -274,20 +212,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
               <button
                 type="button"
                 onClick={openCreate}
-                className="
-                  inline-flex
-                  min-h-9
-                  items-center
-                  justify-center
-                  gap-1.5
-                  rounded-lg
-                  bg-blue-600
-                  px-3
-                  text-xs
-                  font-bold
-                  text-white
-                  hover:bg-blue-700
-                "
+                className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white hover:bg-blue-700"
               >
                 <Plus size={15} />
                 Create Contest
@@ -300,22 +225,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
               type="button"
               onClick={refreshNow}
               disabled={contestsQuery.isFetching}
-              className="
-                inline-flex
-                min-h-9
-                items-center
-                justify-center
-                gap-1.5
-                rounded-lg
-                border
-                border-slate-300
-                bg-white
-                px-3
-                text-base
-                font-semibold
-                text-slate-700
-                disabled:opacity-50
-              "
+              className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-base font-semibold text-slate-700 disabled:opacity-50"
             >
               <RefreshCw
                 size={15}
@@ -327,44 +237,18 @@ export default function ContestsTab({ onOpenOptions }: Props) {
         </div>
       </section>
 
-      {/* ====================================================================
-          SEARCH
-      ==================================================================== */}
-
       <section className="rounded-2xl border border-slate-200 bg-white p-2.5">
         <div className="flex gap-2">
           <div className="relative min-w-0 flex-1">
             <Search
               size={15}
-              className="
-                pointer-events-none
-                absolute
-                left-3
-                top-1/2
-                -translate-y-1/2
-                text-slate-400
-              "
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
             />
-
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Search contests..."
-              className="
-                min-h-9
-                w-full
-                rounded-lg
-                border
-                border-slate-300
-                py-1.5
-                pl-9
-                pr-3
-                text-base
-                outline-none
-                focus:border-blue-500
-                focus:ring-2
-                focus:ring-blue-100
-              "
+              className="min-h-9 w-full rounded-lg border border-slate-300 py-1.5 pl-9 pr-3 text-base outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </div>
 
@@ -372,18 +256,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
             <button
               type="button"
               onClick={() => setSearch("")}
-              className="
-                min-h-9
-                shrink-0
-                rounded-lg
-                border
-                border-slate-300
-                bg-white
-                px-3
-                text-sm
-                font-semibold
-                text-slate-700
-              "
+              className="min-h-9 shrink-0 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700"
             >
               Clear
             </button>
@@ -391,70 +264,26 @@ export default function ContestsTab({ onOpenOptions }: Props) {
         </div>
       </section>
 
-      {/* ====================================================================
-          ERROR
-      ==================================================================== */}
-
       {contestsQuery.isError && (
         <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
           <AlertCircle size={17} />
-
           {friendlyError(contestsQuery.error)}
         </div>
       )}
 
-      {/* ====================================================================
-          LIST
-      ==================================================================== */}
-
       <section className="rounded-2xl border border-slate-200 bg-white">
-        {/* ==================================================================
-            DESKTOP HEADER
-        ================================================================== */}
-
-        <div
-          className="
-            hidden
-            grid-cols-[minmax(180px,1.4fr)_110px_110px_135px_60px_60px_100px_90px_165px_150px]
-            gap-3
-            rounded-t-2xl
-            border-b
-            border-slate-200
-            bg-slate-50
-            px-3
-            py-2
-            text-[13px]
-            font-bold
-            uppercase
-            tracking-wide
-            text-slate-500
-            lg:grid
-          "
-        >
+        <div className="hidden grid-cols-[minmax(180px,1.4fr)_110px_110px_135px_60px_60px_100px_90px_165px_150px] gap-3 rounded-t-2xl border-b border-slate-200 bg-slate-50 px-3 py-2 text-[13px] font-bold uppercase tracking-wide text-slate-500 lg:grid">
           <div>Contest</div>
-
           <div>Category</div>
-
           <div>Scope</div>
-
           <div>Vote</div>
-
           <div>Seats</div>
-
           <div>Max</div>
-
           <div>Status</div>
-
           <div>Active</div>
-
           <div>Created</div>
-
           <div className="text-right">Actions</div>
         </div>
-
-        {/* ==================================================================
-            LOADING
-        ================================================================== */}
 
         {contestsQuery.isLoading ? (
           <div className="px-4 py-10 text-center text-sm text-slate-500">
@@ -462,7 +291,6 @@ export default function ContestsTab({ onOpenOptions }: Props) {
               size={20}
               className="mx-auto animate-spin text-blue-600"
             />
-
             <div className="mt-2">Loading contests...</div>
           </div>
         ) : filteredContests.length === 0 ? (
@@ -483,31 +311,14 @@ export default function ContestsTab({ onOpenOptions }: Props) {
 
             const description = contest.description?.trim() || "";
 
-            // ==============================================================
-            // Last rows open tooltip upward so it is not clipped
-            // ==============================================================
-
             const showTooltipAbove =
               index >= Math.max(0, filteredContests.length - 2);
 
             return (
               <div
                 key={contest.contestId}
-                className="
-                    relative
-                    border-b
-                    border-slate-100
-                    px-3
-                    py-2.5
-                    last:border-b-0
-                    last:rounded-b-2xl
-                    hover:bg-slate-50
-                  "
+                className="relative border-b border-slate-100 px-3 py-2.5 last:border-b-0 last:rounded-b-2xl hover:bg-slate-50"
               >
-                {/* ========================================================
-                      MOBILE / TABLET
-                  ======================================================== */}
-
                 <div className="flex items-center gap-2 lg:hidden">
                   <button
                     type="button"
@@ -522,17 +333,11 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                       <span className="font-semibold text-slate-600">
                         {contest.category}
                       </span>
-
                       <span>•</span>
-
                       <span>{contest.scopeType}</span>
-
                       <span>•</span>
-
                       <span>{contest.voteMethod}</span>
-
                       <span>•</span>
-
                       <span>Seats {contest.seats}</span>
 
                       <span
@@ -546,8 +351,6 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                       </span>
                     </div>
 
-                    {/* MOBILE DESCRIPTION */}
-
                     {description && (
                       <div className="mt-1 line-clamp-2 max-w-xl text-[10px] leading-4 text-slate-400">
                         {description}
@@ -555,26 +358,11 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                     )}
                   </button>
 
-                  {/* ======================================================
-                        MOBILE ACTIONS
-                    ====================================================== */}
-
                   <div className="flex shrink-0 gap-1">
                     <button
                       type="button"
                       onClick={() => onOpenOptions(contest.contestId)}
-                      className="
-                          flex
-                          h-8
-                          w-8
-                          items-center
-                          justify-center
-                          rounded-lg
-                          border
-                          border-slate-200
-                          bg-white
-                          text-slate-600
-                        "
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600"
                       aria-label="Contest options"
                     >
                       <List size={14} />
@@ -585,18 +373,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                         <button
                           type="button"
                           onClick={() => openEdit(contest)}
-                          className="
-                              flex
-                              h-8
-                              w-8
-                              items-center
-                              justify-center
-                              rounded-lg
-                              border
-                              border-blue-200
-                              bg-blue-50
-                              text-blue-700
-                            "
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700"
                           aria-label="Edit contest"
                         >
                           <Pencil size={14} />
@@ -606,19 +383,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                           type="button"
                           disabled={toggling}
                           onClick={() => toggleActiveMutation.mutate(contest)}
-                          className="
-                              flex
-                              h-8
-                              w-8
-                              items-center
-                              justify-center
-                              rounded-lg
-                              border
-                              border-amber-200
-                              bg-amber-50
-                              text-amber-700
-                              disabled:opacity-50
-                            "
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 disabled:opacity-50"
                           aria-label={
                             active ? "Deactivate contest" : "Activate contest"
                           }
@@ -634,19 +399,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                           type="button"
                           disabled={deleting}
                           onClick={() => removeContest(contest)}
-                          className="
-                              flex
-                              h-8
-                              w-8
-                              items-center
-                              justify-center
-                              rounded-lg
-                              border
-                              border-red-200
-                              bg-red-50
-                              text-red-600
-                              disabled:opacity-50
-                            "
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 disabled:opacity-50"
                           aria-label="Delete contest"
                         >
                           {deleting ? (
@@ -662,33 +415,12 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                   <ChevronRight size={16} className="shrink-0 text-slate-400" />
                 </div>
 
-                {/* ========================================================
-                      DESKTOP
-                  ======================================================== */}
-
-                <div
-                  className="
-                      hidden
-                      grid-cols-[minmax(180px,1.4fr)_110px_110px_135px_60px_60px_100px_90px_165px_150px]
-                      items-center
-                      gap-3
-                      lg:grid
-                    "
-                >
-                  {/* ======================================================
-                        CONTEST + DESCRIPTION HOVER
-                    ====================================================== */}
-
+                <div className="hidden grid-cols-[minmax(180px,1.4fr)_110px_110px_135px_60px_60px_100px_90px_165px_150px] items-center gap-3 lg:grid">
                   <div className="group relative min-w-0">
                     <button
                       type="button"
                       onClick={() => onOpenOptions(contest.contestId)}
-                      className="
-                          min-w-0
-                          max-w-full
-                          text-left
-                          focus:outline-none
-                        "
+                      className="min-w-0 max-w-full text-left focus:outline-none"
                     >
                       <div className="truncate text-base font-bold text-slate-900 group-hover:text-blue-700">
                         {contest.contestName}
@@ -701,83 +433,33 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                       )}
                     </button>
 
-                    {/* ====================================================
-                          DESKTOP DESCRIPTION CARD
-                      ==================================================== */}
-
                     {description && (
                       <div
                         className={[
-                          `
-                              pointer-events-none
-                              absolute
-                              left-0
-                              z-[100]
-                              hidden
-                              w-[440px]
-                              max-w-[72vw]
-                              rounded-xl
-                              border
-                              border-slate-200
-                              bg-white
-                              p-3.5
-                              text-left
-                              shadow-2xl
-                              group-hover:block
-                              group-focus-within:block
-                            `,
-
+                          "pointer-events-none absolute left-0 z-[100] hidden w-[440px] max-w-[72vw] rounded-xl border border-slate-200 bg-white p-3.5 text-left shadow-2xl group-hover:block group-focus-within:block",
                           showTooltipAbove
-                            ? `
-                                  bottom-[calc(100%+8px)]
-                                `
-                            : `
-                                  top-[calc(100%+8px)]
-                                `,
+                            ? "bottom-[calc(100%+8px)]"
+                            : "top-[calc(100%+8px)]",
                         ].join(" ")}
                       >
-                        {/* ARROW */}
-
                         <div
                           className={[
-                            `
-                                absolute
-                                left-5
-                                h-3
-                                w-3
-                                rotate-45
-                                border-slate-200
-                                bg-white
-                              `,
-
+                            "absolute left-5 h-3 w-3 rotate-45 border-slate-200 bg-white",
                             showTooltipAbove
-                              ? `
-                                    -bottom-1.5
-                                    border-b
-                                    border-r
-                                  `
-                              : `
-                                    -top-1.5
-                                    border-l
-                                    border-t
-                                  `,
+                              ? "-bottom-1.5 border-b border-r"
+                              : "-top-1.5 border-l border-t",
                           ].join(" ")}
                         />
 
                         <div className="relative">
-                          {/* NAME + LABEL SAME LINE */}
-
                           <div className="flex flex-wrap items-baseline gap-1.5">
                             <span className="text-sm font-bold text-slate-900">
                               {contest.contestName}
                             </span>
-
                             <span className="text-xs font-semibold text-slate-400">
                               — Description
                             </span>
                           </div>
-
-                          {/* DESCRIPTION TEXT */}
 
                           <div className="mt-2 whitespace-pre-wrap text-sm leading-5 text-slate-700">
                             {description}
@@ -787,16 +469,12 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                     )}
                   </div>
 
-                  {/* CATEGORY */}
-
                   <div
                     className="truncate text-[12px] font-semibold text-slate-700"
                     title={safeStr(contest.category)}
                   >
                     {contest.category ?? "—"}
                   </div>
-
-                  {/* SCOPE */}
 
                   <div
                     className="truncate text-[12px] font-semibold text-slate-700"
@@ -805,8 +483,6 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                     {contest.scopeType ?? "—"}
                   </div>
 
-                  {/* VOTE */}
-
                   <div
                     className="truncate text-[12px] text-slate-700"
                     title={safeStr(contest.voteMethod)}
@@ -814,19 +490,13 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                     {contest.voteMethod ?? "—"}
                   </div>
 
-                  {/* SEATS */}
-
                   <div className="text-[12px] font-semibold text-slate-700">
                     {contest.seats ?? "—"}
                   </div>
 
-                  {/* MAX */}
-
                   <div className="text-[12px] font-semibold text-slate-700">
                     {contest.maxSelections ?? "—"}
                   </div>
-
-                  {/* STATUS */}
 
                   <div
                     className="truncate text-[12px] font-semibold text-slate-700"
@@ -835,70 +505,34 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                     {contest.status ?? "—"}
                   </div>
 
-                  {/* ACTIVE */}
-
                   <div>
                     <span
                       className={[
-                        `
-                            inline-flex
-                            items-center
-                            gap-1
-                            rounded-full
-                            px-1.5
-                            py-0.5
-                            text-[9px]
-                            font-bold
-                          `,
-
+                        "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold",
                         active
-                          ? `
-                                bg-emerald-50
-                                text-emerald-700
-                              `
-                          : `
-                                bg-slate-100
-                                text-slate-500
-                              `,
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-slate-100 text-slate-500",
                       ].join(" ")}
                     >
                       <span
                         className={[
                           "h-1.5 w-1.5 rounded-full",
-
                           active ? "bg-emerald-500" : "bg-slate-300",
                         ].join(" ")}
                       />
-
                       {active ? "ACTIVE" : "OFF"}
                     </span>
                   </div>
-
-                  {/* CREATED */}
 
                   <div className="text-[12px] leading-4 text-slate-500">
                     {formatDate((contest as any).dateCreated)}
                   </div>
 
-                  {/* ACTIONS */}
-
                   <div className="flex justify-end gap-1">
                     <button
                       type="button"
                       onClick={() => onOpenOptions(contest.contestId)}
-                      className="
-                          flex
-                          h-8
-                          w-8
-                          items-center
-                          justify-center
-                          rounded-lg
-                          border
-                          border-slate-200
-                          bg-white
-                          text-slate-600
-                          hover:bg-slate-50
-                        "
+                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                       title="Options"
                     >
                       <List size={13} />
@@ -909,19 +543,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                         <button
                           type="button"
                           onClick={() => openEdit(contest)}
-                          className="
-                              flex
-                              h-8
-                              w-8
-                              items-center
-                              justify-center
-                              rounded-lg
-                              border
-                              border-blue-200
-                              bg-blue-50
-                              text-blue-700
-                              hover:bg-blue-100
-                            "
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
                           title="Edit"
                         >
                           <Pencil size={13} />
@@ -931,20 +553,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                           type="button"
                           disabled={toggling}
                           onClick={() => toggleActiveMutation.mutate(contest)}
-                          className="
-                              flex
-                              h-8
-                              w-8
-                              items-center
-                              justify-center
-                              rounded-lg
-                              border
-                              border-amber-200
-                              bg-amber-50
-                              text-amber-700
-                              hover:bg-amber-100
-                              disabled:opacity-50
-                            "
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-50"
                           title={active ? "Deactivate" : "Activate"}
                         >
                           {toggling ? (
@@ -958,20 +567,7 @@ export default function ContestsTab({ onOpenOptions }: Props) {
                           type="button"
                           disabled={deleting}
                           onClick={() => removeContest(contest)}
-                          className="
-                              flex
-                              h-8
-                              w-8
-                              items-center
-                              justify-center
-                              rounded-lg
-                              border
-                              border-red-200
-                              bg-red-50
-                              text-red-600
-                              hover:bg-red-100
-                              disabled:opacity-50
-                            "
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50"
                           title="Delete"
                         >
                           {deleting ? (

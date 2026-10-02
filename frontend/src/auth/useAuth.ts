@@ -1,18 +1,22 @@
 // src/auth/useAuth.ts
+
 import { useEffect, useMemo, useState } from "react";
+
 import { http, getOrgId } from "../api/http";
+
 import type { DashboardMode, UserDto } from "./types";
-import {
-  computeCapabilities,
-  // computeDashboardMode,
-  type Capabilities,
-} from "../utils/permissions";
+
+import { computeCapabilities, type Capabilities } from "../utils/permissions";
+
+// ============================================================================
+// TYPES
+// ============================================================================
 
 // DB-backed org dto from GET /api/orgs/{id}
 type OrgDto = {
   orgId: string;
   orgName: string;
-  organizationType: string; // "NEC" | "POLITICAL_PARTY" | ...
+  organizationType: string;
   active: boolean;
 };
 
@@ -31,6 +35,10 @@ type AuthState = {
   error: string | null;
 };
 
+// ============================================================================
+// EMPTY CAPABILITIES
+// ============================================================================
+
 const emptyCaps: Capabilities = {
   canManageElections: false,
   canManageSetup: false,
@@ -44,79 +52,167 @@ const emptyCaps: Capabilities = {
   canSwitchTenant: false,
 };
 
-function upper(x: unknown) {
-  return String(x ?? "").toUpperCase();
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+function upper(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/^ROLE_/, "");
 }
 
-function isSystemAdminUser(u: UserDto | null): boolean {
-  if (!u) return false;
+/**
+ * Determines whether the /users/me response represents
+ * a platform SYSTEM_ADMIN.
+ *
+ * SYSTEM_ADMIN may legitimately have no organization context.
+ */
+function isSystemAdminUser(user: UserDto | null): boolean {
+  if (!user) {
+    return false;
+  }
 
-  // prefer explicit systemRole
-  if (u.systemRole === "SYSTEM_ADMIN") return true;
+  // --------------------------------------------------------------------------
+  // Backend boolean flag
+  // --------------------------------------------------------------------------
 
-  // roles array fallback
-  if (u.roles?.some((r) => upper(r) === "SYSTEM_ADMIN")) return true;
+  if ((user as any).isSystemAdmin === true) {
+    return true;
+  }
+
+  // --------------------------------------------------------------------------
+  // Canonical /users/me role field
+  // --------------------------------------------------------------------------
+
+  if (upper((user as any).roleName) === "SYSTEM_ADMIN") {
+    return true;
+  }
+
+  // --------------------------------------------------------------------------
+  // Older frontend compatibility
+  // --------------------------------------------------------------------------
+
+  if (upper((user as any).systemRole) === "SYSTEM_ADMIN") {
+    return true;
+  }
+
+  // --------------------------------------------------------------------------
+  // roles[] compatibility
+  // --------------------------------------------------------------------------
+
+  if (
+    Array.isArray((user as any).roles) &&
+    (user as any).roles.some((role: unknown) => upper(role) === "SYSTEM_ADMIN")
+  ) {
+    return true;
+  }
 
   return false;
 }
 
+// ============================================================================
+// API
+// ============================================================================
+
 async function fetchOrgById(orgId: string): Promise<OrgDto> {
-  const dto = await http.get<OrgDto>(`/api/orgs/${orgId}`);
-  return dto;
+  return http.get<OrgDto>(`/api/orgs/${orgId}`);
 }
+
+// ============================================================================
+// AUTH HOOK
+// ============================================================================
 
 export function useAuth(): AuthState {
   const [state, setState] = useState<AuthState>({
     user: null,
     tenant: null,
-    dashboardMode: "TENANT", // ✅ must be a valid DashboardMode
+    dashboardMode: "TENANT",
     capabilities: emptyCaps,
     loading: true,
     error: null,
   });
 
   useEffect(() => {
-    (async () => {
+    let cancelled = false;
+
+    async function loadAuthContext() {
       try {
-        // 1) Always load /me (DB)
+        // ====================================================================
+        // 1. LOAD CURRENT USER
+        // ====================================================================
+
         const user = await http.get<UserDto>("/api/users/me");
 
-        const sysAdmin = isSystemAdminUser(user);
-
-        // 2) Resolve org context ONLY if present
-        const orgId = getOrgId(); // from header/local storage helper
-
-        // ✅ SYSTEM_ADMIN can exist without org context
-        if (!orgId) {
-          if (sysAdmin) {
-            const tenant: TenantInfo | null = null;
-            const dashboardMode: DashboardMode = "SYSTEM";
-
-            const capabilities = computeCapabilities(user as any, "ORG"); // safe default
-            setState({
-              user,
-              tenant,
-              dashboardMode,
-              capabilities,
-              loading: false,
-              error: null,
-            });
-            return;
-          }
-
-          // Non-system admin must have org context
-          setState((s) => ({
-            ...s,
-            user,
-            loading: false,
-            error:
-              "Missing org context. Please select an organization (org_id).",
-          }));
+        if (cancelled) {
           return;
         }
 
-        // 3) Fetch org details from DB (authoritative)
+        const systemAdmin = isSystemAdminUser(user);
+
+        // ====================================================================
+        // 2. RESOLVE ORGANIZATION CONTEXT
+        // ====================================================================
+
+        const orgId = getOrgId();
+
+        // ====================================================================
+        // 3. PLATFORM SYSTEM ADMIN
+        //
+        // SYSTEM_ADMIN is allowed to have no org context.
+        // ====================================================================
+
+        if (!orgId && systemAdmin) {
+          const capabilities = computeCapabilities(user as any);
+
+          if (cancelled) {
+            return;
+          }
+
+          setState({
+            user,
+            tenant: null,
+            dashboardMode: "SYSTEM",
+            capabilities,
+            loading: false,
+            error: null,
+          });
+
+          return;
+        }
+
+        // ====================================================================
+        // 4. NON-SYSTEM USER REQUIRES ORG CONTEXT
+        // ====================================================================
+
+        if (!orgId) {
+          if (cancelled) {
+            return;
+          }
+
+          setState({
+            user,
+            tenant: null,
+            dashboardMode: "TENANT",
+            capabilities: emptyCaps,
+            loading: false,
+            error:
+              "Missing org context. Please select an organization (org_id).",
+          });
+
+          return;
+        }
+
+        // ====================================================================
+        // 5. LOAD ORGANIZATION
+        // ====================================================================
+
         const org = await fetchOrgById(orgId);
+
+        if (cancelled) {
+          return;
+        }
 
         const tenantType: "NEC" | "ORG" =
           upper(org.organizationType) === "NEC" ? "NEC" : "ORG";
@@ -127,20 +223,35 @@ export function useAuth(): AuthState {
           tenantType,
         };
 
-        // 4) Compute dashboard mode
-        //    - SYSTEM if system admin
-        //    - NEC if orgType == NEC
-        //    - TENANT otherwise
-        let dashboardMode: DashboardMode = "TENANT";
-        if (sysAdmin) dashboardMode = "SYSTEM";
-        else if (tenantType === "NEC") dashboardMode = "NEC";
-        else dashboardMode = "TENANT";
+        // ====================================================================
+        // 6. RESOLVE DOMAIN / DASHBOARD MODE
+        // ====================================================================
 
-        // 5) Compute capabilities (use your existing permission helpers)
-        // computeDashboardMode expects (dto, tenantType) in your design,
-        // but we already computed dashboardMode above. We keep computeDashboardMode
-        // available if you want it later.
-        const capabilities = computeCapabilities(user as any, tenantType);
+        let dashboardMode: DashboardMode = "TENANT";
+
+        if (systemAdmin) {
+          dashboardMode = "SYSTEM";
+        } else if (tenantType === "NEC") {
+          dashboardMode = "NEC";
+        } else {
+          dashboardMode = "TENANT";
+        }
+
+        // ====================================================================
+        // 7. COMPUTE EXISTING FRONTEND CAPABILITIES
+        //
+        // Your existing computeCapabilities() accepts ONE argument.
+        // ====================================================================
+
+        const capabilities = computeCapabilities(user as any);
+
+        if (cancelled) {
+          return;
+        }
+
+        // ====================================================================
+        // 8. SAVE AUTH CONTEXT
+        // ====================================================================
 
         setState({
           user,
@@ -150,14 +261,24 @@ export function useAuth(): AuthState {
           loading: false,
           error: null,
         });
-      } catch (e: any) {
-        setState((s) => ({
-          ...s,
+      } catch (error: any) {
+        if (cancelled) {
+          return;
+        }
+
+        setState((current) => ({
+          ...current,
           loading: false,
-          error: e?.message ?? "Failed to load auth context",
+          error: error?.message ?? "Failed to load auth context",
         }));
       }
-    })();
+    }
+
+    loadAuthContext();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return useMemo(() => state, [state]);

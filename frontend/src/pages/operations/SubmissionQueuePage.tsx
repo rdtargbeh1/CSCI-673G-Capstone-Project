@@ -1,4 +1,7 @@
+// src/pages/operations/SubmissionQueuePage.tsx
+
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   useMutation,
   useQuery,
@@ -62,8 +65,6 @@ import {
 } from "../../shared/services/organizationService";
 
 import { listOptionsByContest } from "../../shared/services/contestOptionService";
-
-import SubmissionFormModal from "../elections/workspace/tabs/submissions/SubmissionFormPage";
 
 /** ============ HELPERS ============ */
 function safeStr(v: any) {
@@ -142,6 +143,7 @@ type OrgDto = { orgId: string; orgName: string };
 
 /** ============ MAIN COMPONENT ============ */
 export default function SubmissionQueuePage() {
+  const navigate = useNavigate();
   const qc = useQueryClient();
 
   const user = useAuthStore((s) => s.user);
@@ -439,10 +441,22 @@ export default function SubmissionQueuePage() {
     return base;
   }, [rawItems, evidenceLoading, evidenceMap]);
 
-  /** ============ MODALS STATE ============ */
-  const [openNew, setOpenNew] = useState(false);
-  const [openEdit, setOpenEdit] = useState(false);
-  const [editId, setEditId] = useState<string>("");
+  /** ============ SUBMISSION FORM NAVIGATION ============ */
+  const openNewSubmission = () => {
+    if (!electionId) {
+      return;
+    }
+
+    navigate(`/elections/${electionId}/submissions/new`);
+  };
+
+  const openEditSubmission = (submissionId: string) => {
+    if (!electionId || !submissionId) {
+      return;
+    }
+
+    navigate(`/elections/${electionId}/submissions/${submissionId}/edit`);
+  };
 
   const canEditRow = (s: VoteSubmissionDto) => {
     const st = String((s as any).status ?? "").toUpperCase();
@@ -797,7 +811,7 @@ export default function SubmissionQueuePage() {
                   {canCreate ? (
                     <button
                       type="button"
-                      onClick={() => setOpenNew(true)}
+                      onClick={openNewSubmission}
                       className="h-9 rounded-lg px-4 p-5 text-xl font-extrabold inline-flex items-center gap-2
                                  bg-blue-600 text-white border border-blue-700 shadow-sm
                                  hover:bg-blue-700 active:bg-blue-800"
@@ -986,10 +1000,9 @@ export default function SubmissionQueuePage() {
                               !canEditRow(s) ? "opacity-50" : ""
                             }`}
                             disabled={!canEditRow(s)}
-                            onClick={() => {
-                              setEditId(s.submissionId);
-                              setOpenEdit(true);
-                            }}
+                            onClick={() =>
+                              openEditSubmission(String(s.submissionId ?? ""))
+                            }
                             title={
                               flagged
                                 ? "Flagged submissions are not editable. Unflag in Edit modal."
@@ -998,7 +1011,6 @@ export default function SubmissionQueuePage() {
                           >
                             <Pencil size={14} className="text-green-600" />
                           </button>
-
                           <button
                             type="button"
                             className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border bg-white hover:bg-slate-50 ${
@@ -1467,43 +1479,6 @@ export default function SubmissionQueuePage() {
           )}
         </ViewSubmissionModal>
       ) : null}
-
-      {/* ============ CREATE/EDIT FORM MODALS ============ */}
-      <SubmissionFormModal
-        mode="create"
-        open={openNew}
-        onClose={() => setOpenNew(false)}
-        effectiveOrgId={effectiveOrgId}
-        dashboardMode={dashboardMode}
-        user={user}
-        agentId={agentId}
-        canCreate={canCreate}
-        electionId={electionId}
-        elections={elections}
-        contests={contests}
-        onSaved={async () => {
-          await refetchList();
-          setPage(0);
-        }}
-      />
-
-      <SubmissionFormModal
-        mode="edit"
-        open={openEdit}
-        onClose={() => setOpenEdit(false)}
-        effectiveOrgId={effectiveOrgId}
-        dashboardMode={dashboardMode}
-        user={user}
-        agentId={agentId}
-        canCreate={canCreate}
-        electionId={electionId}
-        elections={elections}
-        contests={contests}
-        submissionId={editId}
-        onSaved={async () => {
-          await refetchList();
-        }}
-      />
     </div>
   );
 }

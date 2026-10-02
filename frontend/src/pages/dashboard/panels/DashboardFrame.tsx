@@ -1,4 +1,4 @@
-// dashboard/panels/DashboardFrame.tsx
+// src/pages/dashboard/panels/DashboardFrame.tsx
 
 import React from "react";
 
