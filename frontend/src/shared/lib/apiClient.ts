@@ -25,7 +25,7 @@ import type { ApiError } from "../../auth/api";
  * Service URLs should NOT repeat /api if baseURL includes /api.
  */
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api";
+  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8081/api";
 
 /* -----------------------------------------------------
    Clients
@@ -65,7 +65,7 @@ function fullUrl(config?: AxiosRequestConfig): string | undefined {
 
   return `${String(base).replace(/\/+$/, "")}/${String(url).replace(
     /^\/+/,
-    ""
+    "",
   )}`;
 }
 
@@ -164,7 +164,7 @@ function handle401(apiErr: ApiError) {
 
 function attachInterceptors(
   client: typeof apiClient,
-  opts: { tenantAware: boolean }
+  opts: { tenantAware: boolean },
 ) {
   // Request interceptor
   client.interceptors.request.use(
@@ -172,7 +172,7 @@ function attachInterceptors(
       const headers: Record<string, string> = { ...(config.headers as any) };
 
       try {
-        const { token, currentOrgId, dashboardMode  } = useAuthStore.getState();
+        const { token, currentOrgId, dashboardMode } = useAuthStore.getState();
 
         if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -180,8 +180,8 @@ function attachInterceptors(
         if (opts.tenantAware && dashboardMode !== "SYSTEM" && currentOrgId) {
           headers["x-org-id"] = currentOrgId;
 
-        // if (opts.tenantAware &&  currentOrgId) {
-        //   headers["X-Org-Id"] = currentOrgId;
+          // if (opts.tenantAware &&  currentOrgId) {
+          //   headers["X-Org-Id"] = currentOrgId;
         }
       } catch {
         // noop
@@ -190,7 +190,7 @@ function attachInterceptors(
       (config.headers as any) = headers;
       return config;
     },
-    (err) => Promise.reject(normalizeAxiosError(err))
+    (err) => Promise.reject(normalizeAxiosError(err)),
   );
 
   // Response interceptor
@@ -220,7 +220,7 @@ function attachInterceptors(
       const apiErr = normalizeAxiosError(err);
       handle401(apiErr);
       return Promise.reject(apiErr);
-    }
+    },
   );
 }
 
@@ -233,7 +233,7 @@ attachInterceptors(sysClient, { tenantAware: false });
 
 export function getWithSignal<T = any>(
   url: string,
-  config?: AxiosRequestConfig & { signal?: AbortSignal }
+  config?: AxiosRequestConfig & { signal?: AbortSignal },
 ) {
   return apiClient.get<T>(url, config);
 }

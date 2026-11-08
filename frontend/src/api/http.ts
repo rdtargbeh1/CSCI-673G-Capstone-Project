@@ -20,7 +20,7 @@ type RequestOptions = {
 };
 
 const API_BASE =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080/api";
+  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8081/api";
 
 function getToken(): string | null {
   return sessionStorage.getItem("evt.token");
@@ -80,7 +80,7 @@ async function parseJsonOrThrow(res: Response): Promise<any> {
     throw new Error(
       `API returned HTML instead of JSON.\nURL: ${res.url}\nStatus: ${
         res.status
-      }\nContent-Type: ${ct}\nSnippet: ${text.slice(0, 200)}`
+      }\nContent-Type: ${ct}\nSnippet: ${text.slice(0, 200)}`,
     );
   }
 
@@ -90,7 +90,7 @@ async function parseJsonOrThrow(res: Response): Promise<any> {
     throw new Error(
       `Failed to parse JSON.\nURL: ${res.url}\nStatus: ${
         res.status
-      }\nBody: ${text.slice(0, 200)}`
+      }\nBody: ${text.slice(0, 200)}`,
     );
   }
 }
@@ -162,12 +162,12 @@ export const http = {
   post: <T>(
     path: string,
     body?: unknown,
-    opts?: Omit<RequestOptions, "method" | "body">
+    opts?: Omit<RequestOptions, "method" | "body">,
   ) => request<T>(path, { ...(opts ?? {}), method: "POST", body }),
   put: <T>(
     path: string,
     body?: unknown,
-    opts?: Omit<RequestOptions, "method" | "body">
+    opts?: Omit<RequestOptions, "method" | "body">,
   ) => request<T>(path, { ...(opts ?? {}), method: "PUT", body }),
   del: <T>(path: string, opts?: Omit<RequestOptions, "method" | "body">) =>
     request<T>(path, { ...(opts ?? {}), method: "DELETE" }),
@@ -179,7 +179,7 @@ export const http = {
     post: <T>(
       path: string,
       body?: unknown,
-      opts?: Omit<RequestOptions, "method" | "body">
+      opts?: Omit<RequestOptions, "method" | "body">,
     ) =>
       request<T>(path, {
         ...(opts ?? {}),
@@ -196,7 +196,7 @@ export const http = {
     post: <T>(
       path: string,
       body?: unknown,
-      opts?: Omit<RequestOptions, "method" | "body">
+      opts?: Omit<RequestOptions, "method" | "body">,
     ) =>
       request<T>(path, {
         ...(opts ?? {}),
